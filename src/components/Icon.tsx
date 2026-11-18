@@ -27,7 +27,8 @@ export type IconName =
   | "brain"
   | "folder"
   | "inbox"
-  | "info";
+  | "info"
+  | "filter";
 
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10M9 20v-6h6v6" /></>,
@@ -57,6 +58,7 @@ const paths: Record<IconName, ReactNode> = {
   folder: <><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M3 9h18" /></>,
   inbox: <><path d="M4 4h16l2 11h-6l-2 3h-4l-2-3H2Z" /><path d="M2 15h6m8 0h6" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" /></>,
+  filter: <path d="M4 5h16l-6.5 7.5V19l-3 1v-7.5Z" />,
 };
 
 export function Icon({ name, size = 20, className = "" }: { name: IconName; size?: number; className?: string }) {

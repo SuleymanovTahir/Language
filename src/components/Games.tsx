@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { VocabCard, VocabModule } from "../lib/vocab";
 import { copyAppLink } from "../lib/shareLink";
 import { loadMediaFile, removeMediaFile, saveMediaFile } from "../lib/mediaStore";
+import { playFeedbackSound } from "../lib/feedbackSound";
 import { Icon } from "./Icon";
 import { speakText, speechLocaleForCode } from "./StudySession";
 import { AudioQuizBuilder, AudioQuizSession, type AudioQuiz } from "./AudioQuiz";
@@ -16,7 +17,7 @@ export const GAME_LIST: GameInfo[] = [
   { id: "builder", title: "Конструктор фраз", description: "Соберите артикль и существительное", mark: "▤" },
   { id: "blitz", title: "Блиц-тест", description: "Четыре варианта ответа", mark: "ϟ" },
   { id: "hangman", title: "Сбор слова", description: "Откройте слово по буквам", mark: "_" },
-  { id: "wordsearch", title: "Поиск в сетке", description: "Найдите слово по переводу", mark: "▦" },
+  { id: "wordsearch", title: "Напиши слово", description: "Введите слово по переводу", mark: "Aa" },
   { id: "anagram", title: "Анаграмма", description: "Расставьте буквы в правильном порядке", mark: "Aa" },
   { id: "train", title: "Поезд слов", description: "Поставьте артикль перед существительным", mark: "🚃" },
   { id: "moles", title: "Ударь по слову", description: "Выберите правильный вариант из сетки", mark: "●" },
@@ -77,7 +78,7 @@ export function validateGame(id: GameId, module: VocabModule) {
   if (id === "pairs" && new Set(cards.map((card) => card.translation.toLowerCase())).size < 2) return "Для пар нужны хотя бы 2 разных перевода.";
   if (id === "datajoin" && new Set(cards.map((card) => card.translation.toLowerCase())).size < 2) return "Для Data JOIN нужны хотя бы 2 разных перевода.";
   if (id === "finalsound" && cards.filter((card) => /[bdg]$/i.test(card.word.normalize("NFC"))).length < 1) return "В наборе нет слова на b, d или g для этого упражнения.";
-  if (id === "wordsearch" && cards.filter((card) => /^[\p{L}]{4,9}$/iu.test(card.word.normalize("NFC"))).length < 1) return "Для сетки нужно слово длиной от 4 до 9 букв.";
+  if (id === "wordsearch" && cards.filter((card) => /^[\p{L}]{4,9}$/iu.test(card.word.normalize("NFC"))).length < 1) return "Для игры нужны слова длиной от 4 до 9 букв.";
   if (id === "anagram" && cards.filter((card) => /^[\p{L}]{4,14}$/iu.test(card.word.normalize("NFC"))).length < 1) return "Для анаграммы нужно слово длиной от 4 до 14 букв.";
   if (!cards.length) return "Сначала выберите карточки для игры.";
   return null;
@@ -117,6 +118,7 @@ export function prepareGameModule(id: GameId, module: VocabModule): VocabModule 
   if (id === "finalsound" && !hasSound) return { ...module, cards: practiceSample(module, "sound"), practiceNote: "Примерный набор A1 · конечные согласные" };
   if ((id === "wordsearch" || id === "anagram") && !hasLongWord) return { ...module, cards: practiceSample(module, "general"), practiceNote: "Примерный набор A1 · слова для игры" };
   if ((id === "pairs" || id === "datajoin") && new Set(cards.map((card) => card.translation.toLowerCase())).size < 2) return { ...module, cards: practiceSample(module, "general"), practiceNote: "Примерный набор A1 · слова для игры" };
+  if (id === "boxes" && new Set(cards.map((card) => card.translation.toLocaleLowerCase())).size < 4) return { ...module, cards: practiceSample(module, "general"), practiceNote: "Примерный набор A1 · слова для игры" };
   return module;
 }
 
@@ -136,7 +138,7 @@ function GameArtwork({ gameId, module }: { gameId: GameId; module: VocabModule }
   else if (gameId === "builder" || gameId === "train") art = <><i>{card?.article ?? "der"}</i><i>{card?.word ?? "Tisch"}</i><i>?</i></>;
   else if (gameId === "blitz") art = <><i>{card?.translation ?? "Ответ"}</i><i>{second?.translation ?? "Вариант"}</i><i>…</i><i>✓</i></>;
   else if (gameId === "hangman") art = <><i>_ _ _ _</i><i>A&nbsp; E&nbsp; I</i></>;
-  else if (gameId === "wordsearch") { const letters = [...(card?.word.normalize("NFC") ?? "WORT")].slice(0, 9); art = <>{Array.from({ length: 9 }, (_, index) => <i key={index}>{letters[index] ?? "·"}</i>)}</>; }
+  else if (gameId === "wordsearch") art = <><i>Aa</i><b>ВВОД</b></>;
   else if (gameId === "anagram") art = <>{[...(card?.word ?? "Wort")].slice(0, 5).map((letter, index) => <i key={`${letter}-${index}`}>{letter}</i>)}</>;
   else if (gameId === "moles") art = <><i>◉</i><i>◉</i><i>◉</i><i>◉</i></>;
   else if (gameId === "boxes") art = <><i>?</i><i>?</i><i>?</i></>;
@@ -146,7 +148,7 @@ function GameArtwork({ gameId, module }: { gameId: GameId; module: VocabModule }
   return <span className={`game-tile-art art-${gameId}`} aria-hidden="true">{art}</span>;
 }
 
-export function GameHub({ modules, preferredModuleId, languageCode, languageName, level, onStart, onGrammar, onAudioAnswer }: { modules: VocabModule[]; preferredModuleId: number | null; languageCode: string; languageName: string; level: string; onStart: (id: GameId, module: VocabModule) => void; onGrammar: (topic: GrammarTopic) => void; onAudioAnswer: (correct: boolean) => void }) {
+export function GameHub({ modules, preferredModuleId, languageCode, languageName, level, onStart, onGrammar, onAudioAnswer }: { modules: VocabModule[]; preferredModuleId: number | null; languageCode: string; languageName: string; level: string; onStart: (id: GameId, module: VocabModule, route?: string) => void; onGrammar: (topic: GrammarTopic) => void; onAudioAnswer: (correct: boolean) => void }) {
   const preferred = modules.find((module) => module.id === 1) ?? modules[0];
   const [moduleId, setModuleId] = useState(preferred?.id ?? 0);
   const [notice, setNotice] = useState("");
@@ -275,7 +277,7 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
     const module = prepareGameModule(activity.gameId, { ...sourceModule, title: activity.title, cards, practiceInstructions: activity.instructions, practiceMedia: activity.media });
     const unavailable = validateGame(activity.gameId, module);
     if (unavailable) { setNotice(unavailable); return; }
-    onStart(activity.gameId, module);
+    onStart(activity.gameId, module, `games?activity=${encodeURIComponent(activity.id)}`);
   };
   const deleteActivity = (activity: SavedActivity) => {
     setActivities((current) => current.filter((item) => item.id !== activity.id));
@@ -287,10 +289,11 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
     const activityId = params.get("activity");
     const grammarId = params.get("grammar");
     const audioId = params.get("audio");
+    const templateId = params.get("template") as GameId | null;
+    const requestedModuleId = Number(params.get("module"));
     if (activityId) {
       const activity = activities.find((item) => item.id === activityId);
       if (!activity) return;
-      window.history.replaceState(window.history.state, "", "#/games");
       runActivity(activity);
     } else if (grammarId) {
       const topic = visibleCustomGrammar.find((item) => item.id === grammarId) ?? GRAMMAR_TOPICS.find((item) => item.id === grammarId);
@@ -301,6 +304,14 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
     } else if (audioId && audioQuizzes.some((quiz) => quiz.id === audioId && quiz.languageCode === languageCode && quiz.level === level)) {
       window.history.replaceState(window.history.state, "", "#/games");
       setActiveAudioId(audioId);
+    } else if (templateId && GAME_LIST.some((game) => game.id === templateId)) {
+      const targetModule = modules.find((module) => module.id === requestedModuleId) ?? selectedModule;
+      if (!targetModule || targetModule.languageCode !== languageCode || targetModule.level !== level) return;
+      const prepared = prepareGameModule(templateId, targetModule);
+      const unavailable = validateGame(templateId, prepared);
+      if (unavailable) { setNotice(unavailable); return; }
+      setModuleId(targetModule.id);
+      onStart(templateId, prepared, `games?template=${encodeURIComponent(templateId)}&module=${targetModule.id}`);
     }
   }, [activities, audioQuizzes, visibleCustomGrammar, modules, hashRoute]);
   const saveAudioQuiz = (quiz: AudioQuiz) => { setAudioQuizzes((current) => current.some((item) => item.id === quiz.id) ? current.map((item) => item.id === quiz.id ? quiz : item) : [...current, quiz]); setAudioBuilderOpen(false); setEditingAudio(undefined); setNotice("Аудиотест сохранён в текущем кабинете."); };
@@ -323,9 +334,9 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
     {activeTab === "games" && selectedModule && <><div className="practice-section-title"><div><h2>Игры по вашим словам</h2><p>Выберите формат и потренируйте карточки этого модуля.</p></div><button className="primary-button compact" onClick={openNewActivity}><Icon name="plus" size={16} /> Создать игру</button></div><div className="games-grid">{availableGames.map((game, index) => {
       const prepared = prepareGameModule(game.id, selectedModule);
       const unavailable = validateGame(game.id, prepared);
-      return <button className={`game-tile ${unavailable ? "locked" : ""}`} key={game.id} onClick={() => { if (unavailable) setNotice(unavailable); else { setNotice(""); onStart(game.id, prepared); } }}>
+      return <article className="game-tile-wrap" key={game.id}><button className={`game-tile ${unavailable ? "locked" : ""}`} onClick={() => { if (unavailable) setNotice(unavailable); else { setNotice(""); onStart(game.id, prepared, `games?template=${encodeURIComponent(game.id)}&module=${selectedModule.id}`); } }}>
         <GameArtwork gameId={game.id} module={prepared} /><span className="game-tile-copy"><strong>{game.title}</strong><small>{unavailable || (prepared.practiceNote ? `${game.description} · ${prepared.practiceNote}` : game.description)}</small>{!unavailable && <em>Посмотреть пример →</em>}</span><span className="game-lock">{unavailable ? "⌑" : <Icon name="arrow" size={17} />}</span>
-      </button>;
+      </button>{!unavailable && <button className="game-tile-link" aria-label={`Ссылка на игру ${game.title}`} title={`Скопировать ссылку на ${game.title}`} onClick={() => void copyMaterialLink(`games?template=${encodeURIComponent(game.id)}&module=${selectedModule.id}`)}>Ссылка</button>}</article>;
     })}</div>
       <section className="saved-activities"><div className="section-title"><div><h2>Мои игры</h2><p>Сценарии для текущего языка и уровня.</p></div></div>{moduleActivities.length ? <div className="saved-activity-list">{moduleActivities.map((activity) => <article key={activity.id}><span className="activity-icon">{GAME_LIST.find((game) => game.id === activity.gameId)?.mark}</span><div><strong>{activity.title}</strong><small>{GAME_LIST.find((game) => game.id === activity.gameId)?.title} · Модуль {activity.moduleId} · {activity.cardIds.length} карточек</small></div><button onClick={() => runActivity(activity)}>Начать</button><button onClick={() => void copyMaterialLink(`games?activity=${encodeURIComponent(activity.id)}`)}>Ссылка</button><button aria-label={`Изменить игру ${activity.title}`} onClick={() => openEditActivity(activity)}>Изменить</button><button aria-label={`Удалить игру ${activity.title}`} onClick={() => deleteActivity(activity)}>Удалить</button></article>)}</div> : <p className="empty-inline">Создайте игру, выберите шаблон и слова: например, только местоимения или существительные.</p>}</section>
       </>}
@@ -433,7 +444,9 @@ type RecognitionLike = {
 };
 
 export function GameSession({ gameId, module, onExit, onAnswer }: { gameId: GameId; module: VocabModule; onExit: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void }) {
-  return <><ActivityMediaPanel module={module} />{gameId === "pairs" || gameId === "datajoin" ? <PairGame gameId={gameId} module={module} onExit={onExit} onAnswer={onAnswer} /> : gameId === "articles" ? <ArticleSortGame module={module} onExit={onExit} onAnswer={onAnswer} /> : <QuestionGame gameId={gameId} module={module} onExit={onExit} onAnswer={onAnswer} />}</>;
+  const [runKey, setRunKey] = useState(0);
+  const restart = () => setRunKey((current) => current + 1);
+  return <><ActivityMediaPanel module={module} />{gameId === "pairs" || gameId === "datajoin" ? <PairGame key={runKey} gameId={gameId} module={module} onExit={onExit} onRestart={restart} onAnswer={onAnswer} /> : gameId === "articles" ? <ArticleSortGame key={runKey} module={module} onExit={onExit} onRestart={restart} onAnswer={onAnswer} /> : <QuestionGame key={runKey} gameId={gameId} module={module} onExit={onExit} onRestart={restart} onAnswer={onAnswer} />}</>;
 }
 
 function ActivityMediaPanel({ module }: { module: VocabModule }) {
@@ -468,7 +481,7 @@ function ActivityMediaPanel({ module }: { module: VocabModule }) {
   return <><aside className={`game-attachment ${open ? "open" : ""}`}><button className="game-attachment-toggle" onClick={() => setOpen((value) => !value)}>{open ? "Скрыть материалы" : "Материалы игры"}{media ? ` · ${media.kind === "link" ? "ссылка" : media.kind}` : ""}</button>{open && <div className="game-attachment-content">{module.practiceInstructions && <p>{module.practiceInstructions}</p>}{media?.kind === "image" && src && <button className="game-attachment-image" onClick={() => setFullscreen(true)}><img src={src} alt={media.name} /><small>Открыть на весь экран</small></button>}{media?.kind === "audio" && src && <audio controls src={src} />}{media?.kind === "video" && src && <video controls playsInline src={src} />}{media?.kind === "link" && src && (youtubeId ? <iframe src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}`} title={media.name} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /> : <a href={src} target="_blank" rel="noreferrer">{media.name} ↗</a>)}</div>}</aside>{fullscreen && src && media?.kind === "image" && <div className="game-attachment-fullscreen" role="dialog" aria-modal="true" onClick={(event) => { if (event.target === event.currentTarget) setFullscreen(false); }}><button onClick={() => setFullscreen(false)}>Закрыть</button><img src={src} alt={media.name} /></div>}</>;
 }
 
-function ArticleSortGame({ module, onExit, onAnswer }: { module: VocabModule; onExit: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void }) {
+function ArticleSortGame({ module, onExit, onRestart, onAnswer }: { module: VocabModule; onExit: () => void; onRestart: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void }) {
   const cards = useMemo(() => shuffle(module.cards.filter((card) => card.article)), [module.id, module.cards]);
   const answerRef = useRef(onAnswer);
   answerRef.current = onAnswer;
@@ -488,7 +501,7 @@ function ArticleSortGame({ module, onExit, onAnswer }: { module: VocabModule; on
       const card = cards[index];
       const correct = placements[card.id] === card.article;
       answerRef.current(card, correct);
-      speakText(correct ? "Richtig" : "Noch einmal", "de-DE", true);
+      playFeedbackSound(correct);
       setReveal(index + 1);
       index += 1;
       if (index === cards.length) window.setTimeout(() => setCompleted(true), 700);
@@ -500,11 +513,11 @@ function ArticleSortGame({ module, onExit, onAnswer }: { module: VocabModule; on
   const score = cards.filter((card) => placements[card.id] === card.article).length;
   const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
   const categories = ["der", "die", "das"] as const;
-  if (completed) return <div className="game-shell game-articles"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>СОРТИРОВКА АРТИКЛЕЙ</span><strong>Время {timeLabel}</strong></div><div>✓ {score}/{cards.length}</div></header><div className="game-result"><span className="result-medal">{score === cards.length ? "★" : "✓"}</span><p className="eyebrow">ПРОВЕРКА ЗАВЕРШЕНА</p><h1>{score} из {cards.length} правильно</h1><p>Время: {timeLabel} · результат добавлен в прогресс.</p><button className="primary-button" onClick={onExit}>Вернуться к играм</button></div></div>;
+  if (completed) return <div className="game-shell game-articles"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>СОРТИРОВКА АРТИКЛЕЙ</span><strong>Время {timeLabel}</strong></div><div>✓ {score}/{cards.length}</div></header><div className="game-result"><span className="result-medal">{score === cards.length ? "★" : "✓"}</span><p className="eyebrow">ПРОВЕРКА ЗАВЕРШЕНА</p><h1>{score} из {cards.length} правильно</h1><p>Время: {timeLabel} · результат добавлен в прогресс.</p><button className="primary-button" onClick={onRestart}>Пройти ещё раз</button><button className="secondary-button" onClick={onExit}>Вернуться к играм</button></div></div>;
   return <div className="game-shell game-articles article-sort-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>ГРУППИРОВКА РОДОВ</span><strong>Время {timeLabel}</strong></div><strong className="sort-count">{Object.keys(placements).length}/{cards.length}</strong></header><main className="game-center article-sort"><div className="game-progress"><i style={{ width: `${Object.keys(placements).length / cards.length * 100}%` }} /></div><p className="question-kicker">Перетащите слова в колонку нужного артикля. Возвратите карточку в поле слов или нажмите на неё, чтобы исправить выбор.</p><h1>Распределите существительные</h1><div className="sort-word-bank" aria-label="Слова для распределения" onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragId.current) returnToBank(dragId.current); dragId.current = null; }}>{cards.filter((card) => !placements[card.id]).map((card) => <button key={card.id} draggable={!submitted} className={selected === card.id ? "selected" : ""} onClick={() => setSelected(card.id)} onDragStart={() => { dragId.current = card.id; }} onDragEnd={() => { dragId.current = null; }}>{card.word}<small>{card.translation}</small></button>)}{Object.keys(placements).length === cards.length && <span className="all-placed">Все слова распределены · карточку можно вернуть сюда</span>}</div><div className="article-buckets">{categories.map((article) => <section key={article} className={`article-bucket ${article}`} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragId.current) place(dragId.current, article); dragId.current = null; }}><h2><span>{article}</span><small>{article === "der" ? "МУЖСКОЙ" : article === "die" ? "ЖЕНСКИЙ" : "СРЕДНИЙ"}</small></h2><div>{cards.filter((card) => placements[card.id] === article).map((card) => { const position = cards.indexOf(card); const shown = submitted && reveal > position; const correct = card.article === article; return <article key={card.id} draggable={!submitted} className={`${shown ? correct ? "review-correct" : "review-wrong" : ""} placed-sort-card`} onClick={() => returnToBank(card.id)} onDragStart={() => { dragId.current = card.id; }} onDragEnd={() => { dragId.current = null; }}><strong>{card.word}</strong><small>{card.translation}</small><span>{shown ? correct ? "✓" : `✕ ${card.article}` : "↩ Вернуть"}</span></article>; })}</div><button disabled={!selected || submitted} onClick={() => selected && place(selected, article)}>Переместить сюда</button></section>)}</div>{submitted && <p className="sort-review-note">Проверяем слова по очереди · правильные ответы отмечены галочкой и звуком.</p>}</main><footer className="game-footer"><button className="primary-button" disabled={submitted || Object.keys(placements).length !== cards.length} onClick={() => setSubmitted(true)}>Завершить и проверить</button></footer></div>;
 }
 
-function PairGame({ gameId, module, onExit, onAnswer }: { gameId: "pairs" | "datajoin"; module: VocabModule; onExit: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void }) {
+function PairGame({ gameId, module, onExit, onRestart, onAnswer }: { gameId: "pairs" | "datajoin"; module: VocabModule; onExit: () => void; onRestart: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void }) {
   const cards = useMemo(() => {
     const unique = new Map<string, VocabCard>();
     module.cards.forEach((card) => { const key = card.translation.toLocaleLowerCase(); if (!unique.has(key)) unique.set(key, card); });
@@ -526,19 +539,19 @@ function PairGame({ gameId, module, onExit, onAnswer }: { gameId: "pairs" | "dat
     const right = group.find((item) => item.id === rightId);
     if (!left || !right) return;
     if (left.id === right.id) {
-      onAnswer(left, true); setScore((value) => value + 1); setMatched((value) => [...value, left.id]); setSelectedGerman(null); setNotice("Верная пара");
+      playFeedbackSound(true); onAnswer(left, true); setScore((value) => value + 1); setMatched((value) => [...value, left.id]); setSelectedGerman(null); setNotice("Верная пара");
       if (matched.length + 1 === group.length) window.setTimeout(() => { setGroupIndex((value) => value + group.length); setMatched([]); setNotice(""); }, 650);
     } else {
-      onAnswer(left, false, right.id); setNotice("Пары не совпали. Попробуйте перетащить слово ещё раз."); window.setTimeout(() => { setSelectedGerman(null); setNotice(""); }, 800);
+      playFeedbackSound(false); onAnswer(left, false, right.id); setNotice("Пары не совпали. Попробуйте ещё раз."); window.setTimeout(() => { setSelectedGerman(null); setNotice(""); }, 800);
     }
   };
   const chooseTranslation = (id: string) => { if (selectedGerman) matchPair(selectedGerman, id); };
-  return <div className={`game-shell game-${gameId}`}><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{gameId === "datajoin" ? "DATA JOIN" : "МЭТЧИНГ ПАР"}</span><strong>{score} / {cards.length}</strong></div><button onClick={() => { setGroupIndex(0); setMatched([]); setScore(0); setNotice(""); }}>Начать заново <Icon name="refresh" /></button></header>
-    {done ? <div className="game-result"><span className="result-medal">✓</span><p className="eyebrow">ИГРА ЗАВЕРШЕНА</p><h1>Собрано пар: {score} из {cards.length}</h1><button className="primary-button" onClick={onExit}>Вернуться к играм</button></div> : <main className="game-center pair-game"><p className="question-kicker">Перетащите слово к переводу или нажмите сначала на слово, затем на перевод. Ошибочную пару можно сразу попробовать ещё раз.</p><div className="pair-columns"><div><h2>{module.languageName}</h2>{leftGroup.map((card) => <button key={card.id} draggable={!matched.includes(card.id)} className={`pair-word-tile ${selectedGerman === card.id ? "chosen" : matched.includes(card.id) ? "matched" : ""}`} disabled={matched.includes(card.id)} onClick={() => setSelectedGerman(card.id)} onDragStart={() => { dragCard.current = card.id; }} onDragEnd={() => { dragCard.current = null; }} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragCard.current) matchPair(card.id, dragCard.current); dragCard.current = null; }}>{german(card)}</button>)}</div><div><h2>Перевод на русский</h2>{rightGroup.map((card) => <button key={card.id} draggable={!matched.includes(card.id)} className={`pair-word-tile ${matched.includes(card.id) ? "matched" : ""}`} disabled={matched.includes(card.id)} onClick={() => chooseTranslation(card.id)} onDragStart={() => { dragCard.current = card.id; }} onDragEnd={() => { dragCard.current = null; }} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragCard.current) matchPair(dragCard.current, card.id); dragCard.current = null; }}>{card.translation}</button>)}</div></div>{notice && <p className="game-feedback">{notice}</p>}</main>}
+  return <div className={`game-shell game-${gameId}`}><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{gameId === "datajoin" ? "DATA JOIN" : "МЭТЧИНГ ПАР"}</span><strong>{score} / {cards.length}</strong></div><button onClick={onRestart}>Начать заново <Icon name="refresh" /></button></header>
+    {done ? <div className="game-result"><span className="result-medal">✓</span><p className="eyebrow">ИГРА ЗАВЕРШЕНА</p><h1>Собрано пар: {score} из {cards.length}</h1><button className="primary-button" onClick={onRestart}>Пройти ещё раз · новый порядок</button><button className="secondary-button" onClick={onExit}>Вернуться к играм</button></div> : <main className="game-center pair-game"><p className="question-kicker">Перетащите слово из колонки {module.languageName.toLocaleLowerCase()} к его переводу. Или нажмите слово, затем перевод. Пары зачтутся только после вашего выбора.</p><div className="pair-columns"><div><h2>{module.languageName}</h2>{leftGroup.map((card) => <button key={card.id} draggable={!matched.includes(card.id)} className={`pair-word-tile ${selectedGerman === card.id ? "chosen" : matched.includes(card.id) ? "matched" : ""}`} disabled={matched.includes(card.id)} onClick={() => setSelectedGerman(card.id)} onDragStart={() => { dragCard.current = card.id; }} onDragEnd={() => { dragCard.current = null; }} onDragOver={(event) => event.preventDefault()}>{german(card)}</button>)}</div><div><h2>Перевод на русский</h2>{rightGroup.map((card) => <button key={card.id} draggable={false} className={`pair-word-tile ${matched.includes(card.id) ? "matched" : ""}`} disabled={matched.includes(card.id)} onClick={() => chooseTranslation(card.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragCard.current) matchPair(dragCard.current, card.id); dragCard.current = null; }}>{card.translation}</button>)}</div></div>{notice && <p className="game-feedback">{notice}</p>}</main>}
   </div>;
 }
 
-function QuestionGame({ gameId, module, onExit, onAnswer }: { gameId: GameId; module: VocabModule; onExit: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void }) {
+function QuestionGame({ gameId, module, onExit, onRestart, onAnswer }: { gameId: GameId; module: VocabModule; onExit: () => void; onRestart: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void }) {
   const eligible = module.cards.filter((card) => gameId === "finalsound" ? /[bdg]$/i.test(card.word.normalize("NFC")) : gameId === "wordsearch" ? /^[\p{L}]{4,9}$/iu.test(card.word.normalize("NFC")) : gameId === "anagram" ? /^[\p{L}]{4,14}$/iu.test(card.word.normalize("NFC")) : gameId === "articles" || gameId === "train" ? Boolean(card.article) : true);
   const rounds = useMemo(() => shuffle(eligible).slice(0, Math.min(10, eligible.length)), [module.id, gameId]);
   const [roundQueue, setRoundQueue] = useState<VocabCard[]>(rounds);
@@ -550,6 +563,9 @@ function QuestionGame({ gameId, module, onExit, onAnswer }: { gameId: GameId; mo
   const [lives, setLives] = useState(0);
   const [spun, setSpun] = useState(false);
   const [wheelCard, setWheelCard] = useState<VocabCard | null>(null);
+  const [wheelSpinning, setWheelSpinning] = useState(false);
+  const [wheelRotation, setWheelRotation] = useState(0);
+  const [typedAnswer, setTypedAnswer] = useState("");
   const [listening, setListening] = useState(false);
   const [speechMessage, setSpeechMessage] = useState("");
   const recognitionRef = useRef<RecognitionLike | null>(null);
@@ -557,6 +573,13 @@ function QuestionGame({ gameId, module, onExit, onAnswer }: { gameId: GameId; mo
   const done = index >= roundQueue.length;
   const answerMode = gameId === "phonetic" ? "word" : gameId === "articles" ? "article" : gameId === "finalsound" ? "sound" : "translation";
   const choices = useMemo(() => card ? optionsFor(card, module.cards, answerMode, index) : [], [card, module.id, answerMode, index]);
+  const boxOptions = useMemo(() => {
+    if (!card) return [];
+    const unique = new Map<string, VocabCard>();
+    module.cards.forEach((item) => { if (item.translation.trim()) unique.set(item.translation.toLocaleLowerCase(), item); });
+    const distractors = [...unique.values()].filter((item) => item.id !== card.id);
+    return shuffle([card, ...shuffle(distractors).slice(0, 3)]);
+  }, [card?.id, module.id, index]);
   const moleChoices = useMemo(() => {
     if (!card) return [];
     const uniqueTranslations = [...new Set(module.cards.map((item) => item.translation).filter((value) => value.toLocaleLowerCase() !== card.translation.toLocaleLowerCase()))];
@@ -564,6 +587,7 @@ function QuestionGame({ gameId, module, onExit, onAnswer }: { gameId: GameId; mo
   }, [card?.id, module.id, index]);
   const finishAnswer = (correct: boolean) => {
     if (!card || feedback) return;
+    playFeedbackSound(correct);
     const confusedWith = !correct && chosen.length ? module.cards.find((item) => item.translation === chosen[0] || german(item) === chosen[0])?.id : undefined;
     setFeedback(correct ? "correct" : "wrong"); setScore((value) => value + (correct ? 1 : 0)); onAnswer(card, correct, confusedWith);
   };
@@ -591,28 +615,26 @@ function QuestionGame({ gameId, module, onExit, onAnswer }: { gameId: GameId; mo
     try { recognition.start(); setListening(true); } catch { setListening(false); setSpeechMessage("Не удалось включить микрофон. Проверьте разрешение браузера."); }
   };
   useEffect(() => { setRoundQueue(rounds); setIndex(0); setScore(0); setFeedback(null); }, [rounds]);
-  useEffect(() => { setChosen([]); setLetters([]); setLives(0); setSpun(false); setWheelCard(null); }, [index]);
+  useEffect(() => { setChosen([]); setLetters([]); setLives(0); setSpun(false); setWheelCard(null); setWheelSpinning(false); setTypedAnswer(""); }, [index]);
   useEffect(() => { setSpeechMessage(""); setListening(false); }, [index]);
   const targetWord = card?.word.normalize("NFC").toLocaleLowerCase().replace(/[^\p{L}]/gu, "") ?? "";
   const alphabet = [...new Set([...[..."abcdefghijklmnopqrstuvwxyz"], ...[...targetWord]])];
   const scrambled = useMemo(() => shuffle([...targetWord]), [card.id, targetWord]);
   const nounTiles = useMemo(() => shuffle([card.article || "", card.word, card.article === "der" ? "die" : "der"].filter(Boolean)), [card.id]);
-  if (done || !card) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><span>Результат</span><span /></header><div className="game-result"><span className="result-medal">{score >= rounds.length * 0.7 ? "★" : "✓"}</span><p className="eyebrow">ИГРА ЗАВЕРШЕНА</p><h1>{score} из {rounds.length} верно</h1><p>Результат сохранён в вашем учебном прогрессе.</p><button className="primary-button" onClick={onExit}>Вернуться к играм</button></div></div>;
+  const wheelEntries = useMemo(() => shuffle(module.cards).slice(0, Math.min(6, module.cards.length)), [module.id, module.cards]);
+  const builderOptions = useMemo(() => shuffle([card.word, "der", "die", "das"]), [card.id]);
+  if (done || !card) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><span>Результат</span><span /></header><div className="game-result"><span className="result-medal">{score >= rounds.length * 0.7 ? "★" : "✓"}</span><p className="eyebrow">ИГРА ЗАВЕРШЕНА</p><h1>{score} из {rounds.length} верно</h1><p>Результат сохранён в вашем учебном прогрессе.</p><button className="primary-button" onClick={onRestart}>Пройти ещё раз · новый порядок</button><button className="secondary-button" onClick={onExit}>Вернуться к играм</button></div></div>;
   const expectedNoun = [card.article, card.word].filter(Boolean) as string[];
   const pickedNoun = chosen;
   const renderChoiceButtons = (items: string[], correct: string) => <div className="game-choice-grid">{items.map((item, i) => <button key={`${item}-${i}`} disabled={Boolean(feedback)} className={feedback && item === correct ? "correct" : feedback && chosen.includes(item) && norm(item) !== norm(correct) ? "wrong" : chosen.includes(item) ? "chosen" : ""} onClick={() => { setChosen([item]); finishAnswer(norm(item) === norm(correct)); }}><kbd>{i + 1}</kbd>{item}</button>)}</div>;
   let content;
   if (gameId === "articles") content = <><p className="question-kicker">Выберите артикль</p><h1>{card.word}</h1>{renderChoiceButtons(["der", "die", "das"], card.article || "")}</>;
   else if (gameId === "moles") content = <><p className="question-kicker">Ударьте по переводу слова</p><h1>{german(card)}</h1><div className="mole-grid">{moleChoices.map((item, i) => <button key={`${item}-${i}`} disabled={Boolean(feedback)} className={feedback && item === card.translation ? "correct" : feedback && chosen.includes(item) ? "wrong" : ""} onClick={() => { setChosen([item]); finishAnswer(item === card.translation); }}><span aria-hidden="true">🐹</span><small>{item}</small></button>)}</div></>;
-  else if (gameId === "blitz" || gameId === "phonetic") content = <><p className="question-kicker">{gameId === "phonetic" ? `Прослушайте слово на ${languageForms[module.languageCode]?.locative ?? module.languageName.toLocaleLowerCase()} и выберите услышанное` : "Выберите правильный перевод"}</p>{gameId === "phonetic" && <div className="phonetic-controls"><button className="listen-button" onClick={() => speakText(card.word, speechLocaleForCode(module.languageCode))}><Icon name="volume" /> Прослушать задание</button><button className={`listen-button ${listening ? "recording" : ""}`} onClick={() => listening ? recognitionRef.current?.stop() : startSpeech()}><span className="mic-dot" />{listening ? "Слушаю…" : "Произнести самому"}</button></div>}<h1>{gameId === "phonetic" ? "Какое слово вы услышали?" : german(card)}</h1>{gameId === "phonetic" && speechMessage && <p className="speech-message">{speechMessage}</p>}{renderChoiceButtons(choices, gameId === "phonetic" ? germanOption(card, module.cards) : card.translation)}</>;
-  else if (gameId === "builder") content = <><p className="question-kicker">Соберите немецкую именную группу</p><h1>{card.translation}</h1><div className="builder-slots">{pickedNoun.map((item, i) => <button key={`${item}-${i}`} onClick={() => setChosen((value) => value.filter((_, index) => index !== i))}>{item}</button>)}</div><div className="game-choice-grid">{nounTiles.map((item, i) => <button key={`${item}-${i}`} disabled={Boolean(feedback) || pickedNoun.includes(item)} onClick={() => { const next = [...pickedNoun, item]; setChosen(next); if (next.length === expectedNoun.length) finishAnswer(next.join(" ").toLowerCase() === expectedNoun.join(" ").toLowerCase()); }}>{item}</button>)}</div></>;
+  else if (gameId === "blitz" || gameId === "phonetic") content = <><p className="question-kicker">{gameId === "phonetic" ? `Прослушайте слово на ${languageForms[module.languageCode]?.locative ?? module.languageName.toLocaleLowerCase()} и выберите услышанное` : "Выберите правильный перевод"}</p>{gameId === "phonetic" && <div className="phonetic-controls"><button className="listen-button" onClick={() => speakText(card.word, speechLocaleForCode(module.languageCode))}><Icon name="volume" /> Прослушать слово</button><button className={`listen-button ${listening ? "recording" : ""}`} onClick={() => listening ? recognitionRef.current?.stop() : startSpeech()}><span className="mic-dot" />{listening ? "Слушаю…" : "Произнести самому"}</button></div>}<h1>{gameId === "phonetic" ? "Какое слово вы услышали?" : german(card)}</h1>{gameId === "phonetic" && speechMessage && <p className="speech-message">{speechMessage}</p>}{gameId === "phonetic" ? <div className="phonetic-choice-grid">{choices.map((item, i) => <div className="phonetic-choice" key={`${item}-${i}`}><button className="phonetic-choice-audio" aria-label={`Прослушать ${item}`} onClick={() => speakText(item, speechLocaleForCode(module.languageCode))}><Icon name="volume" size={17} /></button><button disabled={Boolean(feedback)} className={feedback && item === germanOption(card, module.cards) ? "correct" : feedback && chosen.includes(item) ? "wrong" : chosen.includes(item) ? "chosen" : ""} onClick={() => { setChosen([item]); finishAnswer(norm(item) === norm(germanOption(card, module.cards))); }}>{item}</button></div>)}</div> : renderChoiceButtons(choices, card.translation)}</>;
+  else if (gameId === "builder") content = <><p className="question-kicker">Соберите немецкую именную группу</p><h1>{card.translation}</h1><div className="labeled-builder-slots"><div><small>Артикль</small><button onClick={() => setChosen((value) => value.filter((_, index) => index !== 0))}>{pickedNoun[0] || "der / die / das"}</button></div><div><small>Существительное</small><button onClick={() => setChosen((value) => value.filter((_, index) => index !== 1))}>{pickedNoun[1] || "Слово"}</button></div></div><p className="builder-instruction">Нажмите сначала на существительное или артикль — каждый попадёт в своё место.</p><div className="game-choice-grid">{builderOptions.map((item, i) => <button key={`${item}-${i}`} disabled={Boolean(feedback) || pickedNoun.includes(item)} onClick={() => { const slot = item === card.word ? 1 : 0; const next = [...pickedNoun]; next[slot] = item; setChosen(next); if (next.filter(Boolean).length === expectedNoun.length) finishAnswer(next[0] === card.article && next[1] === card.word); }}>{item}</button>)}</div></>;
   else if (gameId === "train") content = <><p className="question-kicker">Подсказка — перевод на русский · поставьте немецкий артикль перед словом</p><h1>{card.translation}</h1><div className="train-track"><button className={pickedNoun[0] ? "filled" : ""} onClick={() => setChosen((value) => value.filter((_, index) => index !== 0))}>{pickedNoun[0] || "Артикль"}</button><span className="train-coupler">···</span><button className={pickedNoun[1] ? "filled" : ""} onClick={() => setChosen((value) => value.filter((_, index) => index !== 1))}>{pickedNoun[1] || "Существительное"}</button><span className="train-engine" aria-hidden="true">🚂</span></div><div className="game-choice-grid train-tiles">{nounTiles.map((item, i) => <button key={`${item}-${i}`} disabled={Boolean(feedback) || pickedNoun.includes(item)} onClick={() => { const next = [...pickedNoun, item]; setChosen(next); if (next.length === expectedNoun.length) finishAnswer(next.join(" ").toLowerCase() === expectedNoun.join(" ").toLowerCase()); }}>{item}</button>)}</div></>;
   else if (gameId === "hangman") content = <><p className="question-kicker">Перевод · откройте слово на {languageForms[module.languageCode]?.locative ?? module.languageName.toLocaleLowerCase()} по буквам · ошибок: {lives}/6</p><h1>{card.translation}</h1><div className="letter-answer">{[...targetWord].map((letter, i) => <span key={`${letter}-${i}`}>{letters.includes(letter) ? letter : "_"}</span>)}</div><div className="alphabet-grid">{alphabet.map((letter) => <button key={letter} disabled={letters.includes(letter) || Boolean(feedback)} onClick={() => { const next = [...letters, letter]; setLetters(next); if ([...targetWord].every((char) => next.includes(char))) finishAnswer(true); else if (!targetWord.includes(letter)) { const missed = lives + 1; setLives(missed); if (missed >= 6) finishAnswer(false); } }}>{letter}</button>)}</div></>;
-  else if (gameId === "wordsearch") {
-    const width = 9; const word = targetWord.slice(0, width); const row = 3; const start = 0;
-    const grid = Array.from({ length: 63 }, (_, pos) => { const y = Math.floor(pos / width); const x = pos % width; return y === row && x >= start && x < start + word.length ? word[x - start] : "abcdefghijklmnopqrstuvwxyz"[Math.floor((pos * 17 + index * 11) % 26)]; });
-    content = <><p className="question-kicker">Перевод · найдите слово на {languageForms[module.languageCode]?.locative ?? module.languageName.toLocaleLowerCase()}</p><h1>{card.translation}</h1><div className="wordsearch-grid">{grid.map((letter, i) => <button key={i} className={chosen.includes(String(i)) ? "chosen" : ""} onClick={() => { const next = [...chosen, String(i)]; setChosen(next); const picked = next.map((pos) => grid[Number(pos)]).join(""); if (picked === word) finishAnswer(true); else if (!word.startsWith(picked)) setChosen([]); }}>{letter}</button>)}</div><small>Нажимайте клетки по порядку слева направо.</small></>;
-  }
+  else if (gameId === "wordsearch") content = <form className="word-entry-game" onSubmit={(event) => { event.preventDefault(); setChosen([typedAnswer]); finishAnswer(norm(typedAnswer).replace(/[^\p{L}]/gu, "") === norm(card.word).replace(/[^\p{L}]/gu, "")); }}><p className="question-kicker">Перевод · напишите слово на {languageForms[module.languageCode]?.locative ?? module.languageName.toLocaleLowerCase()}</p><h1>{card.translation}</h1><label><span>Ваш ответ</span><input autoComplete="off" autoCapitalize="none" spellCheck={false} disabled={Boolean(feedback)} value={typedAnswer} onChange={(event) => setTypedAnswer(event.target.value)} placeholder="Введите слово" /></label><button className="primary-button" type="submit" disabled={!typedAnswer.trim() || Boolean(feedback)}>Проверить ответ <Icon name="arrow" size={16} /></button></form>;
   else if (gameId === "anagram") {
     content = <><p className="question-kicker">Перевод на русском · составьте слово на {languageForms[module.languageCode]?.locative ?? module.languageName.toLocaleLowerCase()} из букв</p><h1>{card.translation}</h1><div className="builder-slots">{letters.map((letter, i) => <button key={`${letter}-${i}`} onClick={() => { setLetters((value) => value.filter((_, position) => position !== i)); setChosen((value) => value.filter((_, position) => position !== i)); }}>{letter}</button>)}</div><div className="alphabet-grid">{scrambled.map((letter, i) => <button key={`${letter}-${i}`} disabled={Boolean(feedback) || chosen.includes(String(i))} onClick={() => { const next = [...letters, letter]; setLetters(next); setChosen((value) => [...value, String(i)]); if (next.length === targetWord.length) finishAnswer(norm(next.join("")) === norm(targetWord)); }}>{letter}</button>)}</div></>;
   }
@@ -620,8 +642,8 @@ function QuestionGame({ gameId, module, onExit, onAnswer }: { gameId: GameId; mo
     const end = card.word.toLowerCase().slice(-1); const expected = end === "b" ? "p" : end === "d" ? "t" : "k";
     content = <><p className="question-kicker">Как звучит конечная буква?</p><h1>{card.word}<span className="sound-end">{end}</span></h1><p className="transcription">{card.transcription}</p>{renderChoiceButtons(["p", "t", "k"], expected)}</>;
   }
-  else if (gameId === "boxes") content = <><p className="question-kicker">Откройте коробку с подходящим переводом</p><h1>{german(card)}</h1><div className="box-grid">{choices.map((item, i) => <button key={`${item}-${i}`} disabled={Boolean(feedback)} onClick={() => { setChosen([item]); finishAnswer(item === card.translation); }}><span>▣</span><small>Коробка {i + 1}</small><strong>{feedback ? item : "Открыть"}</strong></button>)}</div></>;
-  else if (gameId === "wheel") content = <><p className="question-kicker">Крутите колесо, чтобы выбрать карточку</p>{!spun ? <button className="wheel-spin" onClick={() => { const nextCard = module.cards[Math.floor(Math.random() * module.cards.length)]; setWheelCard(nextCard); setSpun(true); }}><span>◉</span> Крутить колесо</button> : <><h1>{german(card)}</h1>{renderChoiceButtons(choices, card.translation)}</>}</>;
+  else if (gameId === "boxes") content = <><p className="question-kicker">Найдите немецкое слово для перевода</p><h1>{card.translation}</h1><div className="box-grid">{boxOptions.map((item, i) => <button key={`${item.id}-${i}`} disabled={Boolean(feedback)} className={feedback && item.id === card.id ? "correct" : feedback && chosen[0] === item.id ? "wrong" : ""} onClick={() => { setChosen([item.id]); finishAnswer(item.id === card.id); }}><span aria-hidden="true">🎁</span><small>Вариант {i + 1}</small><strong>{german(item)}</strong></button>)}</div><small className="box-hint">Сравните слова и выберите то, которое означает показанный перевод.</small></>;
+  else if (gameId === "wheel") content = <><p className="question-kicker">Крутите колесо: оно выберет слово для вопроса</p><div className="fortune-wheel-stage"><span className="fortune-wheel-pointer" aria-hidden="true">▼</span><div className={`fortune-wheel ${wheelSpinning ? "spinning" : ""}`} style={{ transform: `rotate(${wheelRotation}deg)`, background: `conic-gradient(${wheelEntries.map((_, i) => { const start = i * (360 / wheelEntries.length); const end = (i + 1) * (360 / wheelEntries.length); return `${["#ff8c42", "#f5c542", "#33b88a", "#3d91ee", "#9270e8", "#ee6290"][i % 6]} ${start}deg ${end}deg`; }).join(",")})` }}>{wheelEntries.map((entry, i) => <span key={entry.id} style={{ transform: `rotate(${i * (360 / wheelEntries.length)}deg) translateY(-88px) rotate(${-i * (360 / wheelEntries.length)}deg)` } as CSSProperties}>{entry.word}</span>)}</div>{!spun ? <button className="fortune-wheel-spin" disabled={wheelSpinning} onClick={() => { const nextCard = wheelEntries[Math.floor(Math.random() * wheelEntries.length)]; setWheelSpinning(true); setWheelRotation((value) => value + 900 + Math.floor(Math.random() * 360)); window.setTimeout(() => { setWheelCard(nextCard); setSpun(true); setWheelSpinning(false); }, 1500); }}>{wheelSpinning ? "Крутится…" : "Крутить"}</button> : <p className="fortune-wheel-result">Выпало: <strong>{german(card)}</strong></p>}</div>{spun && renderChoiceButtons(choices, card.translation)}</>;
   else content = <><p className="question-kicker">Выберите правильный ответ</p><h1>{german(card)}</h1>{renderChoiceButtons(choices, card.translation)}</>;
 
   const questionCounter = index < rounds.length ? `${index + 1} / ${rounds.length}` : `Повтор · ${index - rounds.length + 1}`;
@@ -637,9 +659,9 @@ export function GrammarPractice({ topic, onExit, onAnswer }: { topic: GrammarTop
   const [finished, setFinished] = useState(false);
   const dragOption = useRef<string | null>(null);
   const question = topic.questions[index];
-  const submit = () => { if (!selected || checked) return; const correct = selected === question.answer; setChecked(true); setScore((value) => value + (correct ? 1 : 0)); onAnswer(correct); };
+  const submit = () => { if (!selected || checked) return; const correct = selected === question.answer; playFeedbackSound(correct); setChecked(true); setScore((value) => value + (correct ? 1 : 0)); onAnswer(correct); };
   const next = () => { if (index === topic.questions.length - 1) { setFinished(true); return; } setIndex((value) => value + 1); setSelected(null); setChecked(false); };
-  if (finished) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><span>{topic.title}</span><span /></header><div className="game-result"><span className="result-medal">{score === topic.questions.length ? "★" : "✓"}</span><p className="eyebrow">ТЕМА ЗАВЕРШЕНА</p><h1>{score} из {topic.questions.length}</h1><p>Ответы сохранены в прогрессе. Можно пройти тему ещё раз или выбрать другую.</p><button className="primary-button" onClick={onExit}>К темам грамматики</button></div></div>;
+  if (finished) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><span>{topic.title}</span><span /></header><div className="game-result"><span className="result-medal">{score === topic.questions.length ? "★" : "✓"}</span><p className="eyebrow">ТЕМА ЗАВЕРШЕНА</p><h1>{score} из {topic.questions.length}</h1><p>Ответы сохранены в прогрессе. Можно пройти тему ещё раз или выбрать другую.</p><button className="primary-button" onClick={() => { setIndex(0); setSelected(null); setChecked(false); setScore(0); setFinished(false); setStarted(true); }}>Пройти ещё раз</button><button className="secondary-button" onClick={onExit}>К темам грамматики</button></div></div>;
   if (!started) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="close" /> Назад</button><div><span>ПРАВИЛО И ПРИМЕРЫ</span><strong>{topic.title}</strong></div><span /></header><main className="game-center grammar-intro"><span className="grammar-topic-icon"><Icon name="brain" size={24} /></span><p className="eyebrow">ГРАММАТИКА · {(topic.languageCode ?? "de").toLocaleUpperCase()}</p><h1>{topic.title}</h1><p className="grammar-explanation">{topic.explanation}</p><div className="grammar-example-list">{topic.examples.map((example) => <p key={example}><Icon name="check" size={16} />{example}</p>)}</div><button className="primary-button" onClick={() => setStarted(true)}>Начать · {topic.questions.length} упражнения <Icon name="arrow" /></button></main></div>;
   const promptParts = question.prompt.split("___");
   return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{topic.title.toLocaleUpperCase()}</span><strong>{index + 1} / {topic.questions.length}</strong></div><div>✓ {score}</div></header><main className="game-center grammar-practice"><div className="game-progress"><i style={{ width: `${(index + 1) / topic.questions.length * 100}%` }} /></div><p className="question-kicker">Нажмите вариант или перетащите его в пропуск</p><div className="grammar-sentence">{promptParts[0]}<button className={`grammar-answer-slot ${selected ? "filled" : ""} ${checked ? selected === question.answer ? "correct" : "wrong" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (!checked && dragOption.current) setSelected(dragOption.current); }} onClick={() => !checked && setSelected(null)}>{selected ?? "Выберите"}</button>{promptParts[1]}</div><div className="grammar-options">{question.options.map((option) => <button key={option} draggable={!checked} disabled={checked} className={checked && option === question.answer ? "correct" : checked && option === selected ? "wrong" : selected === option ? "chosen tile-picked" : ""} onClick={() => setSelected(option)} onDragStart={() => { dragOption.current = option; }}>{option}</button>)}</div>{checked && <div className="explanation-card"><strong>{selected === question.answer ? "Верно" : `Правильный ответ: ${question.answer}`}</strong><p>{question.explanation}</p></div>}<button className="primary-button" disabled={!selected} onClick={checked ? next : submit}>{checked ? index === topic.questions.length - 1 ? "Результат" : "Дальше" : "Проверить"} <Icon name="arrow" /></button></main></div>;

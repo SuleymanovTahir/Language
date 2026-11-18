@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
+import { playFeedbackSound } from "../lib/feedbackSound";
 
 export type AudioQuestion = { id: string; prompt: string; options: string[]; answer: string };
 export type AudioQuiz = { id: string; title: string; languageCode: string; level: string; audioDataUrl: string; audioName: string; questions: AudioQuestion[] };
+
+function shuffleQuestions(questions: AudioQuestion[]) {
+  const result = [...questions];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [result[index], result[target]] = [result[target], result[index]];
+  }
+  return result;
+}
 
 function blankQuestion(optionCount: number, index: number): AudioQuestion {
   return { id: `q-${Date.now()}-${index}`, prompt: "", options: Array.from({ length: optionCount }, () => ""), answer: "" };
@@ -43,16 +53,17 @@ export function AudioQuizBuilder({ initial, languageCode, level, onSave, onCance
 }
 
 export function AudioQuizSession({ quiz, onExit, onAnswer }: { quiz: AudioQuiz; onExit: () => void; onAnswer: (correct: boolean) => void }) {
+  const [questions, setQuestions] = useState(() => shuffleQuestions(quiz.questions));
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [score, setScore] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [finished, setFinished] = useState(false);
-  const question = quiz.questions[index];
+  const question = questions[index];
   useEffect(() => { if (finished) return; const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000); return () => window.clearInterval(timer); }, [finished]);
-  if (finished) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="close" /> Выход</button><span>АУДИОТЕСТ</span><strong>{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</strong></header><div className="game-result"><span className="result-medal">{score === quiz.questions.length ? "★" : "✓"}</span><p className="eyebrow">ТЕСТ ЗАВЕРШЁН</p><h1>{score} из {quiz.questions.length}</h1><p>Время: {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</p><button className="primary-button" onClick={onExit}>К аудиотестам</button></div></div>;
-  const submit = () => { if (!selected || checked) return; const correct = selected === question.answer; setChecked(true); setScore((value) => value + (correct ? 1 : 0)); onAnswer(correct); };
-  const next = () => { if (index === quiz.questions.length - 1) setFinished(true); else { setIndex((value) => value + 1); setSelected(null); setChecked(false); } };
-  return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="close" /> Выход</button><div><span>{quiz.title.toLocaleUpperCase()}</span><strong>{index + 1}/{quiz.questions.length}</strong></div><strong>Время {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</strong></header><main className="game-center audio-player"><div className="game-progress"><i style={{ width: `${(index + 1) / quiz.questions.length * 100}%` }} /></div><p className="question-kicker">Сначала прослушайте запись, затем выберите ответ</p><audio controls src={quiz.audioDataUrl} /><h1>{question.prompt}</h1><div className="game-choice-grid">{question.options.map((option) => <button key={option} disabled={checked} className={checked && option === question.answer ? "correct" : checked && option === selected ? "wrong" : selected === option ? "chosen" : ""} onClick={() => setSelected(option)}>{option}</button>)}</div>{checked && <p className={`answer-feedback ${selected === question.answer ? "success" : "error"}`}>{selected === question.answer ? "Верно" : `Правильный ответ: ${question.answer}`}</p>}<button className="primary-button" disabled={!selected} onClick={checked ? next : submit}>{checked ? index === quiz.questions.length - 1 ? "Результат" : "Дальше" : "Проверить"} <Icon name="arrow" /></button></main></div>;
+  if (finished) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><span>АУДИОТЕСТ</span><strong>{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</strong></header><div className="game-result"><span className="result-medal">{score === questions.length ? "★" : "✓"}</span><p className="eyebrow">ТЕСТ ЗАВЕРШЁН</p><h1>{score} из {questions.length}</h1><p>Время: {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</p><button className="primary-button" onClick={() => { setQuestions(shuffleQuestions(quiz.questions)); setIndex(0); setSelected(null); setChecked(false); setScore(0); setSeconds(0); setFinished(false); }}>Пройти ещё раз · новый порядок</button><button className="secondary-button" onClick={onExit}>Вернуться к тестам</button></div></div>;
+  const submit = () => { if (!selected || checked) return; const correct = selected === question.answer; playFeedbackSound(correct); setChecked(true); setScore((value) => value + (correct ? 1 : 0)); onAnswer(correct); };
+  const next = () => { if (index === questions.length - 1) setFinished(true); else { setIndex((value) => value + 1); setSelected(null); setChecked(false); } };
+  return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{quiz.title.toLocaleUpperCase()}</span><strong>{index + 1}/{questions.length}</strong></div><strong>Время {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</strong></header><main className="game-center audio-player"><div className="game-progress"><i style={{ width: `${(index + 1) / questions.length * 100}%` }} /></div><p className="question-kicker">Сначала прослушайте запись, затем выберите ответ</p><audio controls src={quiz.audioDataUrl} /><h1>{question.prompt}</h1><div className="game-choice-grid">{question.options.map((option) => <button key={option} disabled={checked} className={checked && option === question.answer ? "correct" : checked && option === selected ? "wrong" : selected === option ? "chosen" : ""} onClick={() => setSelected(option)}>{option}</button>)}</div>{checked && <p className={`answer-feedback ${selected === question.answer ? "success" : "error"}`}>{selected === question.answer ? "Верно" : `Правильный ответ: ${question.answer}`}</p>}<button className="primary-button" disabled={!selected} onClick={checked ? next : submit}>{checked ? index === questions.length - 1 ? "Результат" : "Дальше" : "Проверить"} <Icon name="arrow" /></button></main></div>;
 }

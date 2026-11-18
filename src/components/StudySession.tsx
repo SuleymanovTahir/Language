@@ -24,8 +24,14 @@ export function speakText(text: string, lang = detectSpeechLanguage(text), slow 
   utterance.rate = slow ? 0.7 : 0.9;
   const language = lang.toLowerCase().split("-")[0];
   const voices = window.speechSynthesis.getVoices();
-  utterance.voice = voices.find((voice) => voice.lang.toLowerCase() === lang.toLowerCase())
-    ?? voices.find((voice) => voice.lang.toLowerCase().startsWith(`${language}-`))
+  const qualityScore = (voice: SpeechSynthesisVoice) => {
+    const description = `${voice.name} ${voice.voiceURI}`.toLowerCase();
+    return (/natural|neural|enhanced|premium|google|microsoft|samantha|ava|alex|helena|katja|markus|jenny/.test(description) ? 10 : 0)
+      + (!voice.localService ? 1 : 0)
+      + (voice.lang.toLowerCase() === lang.toLowerCase() ? 4 : 0);
+  };
+  const matchingVoices = voices.filter((voice) => voice.lang.toLowerCase() === lang.toLowerCase() || voice.lang.toLowerCase().startsWith(`${language}-`));
+  utterance.voice = [...matchingVoices].sort((a, b) => qualityScore(b) - qualityScore(a))[0]
     ?? null;
   window.speechSynthesis.speak(utterance);
   return true;
