@@ -25,6 +25,8 @@ export type IconName =
   | "book"
   | "game"
   | "brain"
+  | "folder"
+  | "inbox"
   | "info";
 
 const paths: Record<IconName, ReactNode> = {
@@ -52,6 +54,8 @@ const paths: Record<IconName, ReactNode> = {
   book: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22Z" /><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22Z" /></>,
   game: <><path d="M6 12h4m4 0h4M12 10v4" /><path d="M5 7h14a3 3 0 0 1 2.8 4l-1.6 5a2 2 0 0 1-3.1 1l-2.5-1.8h-5.2L7 17a2 2 0 0 1-3.1-1l-1.6-5A3 3 0 0 1 5 7Z" /></>,
   brain: <><path d="M9 4a3 3 0 0 0-5 2 3 3 0 0 0 0 5 3 3 0 0 0 1 5 3 3 0 0 0 5 3V5Z" /><path d="M15 4a3 3 0 0 1 5 2 3 3 0 0 1 0 5 3 3 0 0 1-1 5 3 3 0 0 1-5 3V5Z" /><path d="M9 8h-2m2 5H6m9-5h2m-2 5h3" /></>,
+  folder: <><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M3 9h18" /></>,
+  inbox: <><path d="M4 4h16l2 11h-6l-2 3h-4l-2-3H2Z" /><path d="M2 15h6m8 0h6" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" /></>,
 };
 
