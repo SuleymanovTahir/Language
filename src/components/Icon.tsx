@@ -10,6 +10,7 @@ export type IconName =
   | "flame"
   | "gem"
   | "arrow"
+  | "arrowLeft"
   | "clock"
   | "headphones"
   | "search"
@@ -36,6 +37,7 @@ const paths: Record<IconName, ReactNode> = {
   flame: <path d="M12.4 2.7c.8 4.1-2.7 5-2.7 8.2 0 1.4.8 2.3 1.9 2.8-.2-2.4 1.8-3.5 2.6-5.3 2.1 1.8 3.3 4.1 3.3 6.5a5.5 5.5 0 0 1-11 0c0-4.2 2.5-8.9 5.9-12.2Z" />,
   gem: <><path d="m12 21-9-10 4-6h10l4 6Z" /><path d="m3 11 9 3 9-3M7 5l5 9 5-9" /></>,
   arrow: <><path d="M5 12h14" /><path d="m14 7 5 5-5 5" /></>,
+  arrowLeft: <><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></>,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   headphones: <><path d="M4 14v-3a8 8 0 0 1 16 0v3" /><path d="M4 14h3v6H5a1 1 0 0 1-1-1ZM20 14h-3v6h2a1 1 0 0 0 1-1Z" /></>,
   search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></>,

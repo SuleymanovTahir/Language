@@ -21,6 +21,8 @@ export type VocabModule = {
   nativeLanguageCode?: string;
   custom?: boolean;
   practiceNote?: string;
+  practiceInstructions?: string;
+  practiceMedia?: { id?: string; kind: "image" | "audio" | "video" | "link"; name: string; mimeType?: string; url?: string };
 };
 
 const headerPattern = /^# МОДУЛЬ (\d+): (.+) \((DE - RUS|RUS - DE)\)$/i;
