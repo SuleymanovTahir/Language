@@ -28,7 +28,7 @@ export const GAME_LIST: GameInfo[] = [
   { id: "datajoin", title: "Data JOIN", description: "Соедините термины баз данных", mark: "⋈" },
 ];
 
-export type GrammarTopicId = "accusative" | "wohin" | "negation" | "clauses" | "perfekt" | "separable";
+export type GrammarTopicId = "nominative" | "accusative" | "dative" | "wohin" | "negation" | "pronouns" | "possessives" | "sein-haben" | "plurals" | "present" | "word-order" | "questions" | "modal-verbs" | "imperative" | "clauses" | "perfekt" | "separable" | "time-prepositions";
 type Question = { prompt: string; options: string[]; answer: string; explanation: string };
 export type GrammarTopic = { id: string; title: string; description: string; explanation: string; examples: string[]; questions: Question[]; group?: "basics" | "sentences"; custom?: boolean; languageCode?: string; level?: string };
 
@@ -68,6 +68,78 @@ export const GRAMMAR_TOPICS: GrammarTopic[] = [
     { prompt: "Ich ___ um sieben Uhr auf. (aufstehen)", options: ["stehe", "aufstehe", "stehen"], answer: "stehe", explanation: "Спрягаемая часть steht на втором месте, приставка auf — в конце." },
     { prompt: "Mach bitte die Tür ___. (zumachen)", options: ["zu", "machen", "zumachen"], answer: "zu", explanation: "В повелительном наклонении отделяемая приставка также уходит в конец." },
     { prompt: "Wann ___ der Film an? (anfangen)", options: ["fängt", "anfängt", "fangen"], answer: "fängt", explanation: "Спрягаемая часть глагола стоит на втором месте, an — в конце." },
+  ] },
+  { id: "nominative", group: "basics", title: "Артикли в Nominativ", description: "Кто? Что? · der, die, das", explanation: "Nominativ — форма подлежащего, то есть того, кто или что выполняет действие. Определённый артикль зависит от рода и числа существительного.", examples: ["Der Mann kommt. — Мужчина приходит.", "Die Frau lernt. — Женщина учится.", "Das Kind spielt. — Ребёнок играет."], questions: [
+    { prompt: "___ Mann kommt heute.", options: ["Der", "Den", "Dem"], answer: "Der", explanation: "Mann — мужской род, подлежащее в Nominativ: der Mann." },
+    { prompt: "___ Frau arbeitet hier.", options: ["Die", "Der", "Den"], answer: "Die", explanation: "Frau — женский род: die Frau." },
+    { prompt: "___ Kind spielt im Garten.", options: ["Das", "Den", "Dem"], answer: "Das", explanation: "Kind — средний род: das Kind." },
+    { prompt: "___ Bücher sind neu.", options: ["Die", "Das", "Der"], answer: "Die", explanation: "Во множественном числе определённый артикль — die." },
+  ] },
+  { id: "dative", group: "basics", title: "Dativ: кому? чему?", description: "dem, der, dem и множественное число", explanation: "Dativ часто отвечает на вопрос «кому? чему?» и используется после ряда предлогов, например mit и aus. Запомните формы определённого артикля: dem, der, dem, den.", examples: ["Ich helfe dem Mann. — Я помогаю мужчине.", "Sie spricht mit der Frau. — Она разговаривает с женщиной.", "Wir fahren mit den Kindern. — Мы едем с детьми."], questions: [
+    { prompt: "Ich helfe ___ Mann.", options: ["dem", "den", "der"], answer: "dem", explanation: "Mann — мужской род; в Dativ: dem Mann." },
+    { prompt: "Er spricht mit ___ Frau.", options: ["der", "die", "dem"], answer: "der", explanation: "После mit нужен Dativ; die Frau → der Frau." },
+    { prompt: "Das Geschenk ist für ___ Kind.", options: ["das", "dem", "den"], answer: "das", explanation: "Здесь für требует Akkusativ, поэтому: das Kind." },
+    { prompt: "Wir spielen mit ___ Kindern.", options: ["den", "die", "dem"], answer: "den", explanation: "Во множественном числе Dativ: den Kindern; к существительному обычно добавляется -n." },
+  ] },
+  { id: "pronouns", group: "basics", title: "Личные местоимения", description: "ich, du, er/sie/es, wir, ihr, sie/Sie", explanation: "Личное местоимение заменяет существительное. В Nominativ его форма показывает, кто выполняет действие. Sie с заглавной буквы — вежливое «Вы».", examples: ["Ich wohne in Berlin. — Я живу в Берлине.", "Er lernt Deutsch. — Он учит немецкий.", "Sie kommen heute. — Они приходят сегодня."], questions: [
+    { prompt: "Anna ist hier. ___ lernt Deutsch.", options: ["Sie", "Er", "Es"], answer: "Sie", explanation: "Anna — женский род, поэтому используем sie: она." },
+    { prompt: "Tom und ich sind Freunde. ___ spielen Fußball.", options: ["Wir", "Ihr", "Sie"], answer: "Wir", explanation: "Tom и я — это wir («мы»)." },
+    { prompt: "Herr Müller, ___ sprechen sehr gut Deutsch.", options: ["Sie", "du", "ihr"], answer: "Sie", explanation: "При вежливом обращении используется Sie с заглавной буквы." },
+    { prompt: "Das Kind ist müde. ___ schläft.", options: ["Es", "Er", "Sie"], answer: "Es", explanation: "Kind — среднего рода, поэтому местоимение es." },
+  ] },
+  { id: "possessives", group: "basics", title: "Притяжательные слова", description: "mein, dein, sein, ihr, unser", explanation: "Притяжательное слово показывает, кому что принадлежит. Его окончание согласуется с существительным: mein Bruder, meine Schwester, mein Kind, meine Freunde.", examples: ["Das ist mein Bruder. — Это мой брат.", "Wo ist deine Tasche? — Где твоя сумка?", "Unser Haus ist klein. — Наш дом маленький."], questions: [
+    { prompt: "Das ist ___ Bruder. (мой)", options: ["mein", "meine", "meinen"], answer: "mein", explanation: "Bruder — мужской род в Nominativ: mein Bruder." },
+    { prompt: "Wo ist ___ Tasche? (твой)", options: ["deine", "dein", "deinen"], answer: "deine", explanation: "Tasche — женский род: deine Tasche." },
+    { prompt: "Er besucht ___ Eltern. (его)", options: ["seine", "sein", "seinen"], answer: "seine", explanation: "Во множественном числе: seine Eltern." },
+    { prompt: "___ Kind spielt hier. (наше)", options: ["Unser", "Unsere", "Unseren"], answer: "Unser", explanation: "Kind — средний род в Nominativ: unser Kind." },
+  ] },
+  { id: "sein-haben", group: "basics", title: "Глаголы sein и haben", description: "Формы «быть» и «иметь»", explanation: "Sein и haben — частотные неправильные глаголы. Их формы нужно запомнить: ich bin/habe, du bist/hast, er ist/hat, wir sind/haben.", examples: ["Ich bin müde. — Я устал.", "Du hast Zeit. — У тебя есть время.", "Wir sind zu Hause. — Мы дома."], questions: [
+    { prompt: "Ich ___ heute zu Hause. (sein)", options: ["bin", "bist", "ist"], answer: "bin", explanation: "Форма sein с ich — bin." },
+    { prompt: "Du ___ einen Bruder. (haben)", options: ["hast", "hat", "haben"], answer: "hast", explanation: "Форма haben с du — hast." },
+    { prompt: "Sie ___ sehr freundlich. (sein)", options: ["ist", "bist", "sind"], answer: "ist", explanation: "Sie здесь означает «она», форма sein — ist." },
+    { prompt: "Wir ___ zwei Kinder. (haben)", options: ["haben", "hat", "hast"], answer: "haben", explanation: "Форма haben с wir — haben." },
+  ] },
+  { id: "plurals", group: "basics", title: "Множественное число", description: "Частые формы существительных", explanation: "В немецком нет одного окончания множественного числа: встречаются -e, -er, -n/-en, -s и нулевое окончание, иногда с умлаутом. Новое существительное лучше учить сразу вместе с формой множественного числа.", examples: ["der Tag → die Tage — день → дни", "das Kind → die Kinder — ребёнок → дети", "die Frau → die Frauen — женщина → женщины", "der Lehrer → die Lehrer — учитель → учителя"], questions: [
+    { prompt: "Ein Kind, zwei ___.", options: ["Kinder", "Kinde", "Kinds"], answer: "Kinder", explanation: "Множественное число Kind — Kinder." },
+    { prompt: "Ein Tag, drei ___.", options: ["Tage", "Tagen", "Tags"], answer: "Tage", explanation: "Множественное число Tag — Tage." },
+    { prompt: "Eine Frau, zwei ___.", options: ["Frauen", "Fraue", "Fraus"], answer: "Frauen", explanation: "Множественное число Frau — Frauen." },
+    { prompt: "Ein Lehrer, zwei ___.", options: ["Lehrer", "Lehreren", "Lehrers"], answer: "Lehrer", explanation: "Lehrer сохраняет форму во множественном числе; меняется артикль: die Lehrer." },
+  ] },
+  { id: "present", group: "sentences", title: "Präsens: настоящее время", description: "Окончания регулярных глаголов", explanation: "У регулярных глаголов убираем -en и добавляем личное окончание: ich -e, du -st, er/sie/es -t, wir -en, ihr -t, sie/Sie -en.", examples: ["ich mach-e — я делаю", "du lern-st — ты учишься", "er wohn-t — он живёт", "wir spiel-en — мы играем"], questions: [
+    { prompt: "Du ___ Deutsch. (lernen)", options: ["lernst", "lernt", "lernen"], answer: "lernst", explanation: "Для du у регулярного глагола окончание -st: lernst." },
+    { prompt: "Er ___ in Berlin. (wohnen)", options: ["wohnt", "wohne", "wohnst"], answer: "wohnt", explanation: "Для er/sie/es добавляем -t: wohnt." },
+    { prompt: "Wir ___ Fußball. (spielen)", options: ["spielen", "spielt", "spiele"], answer: "spielen", explanation: "Для wir используется инфинитивное окончание -en." },
+    { prompt: "Ihr ___ sehr schnell. (arbeiten)", options: ["arbeitet", "arbeiten", "arbeite"], answer: "arbeitet", explanation: "Для ihr окончание -t; у arbeiten появляется дополнительное e для удобства произношения." },
+  ] },
+  { id: "word-order", group: "sentences", title: "Порядок слов: глагол на втором месте", description: "Утверждение и обстоятельство в начале", explanation: "В обычном немецком повествовательном предложении спрягаемый глагол стоит на втором месте. Если на первое место поставить время или место, подлежащее обычно идёт после глагола.", examples: ["Ich lerne heute Deutsch. — Я сегодня учу немецкий.", "Heute lerne ich Deutsch. — Сегодня я учу немецкий.", "Am Abend kocht er. — Вечером он готовит."], questions: [
+    { prompt: "Heute ___ ich Deutsch. (lernen)", options: ["lerne", "ich lerne", "lernst"], answer: "lerne", explanation: "Heute занимает первое место, поэтому глагол lerne стоит на втором." },
+    { prompt: "Am Morgen ___ wir Kaffee. (trinken)", options: ["trinken", "wir trinken", "trinkst"], answer: "trinken", explanation: "После обстоятельства am Morgen на втором месте стоит trinken." },
+    { prompt: "In Berlin ___ meine Schwester. (wohnen)", options: ["wohnt", "meine Schwester wohnt", "wohne"], answer: "wohnt", explanation: "После обстоятельства места глагол стоит перед подлежащим: In Berlin wohnt meine Schwester." },
+    { prompt: "Ich ___ heute zu Hause. (bleiben)", options: ["bleibe", "bleibst", "bleibt"], answer: "bleibe", explanation: "Подлежащее ich стоит первым, спрягаемый глагол bleibe — вторым." },
+  ] },
+  { id: "questions", group: "sentences", title: "Вопросы: Ja/Nein и W-Fragen", description: "Глагол первым или после вопросительного слова", explanation: "В вопросе без вопросительного слова спрягаемый глагол стоит первым. В W-вопросе порядок такой: вопросительное слово, глагол, подлежащее.", examples: ["Kommst du heute? — Ты придёшь сегодня?", "Wo wohnst du? — Где ты живёшь?", "Wann beginnt der Film? — Когда начинается фильм?"], questions: [
+    { prompt: "___ du aus Berlin? — Ja. (kommen)", options: ["Kommst", "Du kommst", "Kommt"], answer: "Kommst", explanation: "В вопросе Ja/Nein глагол стоит перед подлежащим: Kommst du?" },
+    { prompt: "Wo ___ ihr? (wohnen)", options: ["wohnt", "ihr wohnt", "wohnst"], answer: "wohnt", explanation: "W-слово, затем глагол, затем подлежащее: Wo wohnt ihr?" },
+    { prompt: "Wann ___ der Zug? (kommen)", options: ["kommt", "kommen", "kommst"], answer: "kommt", explanation: "Подлежащее der Zug в единственном числе: kommt." },
+    { prompt: "___ Sie einen Moment? (warten)", options: ["Warten", "Wartet", "Wartest"], answer: "Warten", explanation: "При вежливом Sie используется форма, совпадающая с множественным числом: warten." },
+  ] },
+  { id: "modal-verbs", group: "sentences", title: "Модальные глаголы", description: "können, müssen, dürfen и инфинитив", explanation: "Модальный глагол спрягается и занимает второе место; смысловой глагол остаётся в инфинитиве в конце предложения.", examples: ["Ich kann gut schwimmen. — Я умею хорошо плавать.", "Wir müssen heute lernen. — Нам нужно сегодня учиться.", "Darf ich hier sitzen? — Можно мне здесь сесть?"], questions: [
+    { prompt: "Ich ___ heute arbeiten. (müssen)", options: ["muss", "musst", "müssen"], answer: "muss", explanation: "Форма müssen с ich — muss; смысловой глагол arbeiten стоит в конце." },
+    { prompt: "Du ___ sehr gut kochen. (können)", options: ["kannst", "kann", "können"], answer: "kannst", explanation: "Форма können с du — kannst." },
+    { prompt: "Wir dürfen hier ___. (parken)", options: ["parken", "parkt", "geparkt"], answer: "parken", explanation: "После модального dürfen смысловой глагол стоит в инфинитиве в конце." },
+    { prompt: "Er ___ morgen früh aufstehen. (sollen)", options: ["soll", "sollst", "sollen"], answer: "soll", explanation: "Форма sollen с er — soll." },
+  ] },
+  { id: "imperative", group: "sentences", title: "Повелительное наклонение", description: "Просьбы и команды: du, ihr, Sie", explanation: "В повседневной речи есть разные формы повелительного наклонения. Для du обычно убирают местоимение и окончание -st; для ihr используют форму ihr без местоимения; вежливая просьба строится с Sie.", examples: ["Komm bitte! — Приходи, пожалуйста!", "Macht die Tür zu! — Закройте дверь! (вы, мн. ч.)", "Sprechen Sie langsam! — Говорите медленно!"], questions: [
+    { prompt: "___ bitte! (du, kommen)", options: ["Komm", "Kommst", "Kommt"], answer: "Komm", explanation: "Форма для du: основа komm без местоимения и -st." },
+    { prompt: "___ die Aufgabe! (ihr, machen)", options: ["Macht", "Machst", "Machen"], answer: "Macht", explanation: "Для ihr берём форму ihr: ihr macht → Macht!" },
+    { prompt: "___ Sie bitte langsam! (sprechen)", options: ["Sprechen", "Sprich", "Sprecht"], answer: "Sprechen", explanation: "Вежливая форма: инфинитив + Sie." },
+    { prompt: "___ bitte Platz! (du, nehmen)", options: ["Nimm", "Nehmt", "Nehmen"], answer: "Nimm", explanation: "У nehmen форма du имеет изменение гласной: Nimm!" },
+  ] },
+  { id: "time-prepositions", group: "basics", title: "Предлоги времени", description: "um, am, im: время, дни и месяцы", explanation: "Используйте um для конкретного времени на часах, am для дней недели и частей дня, im для месяцев и сезонов.", examples: ["um acht Uhr — в восемь часов", "am Montag — в понедельник", "am Morgen — утром", "im Sommer — летом"], questions: [
+    { prompt: "Der Film beginnt ___ acht Uhr.", options: ["um", "am", "im"], answer: "um", explanation: "Конкретное время на часах вводится предлогом um." },
+    { prompt: "Wir treffen uns ___ Freitag.", options: ["am", "im", "um"], answer: "am", explanation: "Перед днями недели используется am." },
+    { prompt: "Meine Schwester hat ___ Juli Urlaub.", options: ["im", "am", "um"], answer: "im", explanation: "Перед месяцем Juli используется im." },
+    { prompt: "Ich lerne ___ Abend.", options: ["am", "im", "um"], answer: "am", explanation: "Части дня (кроме Nacht) обычно используются с am: am Abend." },
   ] },
 ];
 
@@ -325,6 +397,9 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
     setCustomGrammar((current) => current.some((item) => item.id === topic.id) ? current.map((item) => item.id === topic.id ? topic : item) : [...current, topic]);
     setGrammarBuilderOpen(false); setGrammarDraft(null); setNotice("Тема грамматики сохранена в этом языковом кабинете.");
   };
+  const builtinGrammarTopics = languageCode === "de" && level === "A1–A2"
+    ? GRAMMAR_TOPICS.filter((topic) => (topic.group ?? (["accusative", "wohin", "negation"].includes(topic.id) ? "basics" : "sentences")) === grammarGroup)
+    : [];
   const activeAudioQuiz = audioQuizzes.find((quiz) => quiz.id === activeAudioId);
   if (activeAudioQuiz) return <AudioQuizSession quiz={activeAudioQuiz} onExit={() => setActiveAudioId(null)} onAnswer={onAudioAnswer} />;
   return <div className="page games-page">
@@ -341,7 +416,7 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
       <section className="saved-activities"><div className="section-title"><div><h2>Мои игры</h2><p>Сценарии для текущего языка и уровня.</p></div></div>{moduleActivities.length ? <div className="saved-activity-list">{moduleActivities.map((activity) => <article key={activity.id}><span className="activity-icon">{GAME_LIST.find((game) => game.id === activity.gameId)?.mark}</span><div><strong>{activity.title}</strong><small>{GAME_LIST.find((game) => game.id === activity.gameId)?.title} · Модуль {activity.moduleId} · {activity.cardIds.length} карточек</small></div><button onClick={() => runActivity(activity)}>Начать</button><button onClick={() => void copyMaterialLink(`games?activity=${encodeURIComponent(activity.id)}`)}>Ссылка</button><button aria-label={`Изменить игру ${activity.title}`} onClick={() => openEditActivity(activity)}>Изменить</button><button aria-label={`Удалить игру ${activity.title}`} onClick={() => deleteActivity(activity)}>Удалить</button></article>)}</div> : <p className="empty-inline">Создайте игру, выберите шаблон и слова: например, только местоимения или существительные.</p>}</section>
       </>}
     {activeTab === "games" && <section className="saved-activities audio-activities"><div className="section-title"><div><h2>Аудиотесты</h2><p>Свои аудиозаписи и вопросы только для {languageName} · {level}.</p></div><button className="primary-button compact" onClick={() => { setEditingAudio(undefined); setAudioBuilderOpen(true); }}><Icon name="plus" size={15} /> Создать тест</button></div>{visibleAudioQuizzes.length ? <div className="saved-activity-list">{visibleAudioQuizzes.map((quiz) => <article key={quiz.id}><span className="activity-icon"><Icon name="headphones" size={17} /></span><div><strong>{quiz.title}</strong><small>{quiz.questions.length} вопросов · {quiz.audioName}</small></div><button onClick={() => setActiveAudioId(quiz.id)}>Начать</button><button onClick={() => void copyMaterialLink(`games?audio=${encodeURIComponent(quiz.id)}`)}>Ссылка</button><button onClick={() => { setEditingAudio(quiz); setAudioBuilderOpen(true); }}>Изменить</button><button aria-label={`Удалить аудиотест ${quiz.title}`} onClick={() => setAudioQuizzes((current) => current.filter((item) => item.id !== quiz.id))}>Удалить</button></article>)}</div> : <p className="empty-inline">Загрузите аудио, задайте число вопросов и вариантов, затем отметьте верный ответ.</p>}</section>}
-    {activeTab === "grammar" && <div className="grammar-hub"><div className="practice-section-title"><div><h2>Грамматика · {languageName} · {level}</h2><p>Сначала правило и примеры, затем упражнения по теме.</p></div><button className="primary-button compact" onClick={() => openGrammarBuilder()}><Icon name="plus" size={15} /> Создать тему</button></div><div className="grammar-tabs"><button className={grammarGroup === "basics" ? "active" : ""} onClick={() => setGrammarGroup("basics")}>Основы</button><button className={grammarGroup === "sentences" ? "active" : ""} onClick={() => setGrammarGroup("sentences")}>Предложение</button></div><div className="grammar-grid">{GRAMMAR_TOPICS.filter((topic) => languageCode === "de" && level === "A1–A2" && (grammarGroup === "basics" ? ["accusative", "wohin", "negation"].includes(topic.id) : ["clauses", "perfekt", "separable"].includes(topic.id))).map((topic) => <article className="custom-grammar-card" key={topic.id}><button className="custom-grammar-start" onClick={() => onGrammar(topic)}><span><Icon name="brain" /></span><strong>{topic.title}</strong><small>{topic.description}</small><Icon name="arrow" size={17} /></button><footer><button onClick={() => void copyMaterialLink(`games?grammar=${encodeURIComponent(topic.id)}`)}>Ссылка</button></footer></article>)}{visibleCustomGrammar.filter((topic) => topic.group === grammarGroup).map((topic) => <article className="custom-grammar-card" key={topic.id}><button className="custom-grammar-start" onClick={() => onGrammar(topic)}><span><Icon name="brain" /></span><strong>{topic.title}</strong><small>{topic.description}</small><Icon name="arrow" size={17} /></button><footer><button onClick={() => void copyMaterialLink(`games?grammar=${encodeURIComponent(topic.id)}`)}>Ссылка</button><button onClick={() => openGrammarBuilder(topic)}>Изменить</button><button onClick={() => setCustomGrammar((current) => current.filter((item) => item.id !== topic.id))}>Удалить</button></footer></article>)}</div>{!visibleCustomGrammar.some((topic) => topic.group === grammarGroup) && <p className="empty-inline">Свои темы и тесты можно добавить кнопкой «Создать тему».</p>}</div>}
+    {activeTab === "grammar" && <div className="grammar-hub"><div className="practice-section-title"><div><h2>Грамматика · {languageName} · {level}</h2><p>Сначала правило и примеры, затем упражнения по теме.</p></div><button className="primary-button compact" onClick={() => openGrammarBuilder()}><Icon name="plus" size={15} /> Создать тему</button></div><div className="grammar-tabs"><button className={grammarGroup === "basics" ? "active" : ""} onClick={() => setGrammarGroup("basics")}>Основы</button><button className={grammarGroup === "sentences" ? "active" : ""} onClick={() => setGrammarGroup("sentences")}>Предложение</button></div><div className="grammar-grid">{builtinGrammarTopics.map((topic) => <article className="custom-grammar-card" key={topic.id}><button className="custom-grammar-start" onClick={() => onGrammar(topic)}><span><Icon name="brain" /></span><strong>{topic.title}</strong><small>{topic.description}</small><Icon name="arrow" size={17} /></button><footer><button onClick={() => void copyMaterialLink(`games?grammar=${encodeURIComponent(topic.id)}`)}>Ссылка</button></footer></article>)}{visibleCustomGrammar.filter((topic) => topic.group === grammarGroup).map((topic) => <article className="custom-grammar-card" key={topic.id}><button className="custom-grammar-start" onClick={() => onGrammar(topic)}><span><Icon name="brain" /></span><strong>{topic.title}</strong><small>{topic.description}</small><Icon name="arrow" size={17} /></button><footer><button onClick={() => void copyMaterialLink(`games?grammar=${encodeURIComponent(topic.id)}`)}>Ссылка</button><button onClick={() => openGrammarBuilder(topic)}>Изменить</button><button onClick={() => setCustomGrammar((current) => current.filter((item) => item.id !== topic.id))}>Удалить</button></footer></article>)}</div>{!builtinGrammarTopics.length && !visibleCustomGrammar.some((topic) => topic.group === grammarGroup) && <p className="empty-inline">Для этого языка и уровня пока нет готовых тем. Добавьте свою тему кнопкой «Создать тему».</p>}</div>}
     {!selectedModule && activeTab === "games" && <div className="empty-state cabinet-empty"><Icon name="library" size={32} /><h2>В этом кабинете пока пусто</h2><p>Добавьте словарь в выбранном языке и уровне — задания будут строиться только по нему.</p></div>}
     {builderOpen && builderModule && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeActivityBuilder(); }}><section className="dialog-card activity-builder" role="dialog" aria-modal="true" aria-labelledby="activity-title">
       <button className="dialog-close" onClick={closeActivityBuilder} aria-label="Закрыть"><Icon name="close" /></button>
@@ -563,6 +638,7 @@ function QuestionGame({ gameId, module, onExit, onRestart, onAnswer }: { gameId:
   const [lives, setLives] = useState(0);
   const [spun, setSpun] = useState(false);
   const [wheelCard, setWheelCard] = useState<VocabCard | null>(null);
+  const [wheelSelectedIndex, setWheelSelectedIndex] = useState<number | null>(null);
   const [wheelSpinning, setWheelSpinning] = useState(false);
   const [wheelRotation, setWheelRotation] = useState(0);
   const [typedAnswer, setTypedAnswer] = useState("");
@@ -594,7 +670,7 @@ function QuestionGame({ gameId, module, onExit, onRestart, onAnswer }: { gameId:
   const advanceRound = () => {
     if (!feedback) return;
     if (feedback === "wrong" && card) setRoundQueue((current) => [...current, card]);
-    setFeedback(null); setIndex((value) => value + 1); setChosen([]); setLetters([]); setLives(0); setSpun(false); setWheelCard(null);
+    setFeedback(null); setIndex((value) => value + 1); setChosen([]); setLetters([]); setLives(0); setSpun(false); setWheelCard(null); setWheelSelectedIndex(null);
   };
   const startSpeech = () => {
     const browserWindow = window as unknown as { SpeechRecognition?: new () => RecognitionLike; webkitSpeechRecognition?: new () => RecognitionLike };
@@ -643,7 +719,30 @@ function QuestionGame({ gameId, module, onExit, onRestart, onAnswer }: { gameId:
     content = <><p className="question-kicker">Как звучит конечная буква?</p><h1>{card.word}<span className="sound-end">{end}</span></h1><p className="transcription">{card.transcription}</p>{renderChoiceButtons(["p", "t", "k"], expected)}</>;
   }
   else if (gameId === "boxes") content = <><p className="question-kicker">Найдите немецкое слово для перевода</p><h1>{card.translation}</h1><div className="box-grid">{boxOptions.map((item, i) => <button key={`${item.id}-${i}`} disabled={Boolean(feedback)} className={feedback && item.id === card.id ? "correct" : feedback && chosen[0] === item.id ? "wrong" : ""} onClick={() => { setChosen([item.id]); finishAnswer(item.id === card.id); }}><span aria-hidden="true">🎁</span><small>Вариант {i + 1}</small><strong>{german(item)}</strong></button>)}</div><small className="box-hint">Сравните слова и выберите то, которое означает показанный перевод.</small></>;
-  else if (gameId === "wheel") content = <><p className="question-kicker">Крутите колесо: оно выберет слово для вопроса</p><div className="fortune-wheel-stage"><span className="fortune-wheel-pointer" aria-hidden="true">▼</span><div className={`fortune-wheel ${wheelSpinning ? "spinning" : ""}`} style={{ transform: `rotate(${wheelRotation}deg)`, background: `conic-gradient(${wheelEntries.map((_, i) => { const start = i * (360 / wheelEntries.length); const end = (i + 1) * (360 / wheelEntries.length); return `${["#ff8c42", "#f5c542", "#33b88a", "#3d91ee", "#9270e8", "#ee6290"][i % 6]} ${start}deg ${end}deg`; }).join(",")})` }}>{wheelEntries.map((entry, i) => <span key={entry.id} style={{ transform: `rotate(${i * (360 / wheelEntries.length)}deg) translateY(-88px) rotate(${-i * (360 / wheelEntries.length)}deg)` } as CSSProperties}>{entry.word}</span>)}</div>{!spun ? <button className="fortune-wheel-spin" disabled={wheelSpinning} onClick={() => { const nextCard = wheelEntries[Math.floor(Math.random() * wheelEntries.length)]; setWheelSpinning(true); setWheelRotation((value) => value + 900 + Math.floor(Math.random() * 360)); window.setTimeout(() => { setWheelCard(nextCard); setSpun(true); setWheelSpinning(false); }, 1500); }}>{wheelSpinning ? "Крутится…" : "Крутить"}</button> : <p className="fortune-wheel-result">Выпало: <strong>{german(card)}</strong></p>}</div>{spun && renderChoiceButtons(choices, card.translation)}</>;
+  else if (gameId === "wheel") content = <>
+    <p className="question-kicker">Крутите колесо — стрелка выберет слово для вопроса</p>
+    <div className="fortune-wheel-stage">
+      <span className="fortune-wheel-pointer" aria-hidden="true">▼</span>
+      <div className="fortune-wheel-wrap">
+        <div className={`fortune-wheel ${wheelSpinning ? "spinning" : ""}`} style={{ transform: `rotate(${wheelRotation}deg)`, background: `conic-gradient(${wheelEntries.map((_, i) => { const start = i * (360 / wheelEntries.length); const end = (i + 1) * (360 / wheelEntries.length); return `${["#ff8c42", "#f5c542", "#33b88a", "#3d91ee", "#9270e8", "#ee6290"][i % 6]} ${start}deg ${end}deg`; }).join(",")})` }}>
+          {wheelEntries.map((entry, i) => { const angle = (i + 0.5) * (360 / wheelEntries.length); return <span className={wheelSelectedIndex === i ? "winner" : ""} key={entry.id} style={{ transform: `rotate(${angle}deg) translateY(calc(-1 * min(22vw, 112px))) rotate(${-angle - wheelRotation}deg)` } as CSSProperties}>{entry.word}</span>; })}
+        </div>
+        <button className="fortune-wheel-spin" disabled={wheelSpinning || spun} onClick={() => {
+          const selectedIndex = Math.floor(Math.random() * wheelEntries.length);
+          const sector = 360 / wheelEntries.length;
+          const targetAngle = (360 - ((selectedIndex + 0.5) * sector) + 360) % 360;
+          const currentAngle = ((wheelRotation % 360) + 360) % 360;
+          const correction = (targetAngle - currentAngle + 360) % 360;
+          setWheelSelectedIndex(selectedIndex);
+          setWheelSpinning(true);
+          setWheelRotation((value) => value + 360 * 5 + correction);
+          window.setTimeout(() => { setWheelCard(wheelEntries[selectedIndex]); setSpun(true); setWheelSpinning(false); }, 1900);
+        }}>{wheelSpinning ? "Крутится…" : spun ? "Выпало!" : "Крутить"}</button>
+      </div>
+      {spun && <div className="fortune-wheel-result"><span>Стрелка выбрала</span><strong>{german(card)}</strong><small>Перевод: {card.translation}</small></div>}
+    </div>
+    {spun && renderChoiceButtons(choices, card.translation)}
+  </>;
   else content = <><p className="question-kicker">Выберите правильный ответ</p><h1>{german(card)}</h1>{renderChoiceButtons(choices, card.translation)}</>;
 
   const questionCounter = index < rounds.length ? `${index + 1} / ${rounds.length}` : `Повтор · ${index - rounds.length + 1}`;

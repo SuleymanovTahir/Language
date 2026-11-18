@@ -153,7 +153,6 @@ export function StudySession({
   const [hint, setHint] = useState(0);
   const [showRule, setShowRule] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [confirmExit, setConfirmExit] = useState(false);
   const quick = mode === "quick" || mode === "test";
   const writing = mode === "write";
   const card = cards[index];
@@ -188,7 +187,7 @@ export function StudySession({
     const handler = (event: KeyboardEvent) => {
       const targetElement = event.target as HTMLElement | null;
       const typing = targetElement?.tagName === "INPUT" || targetElement?.tagName === "TEXTAREA";
-      if (event.key === "Escape") { event.preventDefault(); setConfirmExit(true); return; }
+      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
       if (typing) return;
       if (mode === "cards" && event.key === "ArrowLeft") { event.preventDefault(); navigateCard(index - 1); }
       if (mode === "cards" && event.key === "ArrowRight") { event.preventDefault(); navigateCard(index + 1); }
@@ -224,15 +223,13 @@ export function StudySession({
   return (
     <div className="study-shell">
       <header className={`study-topbar ${mode === "cards" ? "has-card-nav" : ""}`}>
-        <button onClick={() => setConfirmExit(true)} aria-label="Выйти" title="Выход · Esc"><Icon name="close" /></button>
-        {mode === "cards" && <button className="study-nav-button" onClick={() => navigateCard(index - 1)} disabled={index === 0} aria-label="Предыдущая карточка" title="Предыдущая · ←"><Icon name="chevron" className="chevron-left" size={16} /></button>}
+        <button onClick={onClose} aria-label="Выйти" title="Выход · Esc"><Icon name="close" /></button>
         <div className="study-progress"><i style={{ width: `${pct}%` }} /></div>
         <span>{index + 1} / {cards.length}</span>
-        {mode === "cards" && <button className="study-nav-button" onClick={() => navigateCard(index + 1)} disabled={index === cards.length - 1} aria-label="Следующая карточка" title="Следующая · →"><Icon name="chevron" size={16} /></button>}
         <button onClick={() => speakText(direction === "de-ru" ? german(card) : card.translation, direction === "de-ru" ? learningLocale : nativeLocale)} onContextMenu={(event) => { event.preventDefault(); speakText(direction === "de-ru" ? german(card) : card.translation, direction === "de-ru" ? learningLocale : nativeLocale, true); }} aria-label="Озвучить" title="Озвучить · R (правый клик — медленно)"><Icon name="volume" /></button>
         <div className="study-more-wrap">
           <button onClick={() => setShowMenu((value) => !value)} aria-label="Ещё" aria-expanded={showMenu}><Icon name="more" /></button>
-          {showMenu && <div className="study-more-menu"><button onClick={() => { setShowRule((value) => !value); setFlipped(true); setShowMenu(false); }}>Правило чтения</button><button onClick={() => { speakText(direction === "de-ru" ? german(card) : card.translation, direction === "de-ru" ? learningLocale : nativeLocale, true); setShowMenu(false); }}>Озвучить медленно</button><button onClick={() => { setShowMenu(false); setConfirmExit(true); }}>Завершить занятие</button></div>}
+          {showMenu && <div className="study-more-menu"><button onClick={() => { setShowRule((value) => !value); setFlipped(true); setShowMenu(false); }}>Правило чтения</button><button onClick={() => { speakText(direction === "de-ru" ? german(card) : card.translation, direction === "de-ru" ? learningLocale : nativeLocale, true); setShowMenu(false); }}>Озвучить медленно</button><button onClick={onClose}>Завершить занятие</button></div>}
         </div>
       </header>
       <main className="study-stage">
@@ -262,11 +259,15 @@ export function StudySession({
           {status === "almost" && <div className="answer-feedback almost"><strong>Почти верно</strong><span>Перепечатайте ответ без опечатки: {target}</span></div>}
           {status === "wrong" && <div className="answer-feedback error"><strong>Проверьте артикль и написание</strong><span>Правильный ответ: {target}. Перепечатайте его, чтобы продолжить.</span></div>}
           {status && <input className="retype-input" value={status === "correct" ? target : undefined} onChange={(event) => setAnswer(event.target.value)} placeholder="Перепечатайте правильный ответ" aria-label="Перепечатайте правильный ответ" />}
-        </div> : <div className="flashcard-wrap">
+        </div> : <div className="flashcard-navigation">
+          {mode === "cards" && <button className="study-card-edge-nav previous" onClick={() => navigateCard(index - 1)} disabled={index === 0} aria-label="Предыдущая карточка" title="Предыдущая карточка"><Icon name="chevron" className="chevron-left" size={22} /></button>}
+          <div className="flashcard-wrap">
           <div role="button" tabIndex={0} aria-label={flipped ? "Сторона ответа" : "Показать ответ"} className={`flashcard ${flipped ? "flipped" : ""}`} onClick={() => setFlipped((value) => !value)} onKeyDown={(event) => { if (event.key === "Enter") setFlipped((value) => !value); }}>
             <div className="card-face card-front"><button className={`star-button ${progress[card.id]?.starred ? "is-starred" : ""}`} aria-label="Отметить сложное слово" onClick={(event) => { event.stopPropagation(); onToggleStar(card); }}><Icon name="star" /></button><span className={`article-label ${card.article || "neutral"}`}>{card.article === "der" ? "● M" : card.article === "die" ? "▲ F" : card.article === "das" ? "■ N" : "WORT"}</span><h1>{direction === "de-ru" ? german(card) : card.translation}</h1><p className="transcription">{direction === "de-ru" ? card.transcription : "Переведите на немецкий"}</p><span className="flip-hint">Нажмите или пробел, чтобы открыть ответ</span></div>
             <div className="card-face card-back"><p>ОТВЕТ</p><h2>{direction === "de-ru" ? card.translation : german(card)}</h2>{direction === "de-ru" && <p className="transcription">{card.transcription}</p>}<button className="rule-link" onClick={(event) => { event.stopPropagation(); setShowRule((value) => !value); }}>ⓘ Правило чтения</button>{showRule && <p className="rule-hint">{phoneticHint(card.word)}</p>}<span className="flip-hint">После ответа выберите, как быстро вспомнили слово</span></div>
           </div>
+          </div>
+          {mode === "cards" && <button className="study-card-edge-nav next" onClick={() => navigateCard(index + 1)} disabled={index === cards.length - 1} aria-label="Следующая карточка" title="Следующая карточка"><Icon name="chevron" size={22} /></button>}
         </div>}
       </main>
       <footer className="study-dock">
@@ -275,7 +276,6 @@ export function StudySession({
             : flipped ? <div className="rating-panel"><div className="rating-explainer"><strong>Когда повторить это слово?</strong><span>Если перевод вспомнился без подсказки — выберите «Вспомнил сразу». Выбор и дата повтора сохраняются в прогрессе этого кабинета на устройстве; в нужный день слово появится в «Сегодня» → «Повторение дня».</span></div><div className="rating-buttons"><button onClick={() => advance(false, 1)}><kbd>1</kbd><span>Не вспомнил</span><small>Повтор завтра</small></button><button onClick={() => advance(true, 2)}><kbd>2</kbd><span>Вспомнил с трудом</span><small>Повтор через 3 дня</small></button><button className="easy" onClick={() => advance(true, 3)}><kbd>3</kbd><span>Вспомнил сразу</span><small>Повтор через 7 дней</small></button></div></div>
               : <><button className="hint-button" onClick={() => setHint((value) => Math.min(3, value + 1))} disabled={hint >= 3}><Icon name="brain" /> Подсказка {hint > 0 ? `${hint}/3` : ""}</button><button className="primary-button dock-primary" onClick={() => setFlipped(true)}>Показать ответ</button></>}
       </footer>
-      {confirmExit && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmExit(false); }}><div className="dialog-card"><button className="dialog-close" onClick={() => setConfirmExit(false)} aria-label="Закрыть"><Icon name="close" /></button><p className="eyebrow">ЗАНЯТИЕ</p><h2>Закончить сейчас?</h2><p>Все уже проверенные ответы сохранены. Вы сможете продолжить позже.</p><div className="dialog-actions"><button className="secondary-button" onClick={() => setConfirmExit(false)}>Продолжить</button><button className="primary-button" onClick={onClose}>Выйти</button></div></div></div>}
     </div>
   );
 }
