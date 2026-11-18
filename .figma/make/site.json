@@ -1,0 +1,12 @@
+{
+  "title": "LinguaPlay — немецкий A1–A2",
+  "description": "Учебное приложение LinguaPlay: словарь, карточки, игры и упражнения по немецкому языку.",
+  "language": "ru",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
