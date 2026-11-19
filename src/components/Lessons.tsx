@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { VocabModule } from "../lib/vocab";
 import { loadMediaFile, removeMediaFile, saveMediaFile } from "../lib/mediaStore";
+import { getActiveProfileId } from "../lib/profileStorage";
+import type { AudioQuiz } from "./AudioQuiz";
 import { GAME_LIST, type GameId } from "./Games";
 import { Icon } from "./Icon";
 
 export type LessonResource = {
   id: string;
-  kind: "youtube" | "link" | "video" | "image" | "audio" | "file" | "test" | "game";
+  kind: "youtube" | "link" | "video" | "image" | "audio" | "file" | "test" | "game" | "audioQuiz";
   title: string;
   url?: string;
   mediaId?: string;
@@ -14,6 +16,7 @@ export type LessonResource = {
   fileName?: string;
   moduleId?: number;
   gameId?: GameId;
+  audioQuizId?: string;
 };
 
 export type Lesson = {
@@ -41,17 +44,19 @@ function validWebUrl(value: string) {
   catch { return false; }
 }
 
-export function LessonDialog({ chapter, initial, modules, onSave, onClose }: { chapter: string; initial?: Lesson; modules: VocabModule[]; onSave: (lesson: Lesson) => void; onClose: () => void }) {
+export function LessonDialog({ chapter, initial, modules, audioQuizzes, languageCode, level, onSave, onClose }: { chapter: string; initial?: Lesson; modules: VocabModule[]; audioQuizzes: AudioQuiz[]; languageCode: string; level: string; onSave: (lesson: Lesson) => void; onClose: () => void }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [resources, setResources] = useState<LessonResource[]>(initial?.resources ?? []);
   const [link, setLink] = useState("");
   const [linkTitle, setLinkTitle] = useState("");
   const [activityModuleId, setActivityModuleId] = useState(modules[0]?.id ?? 0);
-  const [activityType, setActivityType] = useState<"test" | "game">("test");
+  const [activityType, setActivityType] = useState<"test" | "game" | "audioQuiz">("test");
   const [activityGameId, setActivityGameId] = useState<GameId>("pairs");
+  const [audioQuizId, setAudioQuizId] = useState(audioQuizzes.find((quiz) => quiz.languageCode === languageCode && quiz.level === level)?.id ?? "");
   const activityModule = modules.find((module) => module.id === activityModuleId);
   const lessonGames = GAME_LIST.filter((game) => activityModule?.languageCode === "de" || !["articles", "builder", "train", "finalsound", "datajoin"].includes(game.id));
+  const availableAudioQuizzes = audioQuizzes.filter((quiz) => quiz.languageCode === languageCode && quiz.level === level);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const newMedia = useRef<string[]>([]);
@@ -71,6 +76,12 @@ export function LessonDialog({ chapter, initial, modules, onSave, onClose }: { c
     setLink(""); setLinkTitle(""); setError("");
   };
   const addActivity = () => {
+    if (activityType === "audioQuiz") {
+      const quiz = availableAudioQuizzes.find((item) => item.id === audioQuizId);
+      if (!quiz) { setError("Сначала выберите созданный аудиотест в текущем кабинете."); return; }
+      setResources((current) => [...current, { id: `resource-${Date.now()}`, kind: "audioQuiz", title: quiz.title, audioQuizId: quiz.id }]);
+      return;
+    }
     const module = modules.find((item) => item.id === activityModuleId);
     if (!module) { setError("В этом языковом кабинете пока нет модулей для задания."); return; }
     const game = GAME_LIST.find((item) => item.id === activityGameId);
@@ -85,7 +96,7 @@ export function LessonDialog({ chapter, initial, modules, onSave, onClose }: { c
   const addFile = async (file?: File) => {
     if (!file) return;
     const kind: LessonResource["kind"] = file.type.startsWith("video/") ? "video" : file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : "file";
-    const maxSize = kind === "video" ? 250 : kind === "image" ? 30 : kind === "audio" ? 60 : 100;
+    const maxSize = getActiveProfileId() ? 4 : kind === "video" ? 250 : kind === "image" ? 30 : kind === "audio" ? 60 : 100;
     if (file.size > maxSize * 1024 * 1024) { setError(`Файл слишком большой. Максимальный размер для этого типа — ${maxSize} МБ.`); return; }
     if (kind === "file" && !file.type && !/\.(pdf|txt|docx?|pptx?)$/i.test(file.name)) { setError("Поддерживаются видео, изображения, аудио, PDF, TXT, DOC и PPT."); return; }
     const id = `lesson-file-${crypto.randomUUID?.() ?? Date.now()}`;
@@ -115,11 +126,11 @@ export function LessonDialog({ chapter, initial, modules, onSave, onClose }: { c
     <label className="field-label">Название урока<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Например, Личные местоимения" autoFocus /></label>
     <label className="field-label">Краткое описание<textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} placeholder="Что ученик узнает или потренирует" /></label>
     <section className="lesson-resource-editor"><div className="section-title"><div><h3>Материалы урока</h3><p>Добавьте видео, картинку, аудио, файл или внешнюю ссылку.</p></div></div>
-      <div className="lesson-activity-fields"><div className="section-title"><div><h3>Задание из кабинета</h3><p>Прикрепите тест или игру по выбранному модулю. Ученик запустит их прямо из урока.</p></div></div><div className="lesson-activity-controls"><label className="field-label">Тип задания<select value={activityType} onChange={(event) => setActivityType(event.target.value as "test" | "game")}><option value="test">Тест по словам</option><option value="game">Игра</option></select></label><label className="field-label">Модуль<select value={activityModuleId} onChange={(event) => { const nextId = Number(event.target.value); const nextModule = modules.find((module) => module.id === nextId); setActivityModuleId(nextId); if (nextModule?.languageCode !== "de" && ["articles", "builder", "train", "finalsound", "datajoin"].includes(activityGameId)) setActivityGameId("pairs"); }}>{modules.map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}</select></label>{activityType === "game" && <label className="field-label">Сценарий игры<select value={activityGameId} onChange={(event) => setActivityGameId(event.target.value as GameId)}>{lessonGames.map((game) => <option key={game.id} value={game.id}>{game.title}</option>)}</select></label>}<button className="secondary-button" onClick={addActivity} disabled={!modules.length}>Добавить задание</button></div></div>
+      <div className="lesson-activity-fields"><div className="section-title"><div><h3>Задание из кабинета</h3><p>Прикрепите тест, игру или уже созданный аудиотест. Ученик запустит их прямо из урока.</p></div></div><div className="lesson-activity-controls"><label className="field-label">Тип задания<select value={activityType} onChange={(event) => setActivityType(event.target.value as "test" | "game" | "audioQuiz")}><option value="test">Тест по словам</option><option value="game">Игра</option><option value="audioQuiz">Готовый аудиотест</option></select></label>{activityType === "audioQuiz" ? <label className="field-label">Аудиотест<select value={audioQuizId} onChange={(event) => setAudioQuizId(event.target.value)}><option value="">Выберите тест</option>{availableAudioQuizzes.map((quiz) => <option key={quiz.id} value={quiz.id}>{quiz.title}</option>)}</select></label> : <><label className="field-label">Модуль<select value={activityModuleId} onChange={(event) => { const nextId = Number(event.target.value); const nextModule = modules.find((module) => module.id === nextId); setActivityModuleId(nextId); if (nextModule?.languageCode !== "de" && ["articles", "builder", "train", "finalsound", "datajoin"].includes(activityGameId)) setActivityGameId("pairs"); }}>{modules.map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}</select></label>{activityType === "game" && <label className="field-label">Сценарий игры<select value={activityGameId} onChange={(event) => setActivityGameId(event.target.value as GameId)}>{lessonGames.map((game) => <option key={game.id} value={game.id}>{game.title}</option>)}</select></label>}</>}<button className="secondary-button" onClick={addActivity} disabled={activityType === "audioQuiz" ? !availableAudioQuizzes.length : !modules.length}>Добавить задание</button></div></div>
       <div className="lesson-link-fields"><label className="field-label">Ссылка YouTube, Wordwall или сайт<input value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://…" /></label><label className="field-label">Подпись к ссылке<input value={linkTitle} onChange={(event) => setLinkTitle(event.target.value)} placeholder="Например, объяснение темы" /></label><button className="secondary-button" onClick={addLink}>Добавить ссылку</button></div>
       <div className="lesson-upload-row"><button className="secondary-button" onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="plus" size={16} />{busy ? "Сохраняю файл…" : "Загрузить видео, изображение, аудио или документ"}</button><input ref={fileInput} type="file" accept="video/*,image/*,audio/*,.pdf,.txt,.doc,.docx,.ppt,.pptx" onChange={(event) => void addFile(event.target.files?.[0])} /></div>
       {error && <p className="lesson-error" role="alert">{error}</p>}
-      {resources.length > 0 ? <div className="lesson-resource-list">{resources.map((resource) => <article key={resource.id}><span className={`lesson-resource-icon ${resource.kind}`}><Icon name={resource.kind === "video" || resource.kind === "youtube" || resource.kind === "game" ? "game" : resource.kind === "image" ? "spark" : resource.kind === "audio" ? "headphones" : "library"} size={17} /></span><div><strong>{resource.title}</strong><small>{resource.kind === "youtube" ? "Видео YouTube" : resource.kind === "link" ? "Внешняя ссылка" : resource.kind === "video" ? "Видео в уроке" : resource.kind === "image" ? "Изображение · можно развернуть на весь экран" : resource.kind === "audio" ? "Аудиофайл" : resource.kind === "test" ? "Тест · запускается из урока" : resource.kind === "game" ? "Игра · запускается из урока" : "Файл"}</small></div><button className="text-danger" onClick={() => setResources((current) => current.filter((item) => item.id !== resource.id))}>Убрать</button></article>)}</div> : <p className="empty-inline">Пока нет материалов. Добавьте ссылку, файл или задание по модулю.</p>}
+      {resources.length > 0 ? <div className="lesson-resource-list">{resources.map((resource) => <article key={resource.id}><span className={`lesson-resource-icon ${resource.kind}`}><Icon name={resource.kind === "video" || resource.kind === "youtube" || resource.kind === "game" ? "game" : resource.kind === "image" ? "spark" : resource.kind === "audio" || resource.kind === "audioQuiz" ? "headphones" : "library"} size={17} /></span><div><strong>{resource.title}</strong><small>{resource.kind === "youtube" ? "Видео YouTube" : resource.kind === "link" ? "Внешняя ссылка" : resource.kind === "video" ? "Видео в уроке" : resource.kind === "image" ? "Изображение · можно развернуть на весь экран" : resource.kind === "audio" ? "Аудиофайл" : resource.kind === "test" ? "Тест · запускается из урока" : resource.kind === "game" ? "Игра · запускается из урока" : resource.kind === "audioQuiz" ? "Аудиотест · запускается из урока" : "Файл"}</small></div><button className="text-danger" onClick={() => setResources((current) => current.filter((item) => item.id !== resource.id))}>Убрать</button></article>)}</div> : <p className="empty-inline">Пока нет материалов. Добавьте ссылку, файл или задание по модулю.</p>}
     </section>
     <div className="dialog-actions"><button className="secondary-button" onClick={close}>Отмена</button><button className="primary-button" disabled={!title.trim() || busy} onClick={() => void save()}>{initial ? "Сохранить изменения" : "Создать урок"}</button></div>
   </section></div>;
@@ -154,7 +165,7 @@ export function LessonViewer({ lesson, onClose, onStartResource }: { lesson: Les
 
   const videoId = selected?.kind === "youtube" && selected.url ? youtubeId(selected.url) : null;
   const content = !selected ? <p className="empty-inline">В этом уроке пока нет материалов.</p>
-    : (selected.kind === "test" || selected.kind === "game") ? <div className="lesson-activity-launch"><span>{selected.kind === "test" ? "📝" : "🎮"}</span><h3>{selected.title}</h3><p>{selected.kind === "test" ? "Ответьте на вопросы по словам выбранного модуля." : "Откройте игру по словам выбранного модуля."}</p><button className="primary-button" onClick={() => onStartResource(selected)}>Начать {selected.kind === "test" ? "тест" : "игру"}<Icon name="arrow" size={17} /></button></div>
+    : (selected.kind === "test" || selected.kind === "game" || selected.kind === "audioQuiz") ? <div className="lesson-activity-launch"><span>{selected.kind === "test" ? "📝" : selected.kind === "audioQuiz" ? "🎧" : "🎮"}</span><h3>{selected.title}</h3><p>{selected.kind === "test" ? "Ответьте на вопросы по словам выбранного модуля." : selected.kind === "audioQuiz" ? "Прослушайте запись и выполните вопросы аудиотеста." : "Откройте игру по словам выбранного модуля."}</p><button className="primary-button" onClick={() => onStartResource(selected)}>Начать {selected.kind === "test" ? "тест" : selected.kind === "audioQuiz" ? "аудиотест" : "игру"}<Icon name="arrow" size={17} /></button></div>
     : selected.kind === "youtube" && videoId ? <div className="lesson-video-frame"><iframe src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`} title={selected.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen loading="lazy" /></div>
     : selected.kind === "video" && fileUrl ? <video className="lesson-local-video" src={fileUrl} controls playsInline preload="metadata" />
     : selected.kind === "image" && fileUrl ? <button className="lesson-image-button" onClick={() => setFullImage(true)} aria-label="Открыть изображение на весь экран"><img src={fileUrl} alt={selected.title} /><span>Открыть на весь экран</span></button>

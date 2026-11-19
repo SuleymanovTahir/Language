@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { modules, storedModules, type VocabCard, type VocabModule } from "./lib/vocab";
+import { modules, scenarioModules, storedModules, type VocabCard, type VocabModule } from "./lib/vocab";
 import { CreateModuleDialog, EditModuleDialog, LearningSpaceDialog, SettingsDialog, StreakDialog, type LearningSpace, type Preferences } from "./components/Dialogs";
 import { GAME_LIST, GRAMMAR_TOPICS, GameHub, GameSession, GrammarPractice, prepareGameModule, type GameId, type GrammarTopic } from "./components/Games";
 import { Icon, type IconName } from "./components/Icon";
 import { LessonDialog, LessonViewer, type Lesson, type LessonResource } from "./components/Lessons";
+import type { AudioQuiz } from "./components/AudioQuiz";
 import { MaterialFoldersDialog } from "./components/MaterialFoldersDialog";
-import { removeMediaFile } from "./lib/mediaStore";
+import { migrateLocalMediaToProfile, removeMediaFile } from "./lib/mediaStore";
 import { copyAppLink } from "./lib/shareLink";
 import { speakText, speechLocaleForCode, StudySession, type CardProgress, type StudyMode } from "./components/StudySession";
+import { activateProfileStorage, deactivateProfileStorage, readProfileItem, writeProfileItem } from "./lib/profileStorage";
+import { authClient } from "./lib/auth-client";
+import { AccountPanel, AuthScreen, type AccountUser, type Credentials } from "./components/Accounts";
 
 type Screen = "today" | "library" | "path" | "games" | "stats";
 const screenNames: Screen[] = ["today", "library", "path", "games", "stats"];
@@ -24,10 +28,10 @@ const defaultSpace: LearningSpace = { id: "de-a1-a2", languageCode: "de", langua
 
 function useStored<T>(key: string, initial: T): [T, React.Dispatch<React.SetStateAction<T>>] {
   const [value, setValue] = useState<T>(() => {
-    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) as T : initial; }
+    try { const raw = readProfileItem(key); return raw ? JSON.parse(raw) as T : initial; }
     catch { return initial; }
   });
-  useEffect(() => { localStorage.setItem(key, JSON.stringify(value)); }, [key, value]);
+  useEffect(() => { writeProfileItem(key, JSON.stringify(value)); }, [key, value]);
   return [value, setValue];
 }
 
@@ -55,7 +59,7 @@ function shuffled<T>(items: T[]) {
 
 function german(card: VocabCard) { return `${card.article ? `${card.article} ` : ""}${card.word}`; }
 
-export default function App() {
+function WorkspaceApp({ user, onSignOut }: { user: AccountUser | null; onSignOut: () => void }) {
   const [screen, setScreen] = useState<Screen>(screenFromHash);
   const [spaces, setSpaces] = useStored<LearningSpace[]>("linguaplay-learning-spaces", [defaultSpace]);
   const [activeSpaceId, setActiveSpaceId] = useStored("linguaplay-active-space", defaultSpace.id);
@@ -66,11 +70,13 @@ export default function App() {
   const [moduleOrder, setModuleOrder] = useScopedStored<number[]>("linguaplay-module-order-by-space", activeSpace.id, []);
   const [progress, setProgress] = useScopedStored<Record<string, CardProgress>>("linguaplay-progress-by-space", activeSpace.id, {});
   const [lessons, setLessons] = useScopedStored<Lesson[]>("linguaplay-lessons-by-space", activeSpace.id, []);
+  const [audioQuizzes, setAudioQuizzes] = useStored<AudioQuiz[]>("linguaplay-audio-quizzes", []);
   const [confusions, setConfusions] = useScopedStored<Record<string, Record<string, number>>>("linguaplay-confusions-by-space", activeSpace.id, {});
   const [stats, setStats] = useScopedStored<UserStats>("linguaplay-stats-by-space", activeSpace.id, defaultStats);
   const [preferences, setPreferences] = useStored<Preferences>("linguaplay-preferences", defaultPreferences);
+  const [goalNoticeDate, setGoalNoticeDate] = useStored("linguaplay-goal-notified", "");
   const [vacation, setVacation] = useStored<boolean>("linguaplay-vacation", false);
-  const [techOnly, setTechOnly] = useState(false);
+  const activityRound = useRef(0);
   const [session, setSession] = useState<{ cards: VocabCard[]; pool: VocabCard[]; mode: StudyMode; title: string } | null>(null);
   const [podcastCards, setPodcastCards] = useState<VocabCard[] | null>(null);
   const [activeGame, setActiveGame] = useState<{ gameId: GameId; module: VocabModule } | null>(null);
@@ -85,6 +91,7 @@ export default function App() {
   const [foldersOpen, setFoldersOpen] = useState(false);
   const [editingModule, setEditingModule] = useState<VocabModule | null>(null);
   const [toast, setToast] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
 
   useEffect(() => {
     const syncRoute = () => {
@@ -116,27 +123,38 @@ export default function App() {
   }, [screen, lessons]);
 
   const normalizedCustomModules = useMemo(() => customModules.map((module) => ({ ...module, languageCode: module.languageCode || "de", languageName: module.languageName || "Немецкий", level: module.level || "A1–A2", nativeLanguageCode: module.nativeLanguageCode || "ru" })), [customModules]);
-  const everyModule = useMemo(() => [...modules.filter((module) => !deletedModuleIds.includes(module.id)).map((module) => moduleOverrides[module.id] ?? module), ...normalizedCustomModules], [normalizedCustomModules, moduleOverrides, deletedModuleIds]);
+  const everyModule = useMemo(() => [...[...modules, ...scenarioModules].filter((module) => !deletedModuleIds.includes(module.id)).map((module) => moduleOverrides[module.id] ?? module), ...normalizedCustomModules], [normalizedCustomModules, moduleOverrides, deletedModuleIds]);
   const orderedModules = useMemo(() => [...everyModule].sort((left, right) => {
     const leftIndex = moduleOrder.indexOf(left.id); const rightIndex = moduleOrder.indexOf(right.id);
     if (leftIndex >= 0 && rightIndex >= 0) return leftIndex - rightIndex;
     if (leftIndex >= 0) return -1; if (rightIndex >= 0) return 1;
     return left.id - right.id;
   }), [everyModule, moduleOrder]);
-  const visibleModules = orderedModules.filter((module) => module.languageCode === activeSpace.languageCode && module.level === activeSpace.level && (!techOnly || (module.id >= 35 && module.id <= 39)));
+  const visibleModules = orderedModules.filter((module) => module.languageCode === activeSpace.languageCode && module.level === activeSpace.level);
   const visibleCards = useMemo(() => visibleModules.flatMap((module) => module.cards), [visibleModules]);
+  const canManageContent = user ? Boolean(user.permissions?.manageContent) : true;
+  const sendActivityEvent = (payload: Record<string, unknown>) => { if (user) void fetch("/api/events", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), keepalive: true }).catch(() => undefined); };
+  const activeStudy = useRef<{ id: string; title: string; moduleId?: number; moduleTitle?: string; total: number } | null>(null);
 
   useEffect(() => {
     if (activeSpace.id !== defaultSpace.id) return;
-    const legacyProgress = localStorage.getItem("linguaplay-card-progress");
-    const legacyStats = localStorage.getItem("linguaplay-user-stats");
-    const legacyConfusions = localStorage.getItem("linguaplay-confusion-pairs");
+    const legacyProgress = readProfileItem("linguaplay-card-progress");
+    const legacyStats = readProfileItem("linguaplay-user-stats");
+    const legacyConfusions = readProfileItem("linguaplay-confusion-pairs");
     if (legacyProgress && !Object.keys(progress).length) { try { setProgress(JSON.parse(legacyProgress)); } catch { /* ignore corrupt legacy state */ } }
     if (legacyStats && stats.answers === 0) { try { setStats(JSON.parse(legacyStats)); } catch { /* ignore corrupt legacy state */ } }
     if (legacyConfusions && !Object.keys(confusions).length) { try { setConfusions(JSON.parse(legacyConfusions)); } catch { /* ignore corrupt legacy state */ } }
   }, [activeSpace.id]);
 
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(""), 3000); return () => window.clearTimeout(timer); }, [toast]);
+  useEffect(() => {
+    const today = localDay();
+    const dailyXp = stats.dailyDate === today ? stats.dailyXp : 0;
+    if (dailyXp >= preferences.dailyGoal && goalNoticeDate !== today) {
+      setGoalNoticeDate(today);
+      setToast(`Дневная цель выполнена: ${preferences.dailyGoal} XP. Завтра серия начнётся заново.`);
+    }
+  }, [stats.dailyXp, stats.dailyDate, preferences.dailyGoal, goalNoticeDate]);
 
   const recordStudyDay = (current: UserStats): UserStats => {
     const today = localDay();
@@ -147,6 +165,11 @@ export default function App() {
   };
 
   const recordAnswer = (card: VocabCard, correct: boolean, rating = correct ? 2 : 1, confusedWith?: string) => {
+    const game = activeGame;
+    const answerCard = confusedWith ? game?.module.cards.find((item) => item.id === confusedWith) : undefined;
+    activityRound.current += 1;
+    const study = activeStudy.current;
+    sendActivityEvent({ type: game ? "game-answer" : "practice-answer", activity: game ? GAME_LIST.find((item) => item.id === game.gameId)?.title ?? game.gameId : study?.title ?? session?.title ?? "Карточки", moduleId: card.moduleId, moduleTitle: game?.module.title ?? visibleModules.find((item) => item.id === card.moduleId)?.title ?? study?.moduleTitle, activityId: game?.gameId ?? study?.id, itemId: card.id, roundIndex: activityRound.current, roundTotal: game?.module.cards.length ?? study?.total ?? session?.cards.length, prompt: german(card), selectedAnswer: answerCard ? `${german(answerCard)} — ${answerCard.translation}` : correct ? `${german(card)} — ${card.translation}` : undefined, correctAnswer: `${german(card)} — ${card.translation}`, correct });
     setProgress((current) => {
       const previous = current[card.id] ?? { reps: 0, level: 0, stability: 0, dueAt: "", correct: 0, wrong: 0, starred: false };
       const reps = previous.reps + 1;
@@ -180,10 +203,18 @@ export default function App() {
     const count = exactCount ?? Math.min(mode === "quick" ? 10 : 15, source.length);
     const selected = shuffled(source).slice(0, count);
     if (exactCount && selected.length < exactCount) { const refill = shuffled(source); while (selected.length < exactCount) selected.push(refill[selected.length % refill.length]); }
+    const selectedModule = visibleModules.find((module) => module.id === selected[0]?.moduleId);
+    const id = `study-${crypto.randomUUID?.() ?? Date.now()}`;
+    activityRound.current = 0;
+    activeStudy.current = { id, title, moduleId: selectedModule?.id, moduleTitle: selectedModule?.title, total: selected.length };
+    sendActivityEvent({ type: "practice-start", activityId: id, activity: title, moduleId: selectedModule?.id, moduleTitle: selectedModule?.title, roundIndex: 0, roundTotal: selected.length, mode });
     setSession({ cards: selected, pool: distractorPool?.length ? distractorPool : source, mode, title });
   };
 
   const openGame = (gameId: GameId, module: VocabModule, route = `games?template=${encodeURIComponent(gameId)}&module=${module.id}`) => {
+    activeStudy.current = null;
+    activityRound.current = 0;
+    sendActivityEvent({ type: "game-start", activityId: gameId, activity: GAME_LIST.find((item) => item.id === gameId)?.title ?? gameId, moduleId: module.id, moduleTitle: module.title, roundIndex: 0, roundTotal: module.cards.length });
     const hash = `#/${route.replace(/^#\/?/, "")}`;
     const state = { ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}), linguaPlayGame: true };
     if (window.location.hash === hash) window.history.replaceState(state, "", hash);
@@ -224,6 +255,9 @@ export default function App() {
   });
 
   const completeSession = () => {
+    const study = activeStudy.current;
+    if (study) sendActivityEvent({ type: "practice-complete", activityId: study.id, activity: study.title, moduleId: study.moduleId, moduleTitle: study.moduleTitle, roundIndex: activityRound.current, roundTotal: study.total });
+    activeStudy.current = null;
     setStats((current) => ({ ...current, sessions: current.sessions + 1 }));
     setSession(null);
     setToast("Занятие сохранено · прогресс обновлён");
@@ -233,7 +267,7 @@ export default function App() {
     const id = Math.max(1000, ...customModules.map((module) => module.id)) + 1;
     const moduleCards = cards.map((card, index) => ({ ...card, id: `${id}-${index + 1}`, moduleId: id }));
     setCustomModules((current) => [...current, { id, title, cards: moduleCards, languageCode: activeSpace.languageCode, languageName: activeSpace.languageName, level: activeSpace.level, nativeLanguageCode: activeSpace.nativeLanguageCode, custom: true }]);
-    setCreateOpen(false); setTechOnly(false); setScreen("library"); setToast(`Модуль «${title}» добавлен · ${cards.length} карточек`);
+    setCreateOpen(false); setScreen("library"); setToast(`Модуль «${title}» добавлен · ${cards.length} карточек`);
   };
 
   const saveModule = (module: VocabModule, title: string, cards: VocabCard[]) => {
@@ -267,8 +301,8 @@ export default function App() {
 
   if (session) return <StudySession cards={session.cards} pool={session.pool} mode={session.mode} title={session.title} learningLanguageCode={activeSpace.languageCode} nativeLanguageCode={activeSpace.nativeLanguageCode} progress={progress} confusions={confusions} autoSpeak={preferences.autoSpeak} onClose={() => setSession(null)} onComplete={completeSession} onAnswer={recordAnswer} onToggleStar={toggleStar} />;
   if (podcastCards) return <PodcastMode cards={podcastCards} learningLanguageCode={activeSpace.languageCode} nativeLanguageCode={activeSpace.nativeLanguageCode} onClose={() => setPodcastCards(null)} onAnswer={recordAnswer} />;
-  if (activeGame) return <GameSession gameId={activeGame.gameId} module={activeGame.module} onExit={exitGame} onAnswer={(card, correct, confusedWith) => card.id.startsWith("sample-") ? recordPractice(correct) : recordAnswer(card, correct, correct ? 2 : 1, confusedWith)} />;
-  if (activeGrammar) return <GrammarPractice topic={activeGrammar} onExit={() => setActiveGrammar(null)} onAnswer={recordPractice} />;
+  if (activeGame) return <GameSession gameId={activeGame.gameId} module={activeGame.module} onExit={exitGame} onComplete={() => sendActivityEvent({ type: "game-complete", activityId: activeGame.gameId, activity: GAME_LIST.find((item) => item.id === activeGame.gameId)?.title ?? activeGame.gameId, moduleId: activeGame.module.id, moduleTitle: activeGame.module.title, roundIndex: activityRound.current, roundTotal: activeGame.module.cards.length })} onAnswer={(card, correct, confusedWith) => card.id.startsWith("sample-") ? recordPractice(correct) : recordAnswer(card, correct, correct ? 2 : 1, confusedWith)} />;
+  if (activeGrammar) return <GrammarPractice topic={activeGrammar} onExit={() => setActiveGrammar(null)} onAnswer={recordPractice} onEvent={sendActivityEvent} />;
 
   const targetModule = visibleModules[0];
   const dueCards = visibleCards.filter((card) => {
@@ -280,33 +314,120 @@ export default function App() {
     <main className="main-area">
       <header className="top-header">
         <div className="mobile-brand"><LogoMark /> LinguaPlay</div><div className="header-spacer" />
-        {activeSpace.languageCode === "de" && activeSpace.level === "A1–A2" && <button className={`tech-switch ${techOnly ? "active" : ""}`} onClick={() => { setTechOnly((value) => !value); setToast(techOnly ? "Показан весь кабинет" : "Показаны IT/Tech-модули этого кабинета"); }} title="Показать только профессиональную лексику">IT / Tech</button>}
         <button className="stat-pill flame-pill" title="Серия занятий" onClick={() => setStreakOpen(true)}><Icon name="flame" size={18} /><strong>{stats.streak}</strong></button>
         <button className="stat-pill" title="Кристаллы" onClick={() => setToast(`${stats.crystals} кристаллов · +2 за верный ответ`)}><Icon name="gem" size={18} /><strong>{stats.crystals}</strong></button>
-        <button className="avatar" aria-label="Открыть настройки профиля" onClick={() => setSettingsOpen(true)}>{preferences.name.slice(0, 2).toUpperCase()}</button>
+        <button className="avatar" aria-label={user ? "Открыть личный кабинет" : "Открыть настройки профиля"} onClick={() => user ? setAccountOpen(true) : setSettingsOpen(true)}>{(user?.name || preferences.name).slice(0, 2).toUpperCase()}</button>
       </header>
       {screen === "today" && <Today modules={visibleModules} allCards={visibleCards} progress={progress} stats={stats} preferences={preferences} dueCount={dueCards.length} languageName={activeSpace.languageName} onContinue={() => { const review = dueCards.slice(0, 10); const newCards = (targetModule?.cards ?? []).filter((card) => !progress[card.id]).slice(0, 5); const mixed = [...review, ...newCards]; startSession(mixed.length ? mixed : targetModule?.cards ?? [], "cards", "Продолжить путь", undefined, visibleCards); }} onQuick={() => startSession(shuffled(visibleCards).slice(0, 10), "quick", "2 минуты · текущий кабинет", 10, visibleCards)} onReview={startQuickReview} onPodcast={() => visibleCards.length ? setPodcastCards(shuffled(dueCards.length ? dueCards : visibleCards).slice(0, 10)) : setToast("В этом кабинете пока нет карточек.")} onRefresh={(module) => { const weak = module.cards.filter((card) => !progress[card.id] || progress[card.id].level < 3); startSession(weak, "test", `Освежить · ${module.title}`, undefined, module.cards); }} onGames={() => setScreen("games")} onLibrary={() => setScreen("library")} />}
-      {screen === "library" && <Library modules={visibleModules} progress={progress} onReorder={moveModule} onCreate={() => setCreateOpen(true)} onFolders={() => setFoldersOpen(true)} onStart={(module) => startSession(module.cards, "cards", module.title, undefined, module.cards)} onTest={(module) => startSession(module.cards, "test", `Тест · ${module.title}`, undefined, module.cards)} onWrite={(module) => startSession(module.cards, "write", `Написать перевод · ${module.title}`, undefined, module.cards)} onCopyTestLink={async (module) => setToast(await copyAppLink(`library?module=${module.id}&mode=test`) ? "Ссылка на тест скопирована" : "Не удалось скопировать ссылку")} onEdit={(module) => setEditingModule(module)} onDelete={deleteModule} onExport={(module) => { const text = module.cards.map((card) => `${card.article ? `${card.article} ` : ""}${card.word} ${card.transcription} - ${card.translation}`).join("\n"); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" })); link.download = `${module.title.replace(/[^\p{L}\d]+/gu, "_")}.txt`; link.click(); URL.revokeObjectURL(link.href); setToast("Словарь экспортирован в .txt"); }} onGames={(module) => { setPreferredGameModuleId(module.id); setScreen("games"); }} techOnly={techOnly} />}
-      {screen === "path" && <PathScreen modules={visibleModules} progress={progress} lessons={lessons} onCreateLesson={(chapter) => setLessonDraft({ chapter })} onEditLesson={(lesson) => setLessonDraft({ chapter: lesson.chapter, lesson })} onDeleteLesson={(lesson) => { if (window.confirm(`Удалить урок «${lesson.title}»?`)) { setLessons((current) => current.filter((item) => item.id !== lesson.id)); lesson.resources.forEach((resource) => { if (resource.mediaId) void removeMediaFile(resource.mediaId).catch(() => undefined); }); } }} onCopyLessonLink={async (lesson) => setToast(await copyAppLink(`path?lesson=${encodeURIComponent(lesson.id)}`) ? "Ссылка на урок скопирована" : "Не удалось скопировать ссылку")} onCopyActivityLink={async (activity) => setToast(await copyAppLink(`games?activity=${encodeURIComponent(activity.id)}`) ? "Ссылка на игру скопирована" : "Не удалось скопировать ссылку")} onOpenLesson={setActiveLesson} onStart={(module) => startSession(module.cards, "cards", module.title, undefined, module.cards)} onStartActivity={(activity, module) => openGame(activity.gameId, prepareGameModule(activity.gameId, { ...module, title: activity.title, cards: activity.cards?.length ? activity.cards : module.cards.filter((card) => activity.cardIds.includes(card.id)), practiceInstructions: activity.instructions, practiceMedia: activity.media }), `games?activity=${encodeURIComponent(activity.id)}`)} onManageGames={(moduleId) => { setPreferredGameModuleId(moduleId); setScreen("games"); }} />}
-      {screen === "games" && <GameHub key={activeSpace.id} modules={visibleModules} preferredModuleId={preferredGameModuleId} languageCode={activeSpace.languageCode} languageName={activeSpace.languageName} level={activeSpace.level} onStart={openGame} onGrammar={(topic) => setActiveGrammar(topic)} onAudioAnswer={recordPractice} />}
+      {screen === "library" && <Library modules={visibleModules} progress={progress} onReorder={moveModule} onCreate={() => setCreateOpen(true)} onFolders={() => setFoldersOpen(true)} onStart={(module) => startSession(module.cards, "cards", module.title, undefined, module.cards)} onTest={(module) => startSession(module.cards, "test", `Тест · ${module.title}`, undefined, module.cards)} onWrite={(module) => startSession(module.cards, "write", `Написать перевод · ${module.title}`, undefined, module.cards)} onCopyTestLink={async (module) => setToast(await copyAppLink(`library?module=${module.id}&mode=test`) ? "Ссылка на тест скопирована" : "Не удалось скопировать ссылку")} onEdit={(module) => setEditingModule(module)} onDelete={deleteModule} onExport={(module) => { const text = module.cards.map((card) => `${card.article ? `${card.article} ` : ""}${card.word} ${card.transcription} - ${card.translation}`).join("\n"); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" })); link.download = `${module.title.replace(/[^\p{L}\d]+/gu, "_")}.txt`; link.click(); URL.revokeObjectURL(link.href); setToast("Словарь экспортирован в .txt"); }} onGames={(module) => { setPreferredGameModuleId(module.id); setScreen("games"); }} canManageContent={canManageContent} />}
+      {screen === "path" && <PathScreen modules={visibleModules} progress={progress} lessons={lessons} canManageContent={canManageContent} onCreateLesson={(chapter) => setLessonDraft({ chapter })} onEditLesson={(lesson) => setLessonDraft({ chapter: lesson.chapter, lesson })} onDeleteLesson={(lesson) => { if (window.confirm(`Удалить урок «${lesson.title}»?`)) { setLessons((current) => current.filter((item) => item.id !== lesson.id)); lesson.resources.forEach((resource) => { if (resource.mediaId) void removeMediaFile(resource.mediaId).catch(() => undefined); }); } }} onCopyLessonLink={async (lesson) => setToast(await copyAppLink(`path?lesson=${encodeURIComponent(lesson.id)}`) ? "Ссылка на урок скопирована" : "Не удалось скопировать ссылку")} onCopyActivityLink={async (activity) => setToast(await copyAppLink(`games?activity=${encodeURIComponent(activity.id)}`) ? "Ссылка на игру скопирована" : "Не удалось скопировать ссылку")} onOpenLesson={setActiveLesson} onStart={(module) => startSession(module.cards, "cards", module.title, undefined, module.cards)} onStartActivity={(activity, module) => openGame(activity.gameId, prepareGameModule(activity.gameId, { ...module, title: activity.title, cards: activity.cards?.length ? activity.cards : module.cards.filter((card) => activity.cardIds.includes(card.id)), practiceInstructions: activity.instructions, practiceMedia: activity.media }), `games?activity=${encodeURIComponent(activity.id)}`)} onManageGames={(moduleId) => { setPreferredGameModuleId(moduleId); setScreen("games"); }} />}
+      {screen === "games" && <GameHub key={activeSpace.id} modules={visibleModules} preferredModuleId={preferredGameModuleId} languageCode={activeSpace.languageCode} languageName={activeSpace.languageName} level={activeSpace.level} onStart={openGame} onGrammar={(topic) => setActiveGrammar(topic)} onAudioAnswer={recordPractice} onAudioEvent={sendActivityEvent} audioQuizzes={audioQuizzes} onAudioQuizzesChange={setAudioQuizzes} canManageContent={canManageContent} />}
       {screen === "stats" && <StatsScreen modules={visibleModules} cards={visibleCards} progress={progress} stats={stats} confusions={confusions} onReviewMistakes={(cards) => startSession(cards, "test", "Мои ошибки", undefined, visibleCards)} />}
     </main>
     {toast && <div className="toast-message" role="status">{toast}<button onClick={() => setToast("")} aria-label="Закрыть"><Icon name="close" size={15} /></button></div>}
-    {createOpen && <CreateModuleDialog onClose={() => setCreateOpen(false)} onCreate={createModule} languageName={activeSpace.languageName} level={activeSpace.level} />}
+    {createOpen && canManageContent && <CreateModuleDialog onClose={() => setCreateOpen(false)} onCreate={createModule} languageName={activeSpace.languageName} level={activeSpace.level} />}
     {editingModule && <EditModuleDialog module={editingModule} onClose={() => setEditingModule(null)} onSave={(title, cards) => saveModule(editingModule, title, cards)} />}
-    {foldersOpen && <MaterialFoldersDialog modules={visibleModules} lessons={lessons} grammarTopics={GRAMMAR_TOPICS} spaceId={activeSpace.id} languageCode={activeSpace.languageCode} level={activeSpace.level} onClose={() => setFoldersOpen(false)} />}
-    {spacesOpen && <LearningSpaceDialog spaces={spaces} activeId={activeSpace.id} onSelect={(id) => { setActiveSpaceId(id); setTechOnly(false); }} onCreate={(space) => setSpaces((current) => current.some((item) => item.languageCode === space.languageCode && item.level === space.level) ? current : [...current, space])} onClose={() => setSpacesOpen(false)} />}
+      {foldersOpen && <MaterialFoldersDialog modules={visibleModules} lessons={lessons} grammarTopics={GRAMMAR_TOPICS} spaceId={activeSpace.id} languageCode={activeSpace.languageCode} level={activeSpace.level} onClose={() => setFoldersOpen(false)} />}
+    {spacesOpen && <LearningSpaceDialog spaces={spaces} activeId={activeSpace.id} onSelect={(id) => setActiveSpaceId(id)} onCreate={(space) => setSpaces((current) => current.some((item) => item.languageCode === space.languageCode && item.level === space.level) ? current : [...current, space])} onClose={() => setSpacesOpen(false)} />}
     {settingsOpen && <SettingsDialog value={preferences} onClose={() => setSettingsOpen(false)} onSave={(value) => { setPreferences(value); setSettingsOpen(false); setToast("Настройки сохранены"); }} onReset={() => { setProgress({}); setStats(defaultStats); setSettingsOpen(false); setToast("Прогресс сброшен; словарь сохранён"); }} />}
     {streakOpen && <StreakDialog streak={stats.streak} crystals={stats.crystals} freezeCount={stats.freezeCount} vacation={vacation} onBuyFreeze={buyFreeze} onToggleVacation={() => { setVacation((value) => !value); setToast(vacation ? "Режим отпуска выключен" : "Режим отпуска включён"); }} onClose={() => setStreakOpen(false)} />}
-    {lessonDraft && <LessonDialog chapter={lessonDraft.chapter} initial={lessonDraft.lesson} modules={visibleModules} onClose={() => setLessonDraft(null)} onSave={(lesson) => { setLessons((current) => current.some((item) => item.id === lesson.id) ? current.map((item) => item.id === lesson.id ? lesson : item) : [...current, lesson]); setLessonDraft(null); setToast(`Урок «${lesson.title}» сохранён`); }} />}
+    {lessonDraft && <LessonDialog chapter={lessonDraft.chapter} initial={lessonDraft.lesson} modules={visibleModules} audioQuizzes={audioQuizzes} languageCode={activeSpace.languageCode} level={activeSpace.level} onClose={() => setLessonDraft(null)} onSave={(lesson) => { setLessons((current) => current.some((item) => item.id === lesson.id) ? current.map((item) => item.id === lesson.id ? lesson : item) : [...current, lesson]); setLessonDraft(null); setToast(`Урок «${lesson.title}» сохранён`); }} />}
     {activeLesson && <LessonViewer lesson={activeLesson} onClose={() => setActiveLesson(null)} onStartResource={(resource: LessonResource) => {
+      if (resource.kind === "audioQuiz" && resource.audioQuizId) {
+        setActiveLesson(null);
+        window.location.hash = `#/games?audio=${encodeURIComponent(resource.audioQuizId)}`;
+        return;
+      }
       const module = visibleModules.find((item) => item.id === resource.moduleId);
       setActiveLesson(null);
       if (!module) { setToast("Модуль этого задания больше недоступен в текущем кабинете."); return; }
       if (resource.kind === "test") startSession(module.cards, "test", `Тест · ${module.title}`, undefined, module.cards);
       else if (resource.kind === "game" && resource.gameId) openGame(resource.gameId, prepareGameModule(resource.gameId, module));
     }} />}
+    {user && accountOpen && <AccountPanel user={user} onClose={() => setAccountOpen(false)} onSignOut={onSignOut} onAccountDeleted={onSignOut} />}
   </div>;
+}
+
+export default function App() {
+  const [mode, setMode] = useState<"checking" | "local" | "login" | "active" | "error">("checking");
+  const [user, setUser] = useState<AccountUser | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    setMode("checking"); setError("");
+    void fetch("/api/auth/get-session", { credentials: "include", cache: "no-store" }).then(async (response) => {
+      const contentType = response.headers.get("content-type") ?? "";
+      if (response.status === 404 || !contentType.includes("application/json")) {
+        if (alive) setMode("local");
+        return;
+      }
+      if (!response.ok) throw new Error("Не удалось подключиться к службе аккаунтов. Проверьте настройки сервера и базы данных.");
+      const result = await response.json() as { user?: AccountUser } | null;
+      if (result?.user) {
+        await activateProfileStorage(result.user.id);
+        await migrateLocalMediaToProfile(result.user.id).catch(() => undefined);
+        const profileResponse = await fetch("/api/profile", { credentials: "include", cache: "no-store" });
+        const profile = profileResponse.ok ? await profileResponse.json() as Pick<AccountUser, "role" | "permissions"> : {};
+        if (alive) { setUser({ ...result.user, ...profile }); setMode("active"); }
+      } else if (alive) setMode("login");
+    }).catch((cause: unknown) => {
+      if (alive) { setError(cause instanceof Error ? cause.message : "Не удалось загрузить кабинет."); setMode("error"); }
+    });
+    return () => { alive = false; };
+  }, [retry]);
+
+  const authenticate = async (credentials: Credentials) => {
+    setBusy(true); setError("");
+    try {
+      const result = credentials.mode === "sign-in"
+        ? await authClient.signIn.email({ email: credentials.email, password: credentials.password })
+        : await authClient.signUp.email({ name: credentials.name, email: credentials.email, password: credentials.password });
+      if (result.error) throw new Error(result.error.message);
+      if (credentials.mode === "sign-in") { setMode("checking"); setRetry((value) => value + 1); }
+      return true;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Не удалось войти. Проверьте данные и попробуйте ещё раз.";
+      setError(/invalid email or password/i.test(message) ? "Почта или пароль неверны. Если пароль забыли, нажмите «Забыли пароль?» — мы отправим ссылку на почту." : /email.*not.*verified|not.*verified/i.test(message) ? "Сначала подтвердите почту по ссылке из письма. Если письма нет, попробуйте войти ещё раз, чтобы отправить его повторно." : message);
+      return false;
+    }
+    finally { setBusy(false); }
+  };
+  const requestPasswordReset = async (email: string) => {
+    setBusy(true); setError("");
+    try {
+      const result = await authClient.requestPasswordReset({ email, redirectTo: `${window.location.origin}/#/reset-password` });
+      if (result.error) throw new Error(result.error.message);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось отправить письмо. Попробуйте ещё раз.");
+      return false;
+    } finally { setBusy(false); }
+  };
+  const resetPassword = async (token: string, password: string) => {
+    setBusy(true); setError("");
+    try {
+      const result = await authClient.resetPassword({ token, newPassword: password });
+      if (result.error) throw new Error(result.error.message);
+      window.history.replaceState(null, "", `${window.location.pathname}#/`);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Ссылка сброса устарела. Запросите новое письмо.");
+      return false;
+    } finally { setBusy(false); }
+  };
+  const signOut = async () => {
+    await authClient.signOut();
+    deactivateProfileStorage();
+    setUser(null); setMode("login");
+  };
+
+  if (mode === "checking") return <main className="account-loading"><span className="account-spinner" /><strong>Загружаю ваш кабинет…</strong></main>;
+  if (mode === "local") return <WorkspaceApp key="local-cabinet" user={null} onSignOut={() => undefined} />;
+  if (mode === "active" && user) return <WorkspaceApp key={user.id} user={user} onSignOut={() => void signOut()} />;
+  return <AuthScreen error={error} busy={busy} onSubmit={authenticate} onRequestPasswordReset={requestPasswordReset} onResetPassword={resetPassword} onRetry={() => { setError(""); setRetry((value) => value + 1); }} />;
 }
 
 function LogoMark() { return <span className="logo-mark"><span>L</span><i /></span>; }
@@ -315,7 +436,7 @@ function Sidebar({ screen, languageSpace, onSettings, onLanguage }: { screen: Sc
   const nav: { id: Screen; label: string; icon: IconName }[] = [
     { id: "today", label: "Сегодня", icon: "home" }, { id: "library", label: "Библиотека", icon: "library" }, { id: "path", label: "Мой путь", icon: "path" }, { id: "games", label: "Игры и упражнения", icon: "game" }, { id: "stats", label: "Статистика", icon: "chart" },
   ];
-  return <aside className="sidebar"><div className="window-dots"><i /><i /><i /></div><div className="brand"><LogoMark /><span>LinguaPlay</span></div><nav aria-label="Разделы приложения">{nav.map((item) => <a key={item.id} href={`#/${item.id}`} className={screen === item.id ? "active" : ""} aria-current={screen === item.id ? "page" : undefined} title={item.label}><Icon name={item.icon} /><span>{item.label}</span></a>)}</nav><div className="sidebar-bottom"><button className="language-card" onClick={onLanguage} aria-label="Сменить язык или уровень"><span className="flag">{languageSpace.flag}</span><span><strong>{languageSpace.languageName}</strong><small>Уровень {languageSpace.level}</small></span><Icon name="chevron" size={16} /></button><button className="settings-button" onClick={onSettings}><Icon name="settings" /><span>Настройки</span></button></div></aside>;
+  return <aside className="sidebar"><div className="brand"><LogoMark /><span>LinguaPlay</span></div><nav aria-label="Разделы приложения">{nav.map((item) => <a key={item.id} href={`#/${item.id}`} className={screen === item.id ? "active" : ""} aria-current={screen === item.id ? "page" : undefined} title={item.label}><Icon name={item.icon} /><span>{item.label}</span></a>)}</nav><div className="sidebar-bottom"><button className="language-card" onClick={onLanguage} aria-label="Сменить язык или уровень" title={`${languageSpace.languageName} · ${languageSpace.level}`}><span className="flag">{languageSpace.flag}</span><span><strong>{languageSpace.languageName}</strong><small>Уровень {languageSpace.level}</small></span><Icon name="chevron" size={16} /></button><button className="settings-button" onClick={onSettings}><Icon name="settings" /><span>Настройки</span></button></div></aside>;
 }
 
 function Today({ modules, allCards, progress, stats, preferences, dueCount, languageName, onContinue, onQuick, onReview, onPodcast, onRefresh, onGames, onLibrary }: { modules: VocabModule[]; allCards: VocabCard[]; progress: Record<string, CardProgress>; stats: UserStats; preferences: Preferences; dueCount: number; languageName: string; onContinue: () => void; onQuick: () => void; onReview: () => void; onPodcast: () => void; onRefresh: (module: VocabModule) => void; onGames: () => void; onLibrary: () => void }) {
@@ -324,16 +445,16 @@ function Today({ modules, allCards, progress, stats, preferences, dueCount, lang
   const activeModules = candidates.length ? candidates : modules.slice(-3);
   const today = localDay(); const dailyXp = stats.dailyDate === today ? stats.dailyXp : 0;
   const date = new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
-  return <div className="page today-page"><div className="page-heading"><div><p className="eyebrow">{date.toLocaleUpperCase()}</p><h1>Guten Morgen, {preferences.name}</h1><p>Небольшой шаг сегодня — крепкая память завтра.</p></div><div className="goal-ring" style={{ "--goal": `${Math.min(100, dailyXp / preferences.dailyGoal * 100)}%` } as React.CSSProperties}><div><strong>{dailyXp}</strong><span>из {preferences.dailyGoal} XP</span></div></div></div>
+  return <div className="page today-page"><div className="page-heading"><div><p className="eyebrow">{date.toLocaleUpperCase()}</p><h1>Guten Morgen, {preferences.name}</h1><p>Небольшой шаг сегодня — крепкая память завтра.</p></div><div className="goal-summary"><div className="goal-ring" title="Дневная цель: XP за правильные ответы сегодня" style={{ "--goal": `${Math.min(100, dailyXp / preferences.dailyGoal * 100)}%` } as React.CSSProperties}><div><strong>{dailyXp}</strong><span>из {preferences.dailyGoal} XP</span></div></div><small>{dailyXp >= preferences.dailyGoal ? "Цель выполнена!" : `Осталось ${Math.max(0, preferences.dailyGoal - dailyXp)} XP`}</small></div></div>
     <section className="continue-card"><div className="continue-glow" /><div className="continue-content"><span className="section-badge"><Icon name="spark" size={15} /> ПРОДОЛЖИТЬ ПУТЬ</span><h2>Урок по вашему прогрессу</h2><p>{dueCount ? `${dueCount} слов готовы к повторению` : "Смешанная практика · новые слова и повторение"}</p><div className="lesson-progress"><span style={{ width: `${dailyXp / preferences.dailyGoal * 100}%` }} /></div><button className="primary-button" onClick={onContinue}>Продолжить <Icon name="arrow" size={18} /></button></div><div className="word-orbit" aria-hidden="true"><span className="word-chip chip-one">neben</span><span className="word-chip chip-two">unter</span><span className="word-chip chip-three">auf</span><div className="orbit-card"><div className="mini-window"><i /><i /></div><div className="mini-table" /><div className="mini-lamp" /><div className="mini-rug" /></div></div></section>
     <div className="quick-grid"><button className="quick-card" onClick={onQuick}><span className="quick-icon blue"><Icon name="clock" /></span><span><strong>2 минуты · {languageName}</strong><small>Быстрый урок только по этому кабинету</small></span><Icon name="chevron" className="quick-chevron" /></button><button className="quick-card" onClick={onReview}><span className="quick-icon violet"><Icon name="refresh" /></span><span><strong>Повторение дня</strong><small>{dueCount ? `${dueCount} слов ждут вас` : "Пока нет слов к повторению"}</small></span><span className="count-badge">{dueCount}</span><Icon name="chevron" className="quick-chevron" /></button><button className="quick-card" onClick={onPodcast}><span className="quick-icon dark"><Icon name="headphones" /></span><span><strong>Аудиопрактика</strong><small>Озвучка в выбранных языках</small></span><Icon name="chevron" className="quick-chevron" /></button></div>
     <section className="memory-section"><div className="section-title"><div><h2>Запас прочности</h2><p>Уровень закрепления по модулям</p></div><button onClick={onLibrary}>Все модули <Icon name="arrow" size={15} /></button></div><div className="memory-grid">{activeModules.map((module, index) => { const learned = module.cards.filter((card) => (progress[card.id]?.level ?? 0) >= 2).length; const value = module.cards.length ? Math.round(learned / module.cards.length * 100) : 0; return <article className="memory-card" key={module.id}><div className="memory-head"><span className={`module-symbol ${["blue", "violet", "teal"][index % 3]}`}><Icon name={index === 0 ? "home" : index === 1 ? "book" : "library"} /></span><button aria-label={`Практика: ${module.title}`} onClick={() => onRefresh(module)}><Icon name="more" /></button></div><h3>{module.title}</h3><p>{module.cards.length} слов · Модуль {module.id}</p><div className="memory-score"><strong>{value}%</strong><span>{value ? "Закреплено" : "Ещё не изучены"}</span></div><div className={`memory-bar ${value < 35 ? "low" : value < 75 ? "medium" : ""}`}><span style={{ width: `${value}%` }} /></div><button className="refresh-button" onClick={() => onRefresh(module)}>Освежить <Icon name="arrow" size={16} /></button></article>; })}</div></section>
-    <button className="games-banner" onClick={onGames}><span><Icon name="game" /></span><strong>Закрепите слова в игре</strong><small>14 игровых механик · упражнения A1–A2</small><Icon name="arrow" /></button>
+    <button className="games-banner" onClick={onGames}><span><Icon name="game" /></span><strong>Закрепите слова в игре</strong><small>16 игровых механик · упражнения A1–A2</small><Icon name="arrow" /></button>
     <p className="today-content-count">В словаре {allCards.length} карточек в {modules.length} модулях.</p>
   </div>;
 }
 
-function Library({ modules, progress, onReorder, onCreate, onFolders, onStart, onTest, onWrite, onCopyTestLink, onEdit, onDelete, onExport, onGames, techOnly }: { modules: VocabModule[]; progress: Record<string, CardProgress>; onReorder: (from: number, to: number) => void; onCreate: () => void; onFolders: () => void; onStart: (module: VocabModule) => void; onTest: (module: VocabModule) => void; onWrite: (module: VocabModule) => void; onCopyTestLink: (module: VocabModule) => void; onEdit: (module: VocabModule) => void; onDelete: (module: VocabModule) => void; onExport: (module: VocabModule) => void; onGames: (module: VocabModule) => void; techOnly: boolean }) {
+function Library({ modules, progress, onReorder, onCreate, onFolders, onStart, onTest, onWrite, onCopyTestLink, onEdit, onDelete, onExport, onGames, canManageContent }: { modules: VocabModule[]; progress: Record<string, CardProgress>; onReorder: (from: number, to: number) => void; onCreate: () => void; onFolders: () => void; onStart: (module: VocabModule) => void; onTest: (module: VocabModule) => void; onWrite: (module: VocabModule) => void; onCopyTestLink: (module: VocabModule) => void; onEdit: (module: VocabModule) => void; onDelete: (module: VocabModule) => void; onExport: (module: VocabModule) => void; onGames: (module: VocabModule) => void; canManageContent: boolean }) {
   const [search, setSearch] = useState(""); const [openMenu, setOpenMenu] = useState<number | null>(null); const [filter, setFilter] = useState<"all" | "new" | "learned">("all"); const [sortBy, setSortBy] = useState<"manual" | "module" | "title" | "cards" | "progress">("manual"); const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc"); const draggedModule = useRef<number | null>(null);
   useEffect(() => {
     if (openMenu === null) return;
@@ -363,14 +484,14 @@ function Library({ modules, progress, onReorder, onCreate, onFolders, onStart, o
     }
     return modules.indexOf(a) - modules.indexOf(b);
   });
-  return <div className="page"><div className="library-heading"><div><p className="eyebrow">ВАШИ МАТЕРИАЛЫ</p><h1>Библиотека</h1><p>{modules.length} модулей · {modules.reduce((sum, module) => sum + module.cards.length, 0)} карточек{techOnly ? " · IT/Tech" : ""}</p></div><div className="library-heading-actions"><button className="secondary-button compact" onClick={onFolders}><Icon name="folder" size={17} /> Папки материалов</button><button className="primary-button compact" onClick={onCreate}><Icon name="plus" size={18} /> Создать / импортировать</button></div></div><div className="library-tools"><label className="search-box"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Поиск по словам и модулям" /></label><label className="library-filter-label">Показать<select aria-label="Фильтр модулей" value={filter} onChange={(event) => setFilter(event.target.value as "all" | "new" | "learned")}><option value="all">Все модули</option><option value="new">Есть новые карточки</option><option value="learned">Есть закреплённые</option></select><span>{visible.length}</span></label><div className="library-sort-control"><label className="library-filter-label">Сортировка<select aria-label="Сортировка модулей" value={sortBy} onChange={(event) => { const next = event.target.value as typeof sortBy; setSortBy(next); if (next === "cards" || next === "progress") setSortDirection("desc"); else setSortDirection("asc"); }}><option value="manual">Мой порядок</option><option value="module">По модулю</option><option value="title">По названию</option><option value="cards">По числу карточек</option><option value="progress">По прогрессу</option></select></label><button className="sort-direction-button" type="button" aria-label="Изменить направление сортировки" title="Изменить направление сортировки" disabled={sortBy === "manual"} onClick={() => setSortDirection((value) => value === "asc" ? "desc" : "asc")}><Icon name="filter" size={17} /><span aria-hidden="true">{sortDirection === "asc" ? "↑" : "↓"}</span></button></div></div>{sortBy === "manual" && <p className="library-sort-hint">Порядок можно менять перетаскиванием карточек модулей или в меню модуля: «Переместить выше / ниже».</p>}
-    {visible.length === 0 ? <div className="empty-state"><Icon name="search" size={28} /><h2>{search ? "Ничего не найдено" : "В этом кабинете пока нет модулей"}</h2><p>{search ? "Измените запрос или сбросьте фильтр." : "Создайте модуль или импортируйте слова для выбранного языка и уровня."}</p>{search ? <button className="secondary-button" onClick={() => setSearch("")}>Сбросить поиск</button> : <button className="primary-button" onClick={onCreate}><Icon name="plus" /> Создать первый модуль</button>}</div> : <div className="module-grid">{visible.map((module, index) => { const mastered = module.cards.filter((card) => (progress[card.id]?.level ?? 0) >= 2).length; const percent = module.cards.length ? Math.round(mastered / module.cards.length * 100) : 0; return <article className="module-card-shell" key={module.id} draggable onDragStart={(event) => { draggedModule.current = module.id; event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const from = draggedModule.current; if (from !== null) onReorder(from, module.id); draggedModule.current = null; }} onDragEnd={() => { draggedModule.current = null; }}><button className="module-card" onClick={() => onStart(module)}><div className={`module-cover ${["blue", "violet", "teal", "amber", "rose"][index % 5]}`}><span>{String(module.id).padStart(2, "0")}</span><Icon name={index % 3 === 0 ? "spark" : index % 3 === 1 ? "book" : "path"} size={30} /></div><div className="module-info"><div><span>МОДУЛЬ {module.id}{module.custom ? " · МОЙ" : ""}</span><span className="module-drag-grip" title="Перетащите модуль, чтобы изменить порядок">⠿</span><Icon name="arrow" size={15} /></div><h3>{module.title}</h3><p>{module.cards.length} карточек · {module.level}</p><div className="module-progress"><i style={{ width: `${percent}%` }} /></div></div></button><button className="module-menu-trigger" aria-label={`Действия модуля ${module.title}`} aria-expanded={openMenu === module.id} onClick={() => setOpenMenu((value) => value === module.id ? null : module.id)}><Icon name="more" size={17} /></button>{openMenu === module.id && <div className="module-actions-menu"><button onClick={() => { setOpenMenu(null); onTest(module); }}>Тест по модулю</button><button onClick={() => { setOpenMenu(null); onCopyTestLink(module); }}>Ссылка на тест</button><button title="Письменная тренировка по словам этого модуля. Слова и переводы меняются в редакторе карточек." onClick={() => { setOpenMenu(null); onWrite(module); }}>Тренировка: написать перевод</button><button onClick={() => { setOpenMenu(null); onGames(module); }}>Игры и упражнения</button><button onClick={() => { setOpenMenu(null); onEdit(module); }}>Изменить карточки и порядок</button><button disabled={index === 0} onClick={() => { setOpenMenu(null); if (visible[index - 1]) onReorder(module.id, visible[index - 1].id); }}>Переместить выше</button><button disabled={index === visible.length - 1} onClick={() => { setOpenMenu(null); if (visible[index + 1]) onReorder(module.id, visible[index + 1].id); }}>Переместить ниже</button><button onClick={() => { setOpenMenu(null); onExport(module); }}>Экспортировать словарь .txt</button><button className="text-danger" onClick={() => { setOpenMenu(null); onDelete(module); }}>Удалить модуль</button></div>}</article>; })}</div>}
+  return <div className="page"><div className="library-heading"><div><p className="eyebrow">ВАШИ МАТЕРИАЛЫ</p><h1>Библиотека</h1><p>{modules.length} модулей · {modules.reduce((sum, module) => sum + module.cards.length, 0)} карточек</p></div><div className="library-heading-actions"><button className="secondary-button compact" onClick={onFolders}><Icon name="folder" size={17} /> Папки материалов</button>{canManageContent && <button className="primary-button compact" onClick={onCreate}><Icon name="plus" size={18} /> Создать / импортировать</button>}</div></div><div className="library-tools"><label className="search-box"><Icon name="search" size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Поиск по словам и модулям" /></label><label className="library-filter-label">Показать<select aria-label="Фильтр модулей" value={filter} onChange={(event) => setFilter(event.target.value as "all" | "new" | "learned")}><option value="all">Все модули</option><option value="new">Есть новые карточки</option><option value="learned">Есть закреплённые</option></select><span>{visible.length}</span></label><div className="library-sort-control"><label className="library-filter-label">Сортировка<select aria-label="Сортировка модулей" value={sortBy} onChange={(event) => { const next = event.target.value as typeof sortBy; setSortBy(next); if (next === "cards" || next === "progress") setSortDirection("desc"); else setSortDirection("asc"); }}><option value="manual">Мой порядок</option><option value="module">По модулю</option><option value="title">По названию</option><option value="cards">По числу карточек</option><option value="progress">По прогрессу</option></select></label><button className="sort-direction-button" type="button" aria-label="Изменить направление сортировки" title="Изменить направление сортировки" disabled={sortBy === "manual"} onClick={() => setSortDirection((value) => value === "asc" ? "desc" : "asc")}><Icon name="filter" size={17} /><span aria-hidden="true">{sortDirection === "asc" ? "↑" : "↓"}</span></button></div></div>{sortBy === "manual" && <p className="library-sort-hint">Порядок можно менять перетаскиванием карточек модулей или в меню модуля: «Переместить выше / ниже».</p>}
+    {visible.length === 0 ? <div className="empty-state"><Icon name="search" size={28} /><h2>{search ? "Ничего не найдено" : "В этом кабинете пока нет модулей"}</h2><p>{search ? "Измените запрос или сбросьте фильтр." : "Создайте модуль или импортируйте слова для выбранного языка и уровня."}</p>{search ? <button className="secondary-button" onClick={() => setSearch("")}>Сбросить поиск</button> : canManageContent && <button className="primary-button" onClick={onCreate}><Icon name="plus" /> Создать первый модуль</button>}</div> : <div className="module-grid">{visible.map((module, index) => { const mastered = module.cards.filter((card) => (progress[card.id]?.level ?? 0) >= 2).length; const percent = module.cards.length ? Math.round(mastered / module.cards.length * 100) : 0; return <article className="module-card-shell" key={module.id} draggable onDragStart={(event) => { draggedModule.current = module.id; event.dataTransfer.effectAllowed = "move"; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const from = draggedModule.current; if (from !== null) onReorder(from, module.id); draggedModule.current = null; }} onDragEnd={() => { draggedModule.current = null; }}><button className="module-card" onClick={() => onStart(module)}><div className={`module-cover ${["blue", "violet", "teal", "amber", "rose"][index % 5]}`}><span>{String(module.id).padStart(2, "0")}</span><Icon name={index % 3 === 0 ? "spark" : index % 3 === 1 ? "book" : "path"} size={30} /></div><div className="module-info"><div><span>МОДУЛЬ {module.id}{module.custom ? " · МОЙ" : ""}</span><span className="module-drag-grip" title="Перетащите модуль, чтобы изменить порядок">⠿</span><Icon name="arrow" size={15} /></div><h3>{module.title}</h3><p>{module.cards.length} карточек · {module.level}</p><div className="module-progress"><i style={{ width: `${percent}%` }} /></div></div></button><button className="module-menu-trigger" aria-label={`Действия модуля ${module.title}`} aria-expanded={openMenu === module.id} onClick={() => setOpenMenu((value) => value === module.id ? null : module.id)}><Icon name="more" size={17} /></button>{openMenu === module.id && <div className="module-actions-menu"><button onClick={() => { setOpenMenu(null); onTest(module); }}>Тест по модулю</button><button onClick={() => { setOpenMenu(null); onCopyTestLink(module); }}>Ссылка на тест</button><button title="Письменная тренировка по словам этого модуля. Слова и переводы меняются в редакторе карточек." onClick={() => { setOpenMenu(null); onWrite(module); }}>Тренировка: написать перевод</button><button onClick={() => { setOpenMenu(null); onGames(module); }}>Игры и упражнения</button>{canManageContent && <button onClick={() => { setOpenMenu(null); onEdit(module); }}>Изменить карточки и порядок</button>}<button disabled={index === 0} onClick={() => { setOpenMenu(null); if (visible[index - 1]) onReorder(module.id, visible[index - 1].id); }}>Переместить выше</button><button disabled={index === visible.length - 1} onClick={() => { setOpenMenu(null); if (visible[index + 1]) onReorder(module.id, visible[index + 1].id); }}>Переместить ниже</button><button onClick={() => { setOpenMenu(null); onExport(module); }}>Экспортировать словарь .txt</button>{canManageContent && <button className="text-danger" onClick={() => { setOpenMenu(null); onDelete(module); }}>Удалить модуль</button>}</div>}</article>; })}</div>}
   </div>;
 }
 
-function PathScreen({ modules, progress, lessons, onCreateLesson, onEditLesson, onDeleteLesson, onCopyLessonLink, onCopyActivityLink, onOpenLesson, onStart, onStartActivity, onManageGames }: { modules: VocabModule[]; progress: Record<string, CardProgress>; lessons: Lesson[]; onCreateLesson: (chapter: string) => void; onEditLesson: (lesson: Lesson) => void; onDeleteLesson: (lesson: Lesson) => void; onCopyLessonLink: (lesson: Lesson) => void; onCopyActivityLink: (activity: PathActivity) => void; onOpenLesson: (lesson: Lesson) => void; onStart: (module: VocabModule) => void; onStartActivity: (activity: PathActivity, module: VocabModule) => void; onManageGames: (moduleId: number) => void }) {
-  const [activities, setActivities] = useState<PathActivity[]>(() => { try { const value = JSON.parse(localStorage.getItem("linguaplay-saved-activities") || "[]"); return Array.isArray(value) ? value : []; } catch { return []; } });
-  useEffect(() => { localStorage.setItem("linguaplay-saved-activities", JSON.stringify(activities)); }, [activities]);
+function PathScreen({ modules, progress, lessons, canManageContent, onCreateLesson, onEditLesson, onDeleteLesson, onCopyLessonLink, onCopyActivityLink, onOpenLesson, onStart, onStartActivity, onManageGames }: { modules: VocabModule[]; progress: Record<string, CardProgress>; lessons: Lesson[]; canManageContent: boolean; onCreateLesson: (chapter: string) => void; onEditLesson: (lesson: Lesson) => void; onDeleteLesson: (lesson: Lesson) => void; onCopyLessonLink: (lesson: Lesson) => void; onCopyActivityLink: (activity: PathActivity) => void; onOpenLesson: (lesson: Lesson) => void; onStart: (module: VocabModule) => void; onStartActivity: (activity: PathActivity, module: VocabModule) => void; onManageGames: (moduleId: number) => void }) {
+  const [activities, setActivities] = useState<PathActivity[]>(() => { try { const value = JSON.parse(readProfileItem("linguaplay-saved-activities") || "[]"); return Array.isArray(value) ? value : []; } catch { return []; } });
+  useEffect(() => { writeProfileItem("linguaplay-saved-activities", JSON.stringify(activities)); }, [activities]);
   const deletePathActivity = (activity: PathActivity) => {
     setActivities((current) => current.filter((item) => item.id !== activity.id));
     if (activity.media?.id) void removeMediaFile(activity.media.id).catch(() => undefined);
@@ -384,6 +505,8 @@ function PathScreen({ modules, progress, lessons, onCreateLesson, onEditLesson, 
     { title: "Дела и работа", subtitle: "Досуг, здоровье, профессии и задачи", from: 24, to: 29 },
     { title: "Вокруг нас", subtitle: "Учёба, документы, одежда, погода и природа", from: 30, to: 34 },
     { title: "Немецкий для IT", subtitle: "Технологии, данные и аналитика", from: 35, to: 39 },
+    { title: "Путешествия", subtitle: "Аэропорт, отель, ресторан и отпуск", from: 200, to: 203 },
+    { title: "Профессии и собеседования", subtitle: "Практика для медсестры и программиста", from: 204, to: 205 },
   ].map((chapter) => ({ ...chapter, modules: modules.filter((module) => module.id >= chapter.from && module.id <= chapter.to) })).filter((chapter) => chapter.modules.length);
   const customModules = modules.filter((module) => module.custom || module.id >= 1000);
   if (customModules.length) chapters.push({ title: "Мои главы", subtitle: "Созданные вами словари и карточки", from: 1000, to: 99999, modules: customModules });
@@ -400,11 +523,11 @@ function PathScreen({ modules, progress, lessons, onCreateLesson, onEditLesson, 
         const done = module.cards.length > 0 && count === module.cards.length;
         return <button key={module.id} className={`chapter-module ${done ? "done" : ""}`} onClick={() => onStart(module)}><span className="chapter-module-number">{done ? <Icon name="check" size={15} /> : String(module.id).padStart(2, "0")}</span><span><strong>{module.title}</strong><small>{module.cards.length} карточек · {count} закреплено</small></span><Icon name="arrow" size={16} /></button>;
       })}</div>
-      <section className="chapter-lessons"><div className="chapter-lessons-heading"><div><h3>Уроки и материалы</h3><p>Видео, изображения, аудио, ссылки и задания по теме.</p></div><button onClick={() => onCreateLesson(chapter.title)}><Icon name="plus" size={15} /> Добавить урок</button></div>
-        {chapterLessons.length ? <div className="chapter-lesson-list">{chapterLessons.map((lesson) => <article key={lesson.id}><span className="lesson-card-mark"><Icon name="book" size={18} /></span><div><strong>{lesson.title}</strong><small>{lesson.description || `${lesson.resources.length} материалов`} · {lesson.resources.length} материалов</small></div><button onClick={() => onOpenLesson(lesson)}>Открыть</button><button onClick={() => onCopyLessonLink(lesson)}>Ссылка</button><button aria-label={`Изменить урок ${lesson.title}`} onClick={() => onEditLesson(lesson)}>Изменить</button><button aria-label={`Удалить урок ${lesson.title}`} onClick={() => onDeleteLesson(lesson)}>Удалить</button></article>)}</div> : <p className="empty-inline">В этой главе пока нет уроков. Добавьте объяснение и прикрепите нужные материалы.</p>}
+      <section className="chapter-lessons"><div className="chapter-lessons-heading"><div><h3>Уроки и материалы</h3><p>Видео, изображения, аудио, ссылки и задания по теме.</p></div>{canManageContent && <button onClick={() => onCreateLesson(chapter.title)}><Icon name="plus" size={15} /> Добавить урок</button>}</div>
+        {chapterLessons.length ? <div className="chapter-lesson-list">{chapterLessons.map((lesson) => <article key={lesson.id}><span className="lesson-card-mark"><Icon name="book" size={18} /></span><div><strong>{lesson.title}</strong><small>{lesson.description || `${lesson.resources.length} материалов`} · {lesson.resources.length} материалов</small></div><button onClick={() => onOpenLesson(lesson)}>Открыть</button><button onClick={() => onCopyLessonLink(lesson)}>Ссылка</button>{canManageContent && <><button aria-label={`Изменить урок ${lesson.title}`} onClick={() => onEditLesson(lesson)}>Изменить</button><button aria-label={`Удалить урок ${lesson.title}`} onClick={() => onDeleteLesson(lesson)}>Удалить</button></>}</article>)}</div> : <p className="empty-inline">В этой главе пока нет уроков. Добавьте объяснение и прикрепите нужные материалы.</p>}
       </section>
       {chapterGames.length > 0 && <div className="path-games"><h3>Игры этой главы</h3>{chapterGames.map((activity) => { const module = chapter.modules.find((item) => item.id === activity.moduleId); if (!module) return null; return <article key={activity.id}><span className="path-game-icon">{GAME_LIST.find((game) => game.id === activity.gameId)?.mark}</span><div><strong>{activity.title}</strong><small>{GAME_LIST.find((game) => game.id === activity.gameId)?.title} · {activity.cardIds.length} карточек</small></div><button onClick={() => onStartActivity(activity, module)}>Играть</button><button onClick={() => onCopyActivityLink(activity)}>Ссылка</button><button onClick={() => onManageGames(module.id)}>Изменить</button><button aria-label={`Удалить ${activity.title}`} onClick={() => deletePathActivity(activity)}>Удалить</button></article>; })}</div>}
-      <button className="chapter-add-game" onClick={() => onManageGames(chapter.modules[0].id)}><Icon name="plus" size={15} /> Добавить или изменить игру в этой главе</button>
+      {canManageContent && <button className="chapter-add-game" onClick={() => onManageGames(chapter.modules[0].id)}><Icon name="plus" size={15} /> Добавить или изменить игру в этой главе</button>}
     </section>;
   })}</div> : <div className="empty-state cabinet-empty"><Icon name="path" size={32} /><h2>В этом кабинете пока нет глав</h2><p>Добавьте учебный модуль, затем соберите из его карточек игры, уроки и занятия.</p></div>}</div>;
 }
@@ -415,8 +538,16 @@ function StatsScreen({ modules, cards, progress, stats, confusions, onReviewMist
   const mistakes = cards.filter((card) => (progress[card.id]?.wrong ?? 0) > 0).sort((a, b) => (progress[b.id]?.wrong ?? 0) - (progress[a.id]?.wrong ?? 0)).slice(0, 6);
   const confusedPairs = Object.values(confusions).flatMap((pairs) => Object.entries(pairs)).filter(([, count]) => count >= 2).length;
   const accuracy = stats.answers ? Math.round(stats.correct / stats.answers * 100) : 0;
-  const today = new Date(); const dayValues = Array.from({ length: 84 }, (_, index) => { const date = new Date(today); date.setDate(today.getDate() - (83 - index)); const day = localDay(date); return stats.studyDays[day] || 0; });
-  return <div className="page"><div className="page-heading"><div><p className="eyebrow">ВАШ ПРОГРЕСС</p><h1>Статистика</h1><p>Результаты сохраняются в этом браузере на устройстве.</p></div></div><div className="stats-grid"><div className="stat-card"><span>Карточек закреплено</span><strong>{learned}</strong><small>из {cards.length} · {modules.length} модулей</small></div><div className="stat-card"><span>Точность ответов</span><strong>{accuracy}%</strong><small>{stats.correct} верных из {stats.answers} ответов</small></div><div className="stat-card"><span>Занятия</span><strong>{stats.sessions}</strong><small>{reviewed} карточек уже повторяли</small></div></div><div className="activity-card"><div className="section-title"><div><h2>Учебный ритм</h2><p>Последние 12 недель · {Object.values(stats.studyDays).filter(Boolean).length} активных дней</p></div></div><div className="heatmap">{dayValues.map((value, index) => <i key={index} title={`${value} ответов`} className={`level-${value === 0 ? 0 : value < 4 ? 1 : value < 9 ? 2 : value < 16 ? 3 : 4}`} />)}</div><div className="heat-legend">Меньше <i className="level-0" /><i className="level-2" /><i className="level-4" /> Больше</div></div><section className="mistakes-panel"><div className="section-title"><div><h2>Мои ошибки</h2><p>{mistakes.length ? `${mistakes.length} сложных слов · ${confusedPairs} пары-путаницы отмечены дважды` : "Ошибочные ответы появятся здесь после практики."}</p></div><button disabled={!mistakes.length} onClick={() => onReviewMistakes(mistakes)}>Повторить <Icon name="arrow" size={15} /></button></div>{mistakes.length > 0 && <div className="mistake-list">{mistakes.map((card) => <div key={card.id}><strong>{german(card)}</strong><span>{card.translation}</span><small>{progress[card.id]?.wrong} ошибок</small></div>)}</div>}</section><div className="stats-note"><Icon name="info" /><span>Уровень 0 — новое слово · уровень 1 — учится · уровень 2 — закрепляется · уровень 3 — освоено. Срок повтора рассчитывается по оценке ответа.</span></div></div>;
+  const achievements = [
+    { icon: "spark" as IconName, title: "Первый шаг", note: "Ответьте на 10 заданий", value: stats.answers, goal: 10, color: "blue" },
+    { icon: "gem" as IconName, title: "Серия знаний", note: "Заработайте 100 XP", value: stats.xp, goal: 100, color: "violet" },
+    { icon: "flame" as IconName, title: "Неделя в ритме", note: "Занимайтесь 7 дней подряд", value: stats.streak, goal: 7, color: "orange" },
+    { icon: "book" as IconName, title: "Словарный запас", note: "Закрепите 20 карточек", value: learned, goal: 20, color: "teal" },
+    { icon: "check" as IconName, title: "Точный ответ", note: "Достигните точности 80% после 20 ответов", value: stats.answers >= 20 ? accuracy : 0, goal: 80, color: "rose", lockedUntil: 20 },
+    { icon: "path" as IconName, title: "Исследователь", note: "Потренируйтесь в 5 модулях", value: modules.filter((module) => module.cards.some((card) => (progress[card.id]?.reps ?? 0) > 0)).length, goal: 5, color: "gold" },
+  ];
+  const unlocked = achievements.filter((item) => item.value >= item.goal && (!item.lockedUntil || stats.answers >= item.lockedUntil)).length;
+  return <div className="page"><div className="page-heading"><div><p className="eyebrow">ВАШ ПРОГРЕСС</p><h1>Статистика</h1><p>Достижения и результаты этого учебного кабинета.</p></div></div><div className="stats-grid"><div className="stat-card"><span>Карточек закреплено</span><strong>{learned}</strong><small>из {cards.length} · {modules.length} модулей</small></div><div className="stat-card"><span>Точность ответов</span><strong>{accuracy}%</strong><small>{stats.correct} верных из {stats.answers} ответов</small></div><div className="stat-card"><span>Занятия</span><strong>{stats.sessions}</strong><small>{reviewed} карточек уже повторяли</small></div></div><section className="achievements-panel"><div className="section-title"><div><h2>Награды</h2><p>{unlocked} из {achievements.length} открыто · выполняйте задания, чтобы получить следующую награду</p></div></div><div className="achievement-grid">{achievements.map((item) => { const isUnlocked = item.value >= item.goal && (!item.lockedUntil || stats.answers >= item.lockedUntil); const value = item.lockedUntil && stats.answers < item.lockedUntil ? Math.min(stats.answers, item.lockedUntil) : Math.min(item.value, item.goal); const target = item.lockedUntil && stats.answers < item.lockedUntil ? item.lockedUntil : item.goal; const percent = Math.min(100, Math.round(value / target * 100)); return <article key={item.title} className={`achievement-card ${item.color} ${isUnlocked ? "unlocked" : "locked"}`}><span className="achievement-icon"><Icon name={item.icon} size={24} /></span><div className="achievement-copy"><div><strong>{item.title}</strong><span>{isUnlocked ? "Открыто" : "Ещё не получено"}</span></div><p>{item.note}</p><div className="achievement-progress"><i style={{ width: `${percent}%` }} /></div><small>{value} / {target}</small></div><span className="achievement-cup" aria-hidden="true">{isUnlocked ? "🏆" : "◇"}</span></article>; })}</div></section><section className="mistakes-panel"><div className="section-title"><div><h2>Мои ошибки</h2><p>{mistakes.length ? `${mistakes.length} сложных слов · ${confusedPairs} пары-путаницы отмечены дважды` : "Ошибочные ответы появятся здесь после практики."}</p></div><button disabled={!mistakes.length} onClick={() => onReviewMistakes(mistakes)}>Повторить <Icon name="arrow" size={15} /></button></div>{mistakes.length > 0 && <div className="mistake-list">{mistakes.map((card) => <div key={card.id}><strong>{german(card)}</strong><span>{card.translation}</span><small>{progress[card.id]?.wrong} ошибок</small></div>)}</div>}</section><div className="stats-note"><Icon name="info" /><span>Очки XP, серия, награды и история занятий относятся к активному кабинету. Уровень 0 — новое слово · 1 — учится · 2 — закрепляется · 3 — освоено.</span></div></div>;
 }
 
 function PodcastMode({ cards, learningLanguageCode, nativeLanguageCode, onClose, onAnswer }: { cards: VocabCard[]; learningLanguageCode: string; nativeLanguageCode: string; onClose: () => void; onAnswer: (card: VocabCard, correct: boolean, rating?: number) => void }) {

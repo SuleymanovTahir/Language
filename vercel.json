@@ -1,0 +1,8 @@
+{
+  "buildCommand": "node ./scripts/vercel-build.mjs",
+  "functions": {
+    "api/**/*.ts": {
+      "includeFiles": "src/lib/**/*.ts"
+    }
+  }
+}

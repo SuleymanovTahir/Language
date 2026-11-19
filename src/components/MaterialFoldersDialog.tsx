@@ -3,20 +3,21 @@ import type { VocabModule } from "../lib/vocab";
 import type { Lesson } from "./Lessons";
 import type { GrammarTopic } from "./Games";
 import { Icon } from "./Icon";
+import { readProfileItem, writeProfileItem } from "../lib/profileStorage";
 
 type MaterialFolder = { id: string; name: string };
 type MaterialItem = { id: string; title: string; type: string; meta: string };
 
 function readArray<T>(key: string): T[] {
   try {
-    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    const value = JSON.parse(readProfileItem(key) || "[]");
     return Array.isArray(value) ? value as T[] : [];
   } catch { return []; }
 }
 
 function readScopedArray<T>(key: string, scope: string): T[] {
   try {
-    const value = JSON.parse(localStorage.getItem(key) || "{}");
+    const value = JSON.parse(readProfileItem(key) || "{}");
     return value?.[scope] && Array.isArray(value[scope]) ? value[scope] as T[] : [];
   } catch { return []; }
 }
@@ -26,15 +27,15 @@ export function MaterialFoldersDialog({ modules, lessons, grammarTopics, spaceId
   const assignmentsKey = `linguaplay-material-folder-assignments:${spaceId}`;
   const [folders, setFolders] = useState<MaterialFolder[]>(() => readArray<MaterialFolder>(foldersKey));
   const [assignments, setAssignments] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem(assignmentsKey) || "{}"); } catch { return {}; }
+    try { return JSON.parse(readProfileItem(assignmentsKey) || "{}"); } catch { return {}; }
   });
   const [folderName, setFolderName] = useState("");
   const [editingFolder, setEditingFolder] = useState<string | null>(null);
   const [selectedFolder, setSelectedFolder] = useState("all");
   const draggedFolder = useRef<string | null>(null);
 
-  useEffect(() => localStorage.setItem(foldersKey, JSON.stringify(folders)), [foldersKey, folders]);
-  useEffect(() => localStorage.setItem(assignmentsKey, JSON.stringify(assignments)), [assignmentsKey, assignments]);
+  useEffect(() => writeProfileItem(foldersKey, JSON.stringify(folders)), [foldersKey, folders]);
+  useEffect(() => writeProfileItem(assignmentsKey, JSON.stringify(assignments)), [assignmentsKey, assignments]);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", closeOnEscape);
