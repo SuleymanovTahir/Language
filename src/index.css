@@ -5039,3 +5039,290 @@ body {
     display: none;
   }
 }
+
+/* Final responsive card system.
+   These rules intentionally live last so older page-specific experiments cannot
+   force fixed card widths back onto tablet and phone layouts. */
+:where(
+  .quick-card,
+  .memory-card,
+  .module-card,
+  .stat-card,
+  .achievement-card,
+  .my-game-card,
+  .catalog-card,
+  .course-unit-card,
+  .course-skills-grid article,
+  .admin-overview-cards article,
+  .analytics-panel
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+:where(
+  .quick-grid,
+  .memory-grid,
+  .module-grid,
+  .stats-grid,
+  .achievement-grid,
+  .my-games-grid,
+  .course-skills-grid,
+  .admin-overview-cards
+) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  align-items: stretch;
+}
+
+.module-card-shell,
+.module-card {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.module-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.module-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.module-info h3 {
+  height: auto;
+  min-height: 34px;
+  overflow-wrap: anywhere;
+}
+
+.quick-card > span:nth-child(2),
+.memory-card,
+.achievement-copy,
+.course-unit-copy,
+.game-tile-copy {
+  min-width: 0;
+}
+
+.quick-card strong,
+.quick-card small {
+  overflow-wrap: anywhere;
+}
+
+.daily-mission-card,
+.course-today-card,
+.course-overview-card {
+  min-width: 0;
+}
+
+@media (min-width: 701px) and (max-width: 1180px) {
+  .page,
+  .narrow-page,
+  .games-page {
+    width: min(100% - 40px, 1120px);
+  }
+
+  .top-header {
+    padding-inline: 22px;
+  }
+
+  .library-tools {
+    flex-wrap: wrap;
+  }
+
+  .library-tools > .search-box {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .library-sort-control {
+    min-width: 0;
+    flex: 1 1 260px;
+  }
+
+  .library-sort-control .library-filter-label {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .library-sort-control .library-filter-label select {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .module-grid,
+  .quick-grid,
+  .memory-grid,
+  .stats-grid,
+  .achievement-grid,
+  .my-games-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .games-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .games-grid .game-tile {
+    display: flex;
+    min-height: 0;
+  }
+
+  .game-tile-art {
+    width: 100%;
+    height: auto;
+    min-height: 190px;
+    aspect-ratio: 16 / 10;
+  }
+}
+
+@media (max-width: 700px) {
+  .app-shell,
+  .main-area {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .main-area {
+    margin-left: 0;
+  }
+
+  .page,
+  .narrow-page,
+  .games-page {
+    overflow-x: clip;
+    padding-inline: max(14px, env(safe-area-inset-left));
+  }
+
+  .page-heading,
+  .library-heading,
+  .section-title {
+    min-width: 0;
+  }
+
+  .page-heading > div:first-child,
+  .library-heading > div:first-child,
+  .section-title > div:first-child {
+    min-width: 0;
+  }
+
+  .page-heading h1,
+  .library-heading h1,
+  .section-title h2 {
+    overflow-wrap: anywhere;
+  }
+
+  .quick-grid,
+  .memory-grid,
+  .module-grid,
+  .stats-grid,
+  .achievement-grid,
+  .my-games-grid,
+  .course-skills-grid,
+  .admin-overview-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quick-card,
+  .module-card,
+  .memory-card,
+  .stat-card,
+  .achievement-card,
+  .my-game-card {
+    width: 100%;
+  }
+
+  .quick-card strong {
+    white-space: normal;
+  }
+
+  .daily-mission-card,
+  .course-today-card,
+  .course-overview-card,
+  .course-review-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .daily-mission-card > *,
+  .course-today-card > *,
+  .course-overview-card > *,
+  .course-review-card > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .daily-mission-card :where(.primary-button, .secondary-button),
+  .course-today-card :where(.primary-button, .secondary-button),
+  .course-overview-card :where(.primary-button, .secondary-button),
+  .course-review-card :where(.primary-button, .secondary-button) {
+    width: 100%;
+  }
+
+  .games-grid .game-tile {
+    display: grid;
+    grid-template-columns: minmax(104px, 34%) minmax(0, 1fr);
+    grid-template-rows: 1fr;
+    min-height: 148px;
+    padding: 0;
+  }
+
+  .game-tile-art {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    height: 100%;
+    min-height: 148px;
+    aspect-ratio: auto;
+    border: 0;
+    border-right: 1px solid var(--app-line);
+    border-radius: 0;
+  }
+
+  .game-tile-copy {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    min-height: 148px;
+  }
+
+  .locked-wrap .game-tile {
+    border-radius: 17px 17px 0 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .top-header {
+    gap: 5px;
+    padding-inline: 10px;
+  }
+
+  .top-header .stat-pill {
+    padding-inline: 7px;
+  }
+
+  .top-header .stat-pill svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .games-grid .game-tile {
+    grid-template-columns: minmax(96px, 32%) minmax(0, 1fr);
+    min-height: 142px;
+  }
+
+  .game-tile-art,
+  .game-tile-copy {
+    min-height: 142px;
+  }
+
+  .game-tile-copy {
+    padding: 12px 10px;
+  }
+
+  .game-card-footer > span {
+    display: none;
+  }
+}
