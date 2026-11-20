@@ -120,6 +120,11 @@ export function CatalogScreen({
         credentials: "include",
         cache: "no-store",
       });
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json") && import.meta.env.DEV) {
+        setShares([]);
+        return;
+      }
       const result = (await response.json()) as { shares?: CatalogShare[]; error?: string };
       if (!response.ok) throw new Error(result.error || "Не удалось загрузить ссылки.");
       setShares(result.shares ?? []);

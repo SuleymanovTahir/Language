@@ -83,7 +83,11 @@ function GameArtwork({ gameId, module }: { gameId: GameId; module: VocabModule }
     () => module.cards.filter((item) => item.word.trim() && item.translation.trim()).slice(0, 6),
     [module.cards],
   );
-  const card = sampled[0];
+  const gameIndex = Math.max(
+    0,
+    GAME_LIST.findIndex((item) => item.id === gameId),
+  );
+  const card = sampled.length ? sampled[gameIndex % sampled.length] : undefined;
   const german = (item: VocabCard) => `${item.article ? `${item.article} ` : ""}${item.word}`;
   const uniqueCards = [
     ...new Map(
@@ -376,6 +380,71 @@ function GameArtwork({ gameId, module }: { gameId: GameId; module: VocabModule }
         <small>Форма глагола · ich</small>
       </span>
     );
+  } else if (gameId === "truefalse") {
+    const shownTranslation = alternatives[0]?.translation ?? card?.translation;
+    art = (
+      <span className="gp-new-game gp-truefalse">
+        <small>СОВПАДАЮТ?</small>
+        <b>{card ? german(card) : "Wort"}</b>
+        <strong>{shownTranslation ?? "перевод"}</strong>
+        <span>
+          <i>Да</i>
+          <i>Нет</i>
+        </span>
+      </span>
+    );
+  } else if (gameId === "oddone") {
+    art = (
+      <span className="gp-new-game gp-oddone">
+        <small>{card?.translation ?? "Найдите слово"}</small>
+        <span>
+          {[card, ...alternatives]
+            .filter(Boolean)
+            .slice(0, 4)
+            .map((item, index) => (
+              <i className={index === 0 ? "selected" : ""} key={(item as VocabCard).id}>
+                {(item as VocabCard).word}
+              </i>
+            ))}
+        </span>
+      </span>
+    );
+  } else if (gameId === "memory") {
+    art = (
+      <span className="gp-new-game gp-memory">
+        <small>НАЙДИТЕ ПАРУ</small>
+        <span>
+          <i>{card?.word ?? "Wort"}</i>
+          <i>?</i>
+          <i>?</i>
+          <i>{card?.translation ?? "слово"}</i>
+        </span>
+      </span>
+    );
+  } else if (gameId === "speed") {
+    art = (
+      <span className="gp-new-game gp-speed">
+        <small>00:08</small>
+        <b>{card ? german(card) : "Wort"}</b>
+        <span>
+          <i>{card?.translation ?? "перевод"}</i>
+          <i>{alternatives[0]?.translation ?? "вариант"}</i>
+        </span>
+      </span>
+    );
+  } else if (gameId === "syllables") {
+    const letters = [...(card?.word ?? "lernen")];
+    const middle = Math.max(1, Math.ceil(letters.length / 2));
+    art = (
+      <span className="gp-new-game gp-syllables">
+        <small>{card?.translation ?? "Соберите слово"}</small>
+        <span>
+          <i>{letters.slice(0, middle).join("")}</i>
+          <i>{letters.slice(middle).join("")}</i>
+        </span>
+        <b>{letters.map(() => "＿").join("")}</b>
+      </span>
+    );
   } else {
     art = (
       <span className="gp-letters">
@@ -388,11 +457,11 @@ function GameArtwork({ gameId, module }: { gameId: GameId; module: VocabModule }
       </span>
     );
   }
-  const mascotNumber = ["pairs", "blitz", "moles", "boxes"].includes(gameId)
+  const mascotNumber = ["pairs", "blitz", "moles", "boxes", "speed"].includes(gameId)
     ? 3
-    : ["phonetic", "finalsound", "picture"].includes(gameId)
+    : ["phonetic", "finalsound", "picture", "memory"].includes(gameId)
       ? 7
-      : ["articles", "builder", "train", "fillblank"].includes(gameId)
+      : ["articles", "builder", "train", "fillblank", "syllables"].includes(gameId)
         ? 6
         : 5;
   return (
@@ -586,9 +655,13 @@ export function GameHub({
       "picture",
       "dialogue",
       "quest",
+      "truefalse",
+      "oddone",
+      "memory",
+      "speed",
     ]),
     listening: new Set(["phonetic", "finalsound"]),
-    writing: new Set(["wordsearch", "anagram", "sentenceorder"]),
+    writing: new Set(["wordsearch", "anagram", "sentenceorder", "syllables"]),
     grammar: new Set([
       "articles",
       "builder",
@@ -615,6 +688,11 @@ export function GameHub({
         "boxes",
         "wheel",
         "picture",
+        "truefalse",
+        "oddone",
+        "memory",
+        "speed",
+        "syllables",
       ]),
     },
     { title: "На слух", ids: new Set<GameId>(["phonetic", "finalsound"]) },
@@ -4311,6 +4389,61 @@ function QuestionGame({
         </h1>
         <p className="transcription">{card.transcription}</p>
         {renderChoiceButtons(["p", "t", "k"], expected)}
+      </>
+    );
+  } else if (gameId === "truefalse") {
+    const candidate =
+      index % 2 === 0
+        ? card.translation
+        : (module.cards.find((item) => item.id !== card.id)?.translation ?? card.translation);
+    const expected = candidate === card.translation ? "Да, совпадают" : "Нет, разные";
+    content = (
+      <>
+        <p className="question-kicker">Правда или перевод?</p>
+        <h1>{german(card)}</h1>
+        <p className="new-game-prompt">{candidate}</p>
+        {renderChoiceButtons(["Да, совпадают", "Нет, разные"], expected)}
+      </>
+    );
+  } else if (gameId === "oddone") {
+    content = (
+      <>
+        <p className="question-kicker">Найдите слово, которое подходит к подсказке</p>
+        <h1>{card.translation}</h1>
+        {renderChoiceButtons(boxOptions.map(german), german(card))}
+      </>
+    );
+  } else if (gameId === "memory") {
+    content = (
+      <>
+        <p className="question-kicker">Откройте совпадающую пару</p>
+        <h1>{german(card)}</h1>
+        <div className="memory-choice-shell">{renderChoiceButtons(choices, card.translation)}</div>
+      </>
+    );
+  } else if (gameId === "speed") {
+    content = (
+      <>
+        <p className="question-kicker">Спринт · отвечайте без пауз</p>
+        <div className="speed-timer" aria-label="Время на ответ">
+          08
+        </div>
+        <h1>{german(card)}</h1>
+        {renderChoiceButtons(choices, card.translation)}
+      </>
+    );
+  } else if (gameId === "syllables") {
+    const wordOptions = boxOptions.map(german);
+    content = (
+      <>
+        <p className="question-kicker">Соберите слово из частей</p>
+        <h1>{card.translation}</h1>
+        <div className="syllable-preview" aria-hidden="true">
+          {[...card.word].map((letter, letterIndex) => (
+            <span key={`${letter}-${letterIndex}`}>{letter}</span>
+          ))}
+        </div>
+        {renderChoiceButtons(wordOptions, german(card))}
       </>
     );
   } else if (gameId === "boxes")

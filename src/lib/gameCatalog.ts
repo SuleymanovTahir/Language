@@ -20,7 +20,12 @@ export type GameId =
   | "sentenceorder"
   | "dialogue"
   | "quest"
-  | "error-editor";
+  | "error-editor"
+  | "truefalse"
+  | "oddone"
+  | "memory"
+  | "speed"
+  | "syllables";
 type GameInfo = { id: GameId; title: string; description: string; mark: string };
 
 export const GAME_LIST: GameInfo[] = [
@@ -87,6 +92,36 @@ export const GAME_LIST: GameInfo[] = [
     title: "Редактор ошибок",
     description: "Исправьте форму и прочитайте объяснение",
     mark: "✓",
+  },
+  {
+    id: "truefalse",
+    title: "Правда или перевод",
+    description: "Решите, совпадают ли слово и перевод",
+    mark: "±",
+  },
+  {
+    id: "oddone",
+    title: "Лишнее слово",
+    description: "Найдите слово, которое не подходит к подсказке",
+    mark: "◇",
+  },
+  {
+    id: "memory",
+    title: "Мемо-карточки",
+    description: "Запомните пары и откройте совпадения",
+    mark: "▦",
+  },
+  {
+    id: "speed",
+    title: "Спринт перевода",
+    description: "Выберите перевод до окончания таймера",
+    mark: "»",
+  },
+  {
+    id: "syllables",
+    title: "Слоги в слово",
+    description: "Соберите слово из коротких частей",
+    mark: "··",
   },
 ];
 

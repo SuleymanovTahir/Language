@@ -1239,3 +1239,751 @@
     flex-direction: column;
   }
 }
+
+/* 2026 responsive repair: final rules for navigation, route pages and game surfaces. */
+.ui-language-toggle {
+  min-width: 38px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 9px;
+  color: var(--click-blue);
+  background: #edf3ff;
+  border: 1px solid #cfddf7;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.mobile-ui-language .ui-language-code {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  color: white;
+  background: var(--click-blue);
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.library-page .library-heading {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  padding: 22px 190px 22px 24px;
+}
+
+.library-page .library-heading-actions {
+  position: static;
+  display: flex;
+  grid-column: 1;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.library-page .library-heading-actions button {
+  min-height: 39px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.library-page .library-heading-actions .secondary-button {
+  color: #34527f;
+  background: rgb(255 255 255 / 82%);
+  border-color: #cfdcf0;
+}
+
+.library-page .library-heading-actions .primary-button {
+  color: #14274e;
+  background: linear-gradient(135deg, #ffc557, #ffad24);
+  border: 1px solid #ed9e17;
+  box-shadow: 0 5px 0 #dc8700;
+}
+
+.course-home .course-unit-card,
+.course-home .course-unit-card.current,
+.course-home .course-unit-card.complete,
+.course-home .course-unit-card.future,
+.course-home .course-unit-card::before,
+.course-home .course-unit-card::after,
+.course-home .course-path-node,
+.course-home .course-unit-card.current .course-path-node {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.course-home .course-unit-card.current {
+  padding: 10px;
+  background: rgb(255 255 255 / 88%);
+  border: 1px solid #f2cf83;
+  border-radius: 22px;
+  box-shadow: 0 12px 28px rgb(112 74 12 / 8%);
+}
+
+.course-home .course-unit-card:hover,
+.course-home .course-unit-card.current:hover {
+  border-radius: 22px;
+  box-shadow: 0 12px 28px rgb(112 74 12 / 10%);
+}
+
+.course-home .course-path-node {
+  overflow: visible;
+  border-radius: 18px;
+}
+
+.course-home .course-unit-copy {
+  overflow: hidden;
+  background: white;
+  border-radius: 17px;
+}
+
+.course-page {
+  width: min(1460px, calc(100% - 48px));
+}
+
+.course-page .course-chapters,
+.course-page .course-chapter,
+.course-page .chapter-modules {
+  width: 100%;
+  max-width: none;
+}
+
+.course-page .course-chapter.open {
+  overflow: hidden;
+  background: rgb(255 255 255 / 56%);
+  border-color: #dfe7f2;
+}
+
+.course-page .chapter-modules {
+  padding-inline: clamp(20px, 4vw, 64px);
+}
+
+.course-page .path-step {
+  width: min(820px, 78%);
+}
+
+.achievement-grid {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.achievement-card {
+  padding: 10px;
+  text-align: left;
+}
+
+.achievement-summary {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 9px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
+
+.achievement-summary .trophy-art {
+  width: 62px;
+  height: 68px;
+  margin: 0;
+}
+
+.achievement-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.achievement-summary strong {
+  color: var(--click-navy);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.achievement-summary > div > span {
+  color: #6d7a90;
+  font-size: 10px;
+}
+
+.achievement-expand-mark {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  color: var(--click-blue);
+  background: #edf3ff;
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.achievement-card .achievement-copy {
+  padding: 9px 4px 2px 73px;
+  animation: achievement-reveal 160ms ease-out;
+}
+
+.achievement-card .achievement-copy p {
+  min-height: 0;
+  margin: 0 0 8px;
+  font-size: 11px;
+}
+
+.achievement-card .achievement-copy small {
+  margin-top: 5px;
+  font-size: 10px;
+}
+
+@keyframes achievement-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+.gp-new-game {
+  width: min(88%, 260px);
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  color: #17305f;
+}
+
+.gp-new-game > small {
+  color: #6f7d94;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.09em;
+}
+
+.gp-new-game > b {
+  font-size: 18px;
+}
+
+.gp-new-game > strong {
+  padding: 5px 10px;
+  background: white;
+  border-radius: 9px;
+  box-shadow: 0 4px 10px #203c6f12;
+  font-size: 12px;
+}
+
+.gp-new-game > span {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.gp-new-game i {
+  min-width: 52px;
+  padding: 7px 9px;
+  background: white;
+  border: 1px solid #cfdaed;
+  border-radius: 10px;
+  box-shadow: 0 3px 0 #c4d2e7;
+  font-size: 10px;
+  font-style: normal;
+  text-align: center;
+}
+
+.gp-new-game i.selected,
+.gp-truefalse i:first-child {
+  color: #174fb5;
+  background: #eaf2ff;
+  border-color: #9ebaf1;
+}
+
+.gp-memory > span {
+  display: grid;
+  grid-template-columns: repeat(4, 42px);
+}
+
+.gp-memory i {
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.gp-speed > small {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: #ef6b52;
+  border-radius: 50%;
+  font-size: 11px;
+}
+
+.gp-syllables > b {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+}
+
+.game-tile .art-truefalse {
+  background: linear-gradient(135deg, #fff1e4, #fff 70%);
+}
+
+.game-tile .art-oddone {
+  background: linear-gradient(135deg, #e9f8ee, #fff 70%);
+}
+
+.game-tile .art-memory {
+  background: linear-gradient(135deg, #f2eaff, #fff 70%);
+}
+
+.game-tile .art-speed {
+  background: linear-gradient(135deg, #ffe9e5, #fff 70%);
+}
+
+.game-tile .art-syllables {
+  background: linear-gradient(135deg, #e8f4ff, #fff 70%);
+}
+
+.game-shell.game-wheel .game-center {
+  width: min(760px, calc(100% - 24px));
+}
+
+.fortune-wheel-stage {
+  width: min(100%, 620px);
+  margin-inline: auto;
+  padding: 24px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 28%, #f5efff, #f7f9ff 70%);
+  border: 1px solid #e0def0;
+  border-radius: 28px;
+}
+
+.fortune-wheel-wrap,
+.game-shell.game-wheel .fortune-wheel-wrap {
+  width: min(68vw, 300px);
+  height: min(68vw, 300px);
+}
+
+.fortune-wheel {
+  border-width: 8px;
+  box-shadow:
+    0 0 0 3px #ebe7f7,
+    0 20px 40px #3f397024;
+}
+
+.fortune-wheel::after {
+  box-shadow: 0 4px 14px #2e28552e;
+}
+
+.fortune-wheel > span {
+  max-width: 72px;
+  overflow: hidden;
+  color: white;
+  font-size: 11px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px #1b173b66;
+  white-space: nowrap;
+}
+
+.fortune-wheel-spin {
+  width: 76px;
+  height: 76px;
+  background: #232d5c;
+  border: 5px solid white;
+  box-shadow: 0 5px 18px #171f4938;
+  font-size: 11px;
+}
+
+.fortune-wheel-pointer {
+  top: 11px;
+  color: #f1a51f;
+  font-size: 25px;
+}
+
+.new-game-prompt {
+  width: min(420px, 100%);
+  margin: 0 auto 14px;
+  padding: 14px;
+  color: #2f4264;
+  background: #f4f7fc;
+  border: 1px solid #e0e7f1;
+  border-radius: 14px;
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.speed-timer {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 8px;
+  color: white;
+  background: #ef6b52;
+  border: 5px solid #ffe3de;
+  border-radius: 50%;
+  font-weight: 850;
+}
+
+.syllable-preview {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin: 14px 0;
+}
+
+.syllable-preview span {
+  min-width: 28px;
+  padding: 7px 5px;
+  color: #174fb5;
+  background: #edf3ff;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+@media (min-width: 761px) {
+  .sidebar nav .mobile-settings-nav {
+    display: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  html,
+  body,
+  #root,
+  .app-shell,
+  .main-area {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  .main-area {
+    margin-left: 0;
+  }
+
+  .page,
+  .course-page,
+  .games-page,
+  .library-page,
+  .catalog-page {
+    width: 100%;
+    max-width: 100%;
+    padding: 18px 14px calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .top-header {
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
+    padding: 9px 12px;
+  }
+
+  .mobile-brand {
+    width: 40px;
+    max-width: 40px;
+    overflow: visible;
+    font-size: 0;
+  }
+
+  .mobile-brand .logo-mark {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .header-spacer {
+    min-width: 0;
+  }
+
+  .ui-language-toggle {
+    min-width: 34px;
+    height: 30px;
+    padding-inline: 7px;
+  }
+
+  .sidebar nav a.mobile-secondary-nav {
+    display: none !important;
+  }
+
+  .sidebar nav a.mobile-primary-nav,
+  .sidebar nav .mobile-settings-nav {
+    display: flex !important;
+    min-width: 0;
+  }
+
+  .sidebar nav a.mobile-primary-nav span,
+  .sidebar nav .mobile-settings-nav span {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-more-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mobile-more-grid :is(a, button) {
+    min-width: 0;
+  }
+
+  .library-page .library-heading {
+    min-height: 168px;
+    display: block;
+    padding: 18px 104px 18px 18px;
+  }
+
+  .library-page .library-heading-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .library-page .library-heading-actions button {
+    width: 100%;
+    justify-content: center;
+    min-height: 38px;
+    padding-inline: 10px;
+  }
+
+  .library-page .library-heading::after {
+    width: 98px;
+    height: 98px;
+    right: 2px;
+    bottom: 2px;
+  }
+
+  .library-tools {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .library-tools > *,
+  .library-sort-control,
+  .library-filter-label {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .course-page .page-heading,
+  .course-page > .panda-note {
+    margin-inline: 0;
+  }
+
+  .course-page .course-chapter > header {
+    padding: 14px;
+  }
+
+  .course-page .course-chapter > header h2 {
+    overflow-wrap: anywhere;
+  }
+
+  .course-page .chapter-progress-label {
+    position: static;
+    display: block;
+    margin-top: 5px;
+  }
+
+  .course-page .chapter-modules {
+    padding: 16px 10px;
+  }
+
+  .course-page .path-module-heading {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .course-page .path-module-heading > button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .course-page .path-step,
+  .course-page .path-step:nth-child(n) {
+    width: 94%;
+    margin-left: 0;
+    transform: none;
+  }
+
+  .course-page .path-step:nth-child(even) {
+    margin-left: 6%;
+  }
+
+  .course-page .chapter-lessons {
+    padding: 16px 10px;
+  }
+
+  .course-page .chapter-lesson-list article {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .course-page .chapter-lesson-list article > button {
+    grid-column: 2;
+    width: fit-content;
+  }
+
+  .games-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .games-grid .game-tile {
+    min-height: 172px;
+    display: grid;
+    grid-template-columns: minmax(0, 42%) minmax(0, 1fr);
+  }
+
+  .games-grid .game-tile-art {
+    min-height: 172px;
+    height: 100%;
+    border-right: 1px solid #e5e9f0;
+    border-bottom: 0;
+  }
+
+  .games-grid .gp-scene,
+  .games-grid .gp-new-game,
+  .games-grid .gp-wheel,
+  .games-grid .gp-boxes {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .games-grid .gp-memory > span {
+    grid-template-columns: repeat(2, 34px);
+  }
+
+  .games-grid .gp-memory i {
+    min-width: 34px;
+    width: 34px;
+    height: 34px;
+    font-size: 8px;
+  }
+
+  .game-tile-copy {
+    min-width: 0;
+    min-height: 172px;
+  }
+
+  .practice-word-bank,
+  .practice-section-title,
+  .section-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .achievement-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .achievement-summary {
+    grid-template-columns: 48px minmax(0, 1fr) 21px;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .achievement-summary .trophy-art {
+    width: 47px;
+    height: 52px;
+  }
+
+  .achievement-card .achievement-copy {
+    padding-left: 54px;
+  }
+
+  .fortune-wheel-stage {
+    padding: 20px 10px 14px;
+    border-radius: 22px;
+  }
+
+  .fortune-wheel-wrap,
+  .game-shell.game-wheel .fortune-wheel-wrap {
+    width: min(72vw, 260px);
+    height: min(72vw, 260px);
+  }
+
+  .fortune-wheel > span {
+    max-width: 56px;
+    font-size: 9px;
+  }
+
+  .fortune-wheel-spin {
+    width: 66px;
+    height: 66px;
+    font-size: 10px;
+  }
+
+  .dialog,
+  .activity-builder,
+  .audio-builder,
+  .grammar-builder,
+  .material-folders-dialog {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+
+  .cookie-banner {
+    max-height: min(52dvh, 390px);
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 460px) {
+  .achievement-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .achievement-summary {
+    grid-template-columns: 54px minmax(0, 1fr) 24px;
+  }
+
+  .achievement-summary .trophy-art {
+    width: 52px;
+    height: 58px;
+  }
+
+  .achievement-card .achievement-copy {
+    padding-left: 61px;
+  }
+}
+
+@media (max-width: 390px) {
+  .top-header .stat-pill {
+    min-width: 34px;
+    height: 32px;
+    padding-inline: 5px;
+  }
+
+  .top-header .energy-pill {
+    display: none;
+  }
+
+  .mobile-more-menu {
+    padding: 16px;
+  }
+
+  .mobile-more-grid :is(a, button) {
+    min-height: 58px;
+    padding: 10px;
+    font-size: 11px;
+  }
+
+  .games-grid .game-tile {
+    grid-template-columns: 38% minmax(0, 1fr);
+  }
+
+  .game-card-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+}

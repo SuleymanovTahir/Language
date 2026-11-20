@@ -332,6 +332,10 @@ function WorkspaceApp({
   onUserUpdated?: (update: Partial<AccountUser>) => void;
 }) {
   const [screen, setScreen] = useState<Screen>(screenFromHash);
+  const [uiLanguage, setUiLanguage] = useStored<"ru" | "en">("clickling-ui-language", "ru");
+  useEffect(() => {
+    document.documentElement.lang = uiLanguage;
+  }, [uiLanguage]);
   const [spaces, setSpaces] = useStored<LearningSpace[]>("linguaplay-learning-spaces", [
     defaultSpace,
   ]);
@@ -1738,6 +1742,8 @@ function WorkspaceApp({
     <div className={`app-shell ${preferences.highContrast ? "contrast-mode" : ""}`}>
       <Sidebar
         screen={screen}
+        uiLanguage={uiLanguage}
+        onUiLanguage={() => setUiLanguage((current) => (current === "ru" ? "en" : "ru"))}
         languageSpace={activeSpace}
         canManageUsers={canManageUsers}
         canManageContent={canManageContent}
@@ -1751,6 +1757,19 @@ function WorkspaceApp({
             <LogoMark /> ClickLing
           </div>
           <div className="header-spacer" />
+          <button
+            className="ui-language-toggle"
+            type="button"
+            onClick={() => setUiLanguage((current) => (current === "ru" ? "en" : "ru"))}
+            aria-label={
+              uiLanguage === "ru"
+                ? "Switch interface language to English"
+                : "Переключить язык интерфейса на русский"
+            }
+            title={uiLanguage === "ru" ? "English interface" : "Русский интерфейс"}
+          >
+            <span>{uiLanguage === "ru" ? "EN" : "RU"}</span>
+          </button>
           <button
             className="stat-pill flame-pill"
             title="Серия занятий"
@@ -2902,6 +2921,8 @@ export default function App() {
 
 function Sidebar({
   screen,
+  uiLanguage,
+  onUiLanguage,
   languageSpace,
   canManageUsers,
   canManageContent,
@@ -2910,6 +2931,8 @@ function Sidebar({
   hiddenSections = [],
 }: {
   screen: Screen;
+  uiLanguage: "ru" | "en";
+  onUiLanguage: () => void;
   languageSpace: LearningSpace;
   canManageUsers: boolean;
   canManageContent: boolean;
@@ -2926,23 +2949,51 @@ function Sidebar({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [moreOpen]);
+  const labels =
+    uiLanguage === "en"
+      ? {
+          today: "Today",
+          library: "Word library",
+          catalog: "Catalog",
+          path: "Learning path",
+          materials: canManageContent ? "Assignment builder" : "Learning materials",
+          games: "Games & practice",
+          stats: "Progress",
+          admin: "Users",
+          analytics: "Analytics",
+          more: "More",
+          settings: "Settings",
+        }
+      : {
+          today: "Сегодня",
+          library: "Библиотека слов",
+          catalog: "Каталог",
+          path: "Учебный путь",
+          materials: canManageContent ? "Конструктор заданий" : "Учебные материалы",
+          games: "Игры и упражнения",
+          stats: "Прогресс",
+          admin: "Пользователи",
+          analytics: "Аналитика",
+          more: "Ещё",
+          settings: "Настройки",
+        };
   const nav: { id: Screen; label: string; icon: IconName }[] = [
-    { id: "today", label: "Сегодня", icon: "home" },
-    { id: "library", label: "Библиотека слов", icon: "library" },
-    { id: "catalog", label: "Каталог", icon: "book" },
-    { id: "path", label: "Учебный путь", icon: "path" },
+    { id: "today", label: labels.today, icon: "home" },
+    { id: "library", label: labels.library, icon: "library" },
+    { id: "catalog", label: labels.catalog, icon: "book" },
+    { id: "path", label: labels.path, icon: "path" },
     {
       id: "materials",
-      label: canManageContent ? "Конструктор заданий" : "Учебные материалы",
+      label: labels.materials,
       icon: "folder",
     },
-    { id: "games", label: "Игры и упражнения", icon: "game" },
-    { id: "stats", label: "Прогресс", icon: "chart" },
+    { id: "games", label: labels.games, icon: "game" },
+    { id: "stats", label: labels.stats, icon: "chart" },
   ];
   if (canManageUsers)
     nav.push(
-      { id: "admin", label: "Пользователи", icon: "settings" },
-      { id: "analytics", label: "Аналитика", icon: "chart" },
+      { id: "admin", label: labels.admin, icon: "settings" },
+      { id: "analytics", label: labels.analytics, icon: "chart" },
     );
   const visibleNav = nav.filter((item) => canManageUsers || !hiddenSections.includes(item.id));
   const mobilePrimary = new Set<Screen>(["today", "library", "path", "games"]);
@@ -2977,7 +3028,7 @@ function Sidebar({
           aria-controls="mobile-more-menu"
         >
           <Icon name="more" />
-          <span>Ещё</span>
+          <span>{labels.more}</span>
         </button>
       </nav>
       {moreOpen &&
@@ -2992,7 +3043,7 @@ function Sidebar({
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mobile-more-heading">
-                <strong>Ещё</strong>
+                <strong>{labels.more}</strong>
                 <button onClick={() => setMoreOpen(false)} aria-label="Закрыть меню">
                   <Icon name="close" size={18} />
                 </button>
@@ -3016,7 +3067,11 @@ function Sidebar({
                   }}
                 >
                   <Icon name="settings" />
-                  <span>Настройки</span>
+                  <span>{labels.settings}</span>
+                </button>
+                <button className="mobile-ui-language" onClick={onUiLanguage}>
+                  <span className="ui-language-code">{uiLanguage === "ru" ? "EN" : "RU"}</span>
+                  <span>{uiLanguage === "ru" ? "English" : "Русский"}</span>
                 </button>
               </div>
             </section>
@@ -3039,7 +3094,7 @@ function Sidebar({
         </button>
         <button className="settings-button" data-track="settings-open" onClick={onSettings}>
           <Icon name="settings" />
-          <span>Настройки</span>
+          <span>{labels.settings}</span>
         </button>
       </div>
     </aside>
@@ -4441,6 +4496,7 @@ function StatsScreen({
   courseProgress: CourseProgress;
   onReviewMistakes: (cards: VocabCard[]) => void;
 }) {
+  const [expandedAchievement, setExpandedAchievement] = useState<string | null>(null);
   const learned = cards.filter((card) => (progress[card.id]?.level ?? 0) >= 2).length;
   const reviewed = cards.filter((card) => (progress[card.id]?.reps ?? 0) > 0).length;
   const mistakes = cards
@@ -4501,6 +4557,56 @@ function StatsScreen({
         module.cards.some((card) => (progress[card.id]?.reps ?? 0) > 0),
       ).length,
       goal: 5,
+      color: "gold",
+    },
+    {
+      icon: "spark" as IconName,
+      title: "Разминка",
+      note: "Завершите 5 занятий",
+      value: stats.sessions,
+      goal: 5,
+      color: "blue",
+    },
+    {
+      icon: "gem" as IconName,
+      title: "Коллекционер XP",
+      note: "Заработайте 500 XP",
+      value: stats.xp,
+      goal: 500,
+      color: "violet",
+    },
+    {
+      icon: "flame" as IconName,
+      title: "Огненный месяц",
+      note: "Поддерживайте серию 30 дней",
+      value: stats.streak,
+      goal: 30,
+      color: "orange",
+    },
+    {
+      icon: "book" as IconName,
+      title: "Сотня слов",
+      note: "Закрепите 100 карточек",
+      value: learned,
+      goal: 100,
+      color: "teal",
+    },
+    {
+      icon: "check" as IconName,
+      title: "Безошибочная серия",
+      note: "Дайте 50 правильных ответов",
+      value: stats.correct,
+      goal: 50,
+      color: "rose",
+    },
+    {
+      icon: "path" as IconName,
+      title: "Большое путешествие",
+      note: "Потренируйтесь в 15 модулях",
+      value: modules.filter((module) =>
+        module.cards.some((card) => (progress[card.id]?.reps ?? 0) > 0),
+      ).length,
+      goal: 15,
       color: "gold",
     },
   ];
@@ -4570,25 +4676,42 @@ function StatsScreen({
             const target =
               item.lockedUntil && stats.answers < item.lockedUntil ? item.lockedUntil : item.goal;
             const percent = Math.min(100, Math.round((value / target) * 100));
+            const expanded = expandedAchievement === item.title;
             return (
               <article
                 key={item.title}
-                className={`achievement-card ${item.color} ${isUnlocked ? "unlocked" : "locked"}`}
+                className={`achievement-card ${item.color} ${isUnlocked ? "unlocked" : "locked"} ${expanded ? "expanded" : ""}`}
               >
-                <Trophy kind={item.icon} />
-                <div className="achievement-copy">
+                <button
+                  className="achievement-summary"
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() =>
+                    setExpandedAchievement((current) =>
+                      current === item.title ? null : item.title,
+                    )
+                  }
+                >
+                  <Trophy kind={item.icon} />
                   <div>
                     <strong>{item.title}</strong>
                     <span>{isUnlocked ? "Открыто" : "Ещё не получено"}</span>
                   </div>
-                  <p>{item.note}</p>
-                  <div className="achievement-progress">
-                    <i style={{ width: `${percent}%` }} />
+                  <span className="achievement-expand-mark" aria-hidden="true">
+                    {expanded ? "−" : "+"}
+                  </span>
+                </button>
+                {expanded && (
+                  <div className="achievement-copy">
+                    <p>{item.note}</p>
+                    <div className="achievement-progress">
+                      <i style={{ width: `${percent}%` }} />
+                    </div>
+                    <small>
+                      {value} / {target}
+                    </small>
                   </div>
-                  <small>
-                    {value} / {target}
-                  </small>
-                </div>
+                )}
               </article>
             );
           })}
