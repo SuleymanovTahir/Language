@@ -858,7 +858,8 @@ function WorkspaceApp({
       : [];
   const canManageContent = user ? Boolean(user.permissions?.manageContent) : !guestMode;
   const canManageSpeechProviders = import.meta.env.DEV || user?.role === "owner";
-  const canManageUsers = user?.role === "owner";
+  const canManageUsers =
+    user?.role === "owner" || (user?.role === "admin" && Boolean(user?.permissions?.manageUsers));
   const serverEnergyReady = !user || serverEnergyUserId === user.id;
   const energyStats = user && serverEnergyReady ? energy : energySnapshot(energy, energyClock);
   const isPro = user ? serverEnergyReady && serverIsPro : false;
@@ -2316,20 +2317,20 @@ function WorkspaceApp({
             }
           />
         )}
-        {(screen === "admin" || screen === "analytics") && user?.role !== "owner" && (
+        {(screen === "admin" || screen === "analytics") && !canManageUsers && (
           <section className="page restricted-page">
             <div>
               <p className="eyebrow">ЗАКРЫТЫЙ РАЗДЕЛ</p>
-              <h1>{user ? "Нет доступа к админке" : "Войдите в аккаунт владельца"}</h1>
+              <h1>{user ? "Нет доступа к админке" : "Войдите в аккаунт администратора"}</h1>
               <p>
                 {user
-                  ? "Для этого раздела нужны права владельца сайта."
-                  : "После входа страница откроется, если у аккаунта есть права владельца сайта."}
+                  ? "Для этого раздела нужны права администратора или владельца сайта."
+                  : "После входа страница откроется, если у аккаунта есть права администратора или владельца сайта."}
               </p>
             </div>
           </section>
         )}
-        {screen === "admin" && user?.role === "owner" && (
+        {screen === "admin" && canManageUsers && user && (
           <Suspense fallback={<div className="lazy-section-loading">Загружаю пользователей…</div>}>
             <AdminUsersScreen
               currentUser={user}

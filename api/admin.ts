@@ -1,4 +1,5 @@
 import { auth, ensureInitialAppRole, pool } from "../src/lib/auth.ts";
+import { hashPassword } from "better-auth/crypto";
 import { ensureEngagementSchema } from "../src/server/api/engagement.ts";
 import {
   captureDailyAnalyticsSnapshot,
@@ -45,14 +46,15 @@ async function actorFor(request: Request) {
   );
   const row = result.rows[0];
   const role = row?.role ?? "student";
-  const permissions = { ...defaults(role), ...(row?.permissions ?? {}) } as Record<
+  const rawPerms = parseJson(row?.permissions);
+  const permissions = { ...defaults(role), ...rawPerms } as Record<
     Permission,
     boolean
   >;
   permissions.manageContent = ["owner", "admin"].includes(role);
-  permissions.manageUsers = role === "owner";
+  permissions.manageUsers = role === "owner" || (role === "admin" && Boolean(rawPerms.manageUsers));
   permissions.manageSettings = role === "owner";
-  permissions.viewAnalytics = role === "owner";
+  permissions.viewAnalytics = role === "owner" || (role === "admin" && Boolean(rawPerms.viewAnalytics));
   return { user: session.user, role, permissions };
 }
 
@@ -64,6 +66,23 @@ async function ownerFor(request: Request) {
       response: json({ error: "Эта страница доступна только владельцу сайта." }, 403),
     } as const;
   return { actor } as const;
+}
+
+async function userAdminFor(request: Request) {
+  const actor = await actorFor(request);
+  if (!actor) return { response: json({ error: "Войдите в аккаунт." }, 401) } as const;
+  if (actor.role === "owner" || (actor.role === "admin" && actor.permissions.manageUsers)) {
+    return { actor } as const;
+  }
+  return {
+    response: json(
+      {
+        error:
+          "Недостаточно прав. Требуется роль владельца или администратора с правом управления пользователями.",
+      },
+      403,
+    ),
+  } as const;
 }
 
 function parseJson(value: unknown): Record<string, any> {
@@ -111,14 +130,92 @@ function profileSummary(raw: unknown, serverEnergy: unknown) {
 }
 
 export async function POST(request: Request) {
-  const gate = await ownerFor(request);
-  if ("response" in gate) return gate.response;
-  let body: { action?: unknown };
+  let body: Record<string, any>;
   try {
-    body = (await request.json()) as typeof body;
+    body = (await request.json()) as Record<string, any>;
   } catch {
     return json({ error: "Invalid JSON payload." }, 400);
   }
+
+  if (body.action === "create-user") {
+    const gate = await userAdminFor(request);
+    if ("response" in gate) return gate.response;
+
+    const name = text(body.name, 80);
+    const email = text(body.email, 254).toLowerCase();
+    const password = typeof body.password === "string" ? body.password : "";
+    const role = text(body.role, 20) || "student";
+
+    if (name.length < 2)
+      return json({ error: "Имя должно содержать не менее 2 символов." }, 400);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return json({ error: "Укажите корректный email (логин)." }, 400);
+    if (password.length < 8 || password.length > 128)
+      return json({ error: "Пароль должен содержать от 8 до 128 символов." }, 400);
+    if (!["admin", "student"].includes(role))
+      return json({ error: "Выберите роль: ученик или администратор." }, 400);
+
+    const canGrantUserManagement = gate.actor.role === "owner";
+    const suppliedPerms = parseJson(body.permissions);
+    const permissions: Record<Permission, boolean> = {
+      manageContent: role === "admin" ? Boolean(suppliedPerms.manageContent ?? true) : false,
+      manageUsers:
+        role === "admin" && canGrantUserManagement ? Boolean(suppliedPerms.manageUsers) : false,
+      viewAnalytics: role === "admin" ? Boolean(suppliedPerms.viewAnalytics) : false,
+      manageSettings: false,
+    };
+    const allowedSections = ["today", "library", "catalog", "path", "materials", "games", "stats"];
+    const hiddenSections = Array.isArray(suppliedPerms.hiddenSections)
+      ? suppliedPerms.hiddenSections
+          .filter((item): item is string => typeof item === "string")
+          .filter((item) => allowedSections.includes(item))
+      : [];
+    Object.assign(permissions, { hiddenSections });
+
+    const existing = await pool.query('SELECT id FROM "user" WHERE lower(email)=$1', [email]);
+    if (existing.rowCount && existing.rowCount > 0)
+      return json({ error: "Пользователь с таким email уже зарегистрирован." }, 409);
+
+    const newUserId = randomUUID();
+    const accountId = randomUUID();
+    const hashedPassword = await hashPassword(password);
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO "user" (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, true, $4, now(), now())`,
+        [newUserId, name, email, role === "admin" ? "admin" : "user"],
+      );
+      await client.query(
+        `INSERT INTO "account" (id, "userId", "accountId", "providerId", password, "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, 'credential', $4, now(), now())`,
+        [accountId, newUserId, newUserId, hashedPassword],
+      );
+      await client.query(
+        `INSERT INTO linguaplay_user_roles (user_id, role, permissions, updated_at)
+         VALUES ($1, $2, $3::jsonb, now())
+         ON CONFLICT (user_id) DO UPDATE SET role=EXCLUDED.role, permissions=EXCLUDED.permissions, updated_at=now()`,
+        [newUserId, role, JSON.stringify(permissions)],
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    await audit(gate.actor.user.id, newUserId, "create-user", { name, email, role, permissions });
+    return json({
+      created: true,
+      user: { id: newUserId, name, email, role, permissions },
+    });
+  }
+
+  const gate = await ownerFor(request);
+  if ("response" in gate) return gate.response;
   if (body.action !== "deploy-github-production")
     return json({ error: "Неизвестное действие." }, 400);
 
@@ -172,7 +269,7 @@ export async function GET(request: Request) {
 }
 
 async function getAdminData(request: Request) {
-  const gate = await ownerFor(request);
+  const gate = await userAdminFor(request);
   if ("response" in gate) return gate.response;
   if (new URL(request.url).searchParams.get("view") === "analytics") return getAnalytics();
   await ensureEngagementSchema();
@@ -411,7 +508,7 @@ async function getAnalytics() {
 }
 
 export async function PATCH(request: Request) {
-  const gate = await ownerFor(request);
+  const gate = await userAdminFor(request);
   if ("response" in gate) return gate.response;
   let body: Record<string, any>;
   try {
@@ -501,22 +598,45 @@ export async function PATCH(request: Request) {
     const name = text(body.name, 80);
     const email = text(body.email, 254).toLowerCase();
     if (name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      return json({ error: "Укажите корректное имя и адрес почты." }, 400);
-    const authApi = auth.api as any;
-    await authApi.adminUpdateUser({
-      body: { userId, data: { name, email } },
-      headers: request.headers,
-    });
+      return json({ error: "Укажите корректное имя и адрес почты (логин)." }, 400);
+    const emailTaken = await pool.query(
+      'SELECT id FROM "user" WHERE lower(email)=$1 AND id<>$2',
+      [email, userId],
+    );
+    if (emailTaken.rowCount && emailTaken.rowCount > 0)
+      return json({ error: "Этот email (логин) уже занят другим аккаунтом." }, 400);
+    try {
+      const authApi = auth.api as any;
+      await authApi.adminUpdateUser({
+        body: { userId, data: { name, email } },
+        headers: request.headers,
+      });
+    } catch {}
+    await pool.query(
+      'UPDATE "user" SET name=$2, email=$3, "emailVerified"=true, "updatedAt"=now() WHERE id=$1',
+      [userId, name, email],
+    );
     Object.assign(details, { name, email });
   } else if (action === "set-password") {
     const password = typeof body.password === "string" ? body.password : "";
     if (password.length < 8 || password.length > 128)
       return json({ error: "Пароль должен содержать от 8 до 128 символов." }, 400);
-    const authApi = auth.api as any;
-    await authApi.setUserPassword({
-      body: { userId, newPassword: password },
-      headers: request.headers,
-    });
+    let updated = false;
+    try {
+      const authApi = auth.api as any;
+      await authApi.setUserPassword({
+        body: { userId, newPassword: password },
+        headers: request.headers,
+      });
+      updated = true;
+    } catch {}
+    if (!updated) {
+      const hashedPassword = await hashPassword(password);
+      await pool.query(
+        `UPDATE "account" SET password=$2, "updatedAt"=now() WHERE "userId"=$1 AND "providerId"='credential'`,
+        [userId, hashedPassword],
+      );
+    }
     details.changed = true;
   } else if (action === "set-progress" || action === "set-crystals") {
     const xp = Number(body.xp);
@@ -640,7 +760,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const gate = await ownerFor(request);
+  const gate = await userAdminFor(request);
   if ("response" in gate) return gate.response;
   let body: { userId?: unknown; role?: unknown; permissions?: unknown };
   try {
@@ -651,29 +771,34 @@ export async function PUT(request: Request) {
   const userId = text(body.userId, 120);
   const role = text(body.role, 20);
   if (!userId || !["owner", "admin", "student"].includes(role))
-    return json({ error: "Выберите роль владельца, администратора контента или ученика." }, 400);
-  if (userId === gate.actor.user.id && role !== "owner")
-    return json({ error: "Нельзя снять собственные права владельца." }, 403);
+    return json({ error: "Выберите роль администратора или ученика." }, 400);
+  if (role === "owner" && gate.actor.role !== "owner")
+    return json({ error: "Назначить владельца может только действующий владелец." }, 403);
+  if (userId === gate.actor.user.id && role !== gate.actor.role)
+    return json({ error: "Нельзя изменить собственную роль." }, 403);
   const existing = await pool.query("SELECT role FROM linguaplay_user_roles WHERE user_id=$1", [
     userId,
   ]);
   if (!existing.rowCount) return json({ error: "Пользователь не найден." }, 404);
-  if (role === "owner" && existing.rows[0].role !== "owner") {
-    const owners = await pool.query(
-      "SELECT COUNT(*)::int AS count FROM linguaplay_user_roles WHERE role='owner'",
-    );
-    if (owners.rows[0].count > 0) return json({ error: "Главный владелец уже назначен." }, 409);
-  }
+  if (existing.rows[0].role === "owner" && gate.actor.role !== "owner")
+    return json({ error: "Настройки владельца защищены." }, 403);
+
   const supplied =
     body.permissions && typeof body.permissions === "object"
       ? (body.permissions as Record<string, unknown>)
       : {};
-  const permissions = Object.fromEntries(
-    flags.map((key) => [
-      key,
-      typeof supplied[key] === "boolean" ? supplied[key] : defaults(role)[key],
-    ]),
-  ) as Record<Permission, boolean>;
+  const permissions: Record<Permission, boolean> = {
+    manageContent:
+      role === "owner" || (role === "admin" && Boolean(supplied.manageContent ?? true)),
+    manageUsers:
+      role === "owner" ||
+      (role === "admin" && gate.actor.role === "owner"
+        ? Boolean(supplied.manageUsers)
+        : Boolean(supplied.manageUsers && gate.actor.permissions.manageUsers)),
+    viewAnalytics:
+      role === "owner" || (role === "admin" && Boolean(supplied.viewAnalytics)),
+    manageSettings: role === "owner",
+  };
   const allowedSections = ["today", "library", "catalog", "path", "materials", "games", "stats"];
   const hiddenSections = Array.isArray(supplied.hiddenSections)
     ? supplied.hiddenSections
@@ -681,15 +806,7 @@ export async function PUT(request: Request) {
         .filter((item) => allowedSections.includes(item))
     : [];
   Object.assign(permissions, { hiddenSections });
-  if (role === "owner") {
-    permissions.manageUsers = true;
-    permissions.manageSettings = true;
-    permissions.viewAnalytics = true;
-  } else {
-    permissions.manageUsers = false;
-    permissions.manageSettings = false;
-    permissions.viewAnalytics = false;
-  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -709,7 +826,7 @@ export async function PUT(request: Request) {
     );
     await client.query(`UPDATE "user" SET role=$2 WHERE id=$1`, [
       userId,
-      role === "owner" ? "admin" : "user",
+      role === "owner" || role === "admin" ? "admin" : "user",
     ]);
     await client.query(`DELETE FROM "session" WHERE "userId"=$1`, [userId]);
     if (existing.rows[0].role !== role)
@@ -732,7 +849,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const gate = await ownerFor(request);
+  const gate = await userAdminFor(request);
   if ("response" in gate) return gate.response;
   const userId = new URL(request.url).searchParams.get("userId");
   if (!userId || userId === gate.actor.user.id)

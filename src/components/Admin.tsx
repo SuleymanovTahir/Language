@@ -97,6 +97,237 @@ function errText(error: unknown) {
   return error instanceof Error ? error.message : "Не удалось выполнить действие.";
 }
 
+function CreateUserModal({
+  currentUserRole,
+  onClose,
+  onCreated,
+}: {
+  currentUserRole?: string;
+  onClose: () => void;
+  onCreated: (message: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"student" | "admin">("student");
+  const [permissions, setPermissions] = useState({
+    manageContent: true,
+    manageUsers: false,
+    viewAnalytics: false,
+  });
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    if (trimmedName.length < 2) {
+      setError("Имя должно содержать не менее 2 символов.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Укажите корректный email адрес (логин).");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Пароль должен содержать не менее 8 символов.");
+      return;
+    }
+    setWorking(true);
+    try {
+      await adminRequest(
+        {
+          action: "create-user",
+          name: trimmedName,
+          email: trimmedEmail,
+          password,
+          role,
+          permissions: role === "admin" ? permissions : undefined,
+        },
+        "POST",
+      );
+      onCreated(`Пользователь ${trimmedName} (${trimmedEmail}) успешно создан.`);
+      onClose();
+    } catch (err) {
+      setError(errText(err));
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  return (
+    <div
+      className="dialog-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="dialog-card">
+        <button type="button" className="dialog-close" onClick={onClose} aria-label="Закрыть">
+          <Icon name="close" size={18} />
+        </button>
+        <p className="eyebrow">НОВЫЙ АККАУНТ</p>
+        <h2>Добавить пользователя</h2>
+        <p>Создание нового аккаунта с логином, паролем и ролью.</p>
+
+        {error && (
+          <p className="form-error admin-error" style={{ marginBottom: 16 }} role="alert">
+            {error}
+          </p>
+        )}
+
+        <form onSubmit={submit}>
+          <label className="field-label">
+            Имя пользователя
+            <input
+              type="text"
+              required
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Например, Анна Смирнова"
+              disabled={working}
+            />
+          </label>
+          <label className="field-label">
+            Логин · Email
+            <input
+              type="email"
+              required
+              autoComplete="off"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="user@example.com"
+              disabled={working}
+            />
+          </label>
+          <label className="field-label">
+            Пароль
+            <input
+              type="password"
+              required
+              autoComplete="new-password"
+              minLength={8}
+              maxLength={128}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Не менее 8 символов"
+              disabled={working}
+            />
+          </label>
+          <label className="field-label">
+            Роль
+            <select
+              value={role}
+              disabled={working}
+              onChange={(e) => {
+                const next = e.target.value as "student" | "admin";
+                setRole(next);
+                setPermissions({
+                  manageContent: next === "admin",
+                  manageUsers: false,
+                  viewAnalytics: false,
+                });
+              }}
+            >
+              <option value="student">Ученик</option>
+              <option value="admin">Администратор</option>
+            </select>
+          </label>
+
+          {role === "admin" && (
+            <div
+              style={{
+                marginTop: 14,
+                marginBottom: 14,
+                padding: "14px 16px",
+                background: "#f8fafc",
+                borderRadius: 14,
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <strong style={{ display: "block", marginBottom: 10, fontSize: 13, color: "#1e293b" }}>
+                Права администратора:
+              </strong>
+              <label className="admin-toggle-row" style={{ marginBottom: 10 }}>
+                <span>
+                  <strong>Редактировать материалы</strong>
+                  <small>Модули, уроки, игры и каталог</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={permissions.manageContent}
+                  disabled={working}
+                  onChange={(e) =>
+                    setPermissions((current) => ({
+                      ...current,
+                      manageContent: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
+              <label className="admin-toggle-row" style={{ marginBottom: 10 }}>
+                <span>
+                  <strong>Управление пользователями</strong>
+                  <small>Создание, удаление, редактирование аккаунтов, смена паролей</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={permissions.manageUsers}
+                  disabled={working}
+                  onChange={(e) =>
+                    setPermissions((current) => ({
+                      ...current,
+                      manageUsers: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
+              <label className="admin-toggle-row">
+                <span>
+                  <strong>Просмотр аналитики</strong>
+                  <small>Доступ к разделу аналитики и активности</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={permissions.viewAnalytics}
+                  disabled={working}
+                  onChange={(e) =>
+                    setPermissions((current) => ({
+                      ...current,
+                      viewAnalytics: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+          )}
+
+          <div className="dialog-actions" style={{ marginTop: 22 }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onClose}
+              disabled={working}
+            >
+              Отмена
+            </button>
+            <button
+              type="submit"
+              className="primary-button"
+              disabled={working || !name.trim() || !email.trim() || password.length < 8}
+            >
+              {working ? "Создаю…" : "Создать пользователя"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function AdminUsersScreen({
   currentUser,
   onEnergyUpdated,
@@ -111,6 +342,7 @@ export function AdminUsersScreen({
   const [filter, setFilter] = useState<AdminFilter>("all");
   const [reloadNonce, setReloadNonce] = useState(0);
   const [notice, setNotice] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
   useEffect(() => {
     let alive = true;
     setBusy(true);
@@ -165,13 +397,18 @@ export function AdminUsersScreen({
     <div className="page admin-page">
       <div className="page-heading admin-page-heading">
         <div>
-          <p className="eyebrow">ПАНЕЛЬ ВЛАДЕЛЬЦА</p>
+          <p className="eyebrow">ПАНЕЛЬ УПРАВЛЕНИЯ</p>
           <h1>Пользователи</h1>
           <p>Аккаунты, подписка, доступ и учебный прогресс.</p>
         </div>
-        <button className="secondary-button compact" onClick={refresh}>
-          <Icon name="refresh" size={15} /> Обновить
-        </button>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <button className="primary-button compact" onClick={() => setCreateOpen(true)}>
+            + Добавить пользователя
+          </button>
+          <button className="secondary-button compact" onClick={refresh}>
+            <Icon name="refresh" size={15} /> Обновить
+          </button>
+        </div>
       </div>
       <CommunicationSettings admin />
       <div className="admin-overview-cards">
@@ -247,6 +484,7 @@ export function AdminUsersScreen({
               key={user.id}
               user={user}
               currentUserId={currentUser.id}
+              currentUserRole={currentUser.role}
               active={data?.active.find((item) => item.user_id === user.id)}
               onSaved={saved}
               onError={setError}
@@ -308,6 +546,13 @@ export function AdminUsersScreen({
           <small>Подписок пока нет. Новые периоды появятся здесь после подключения оплаты.</small>
         )}
       </section>
+      {createOpen && (
+        <CreateUserModal
+          currentUserRole={currentUser.role}
+          onClose={() => setCreateOpen(false)}
+          onCreated={saved}
+        />
+      )}
     </div>
   );
 }
@@ -315,6 +560,7 @@ export function AdminUsersScreen({
 function AdminUserCard({
   user,
   currentUserId,
+  currentUserRole,
   active,
   onSaved,
   onError,
@@ -322,6 +568,7 @@ function AdminUserCard({
 }: {
   user: AdminUser;
   currentUserId: string;
+  currentUserRole?: string;
   active?: UserResponse["active"][number];
   onSaved: (message: string) => void;
   onError: (message: string) => void;
@@ -466,7 +713,7 @@ function AdminUserCard({
               Роль
               <select
                 value={role}
-                disabled={working || user.id === currentUserId}
+                disabled={working || user.id === currentUserId || user.role === "owner"}
                 onChange={(event) => {
                   const nextRole = event.target.value;
                   setRole(nextRole);
@@ -480,29 +727,72 @@ function AdminUserCard({
                 }}
               >
                 <option value="student">Ученик</option>
-                <option value="admin">Администратор контента</option>
+                <option value="admin">Администратор</option>
+                {user.role === "owner" && <option value="owner">Владелец</option>}
               </select>
             </label>
-            <label className="admin-toggle-row">
-              <span>
-                <strong>Редактировать материалы</strong>
-                <small>Модули, уроки, игры и каталог.</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={permissions.manageContent}
-                disabled={working || user.id === currentUserId}
-                onChange={(event) =>
-                  setPermissions((current) => ({
-                    ...current,
-                    manageContent: event.target.checked,
-                  }))
-                }
-              />
-            </label>
+            {role === "admin" && (
+              <>
+                <label className="admin-toggle-row">
+                  <span>
+                    <strong>Редактировать материалы</strong>
+                    <small>Модули, уроки, игры и каталог.</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={permissions.manageContent}
+                    disabled={working || user.id === currentUserId || user.role === "owner"}
+                    onChange={(event) =>
+                      setPermissions((current) => ({
+                        ...current,
+                        manageContent: event.target.checked,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="admin-toggle-row">
+                  <span>
+                    <strong>Управление пользователями</strong>
+                    <small>Создание, удаление, редактирование аккаунтов, смена паролей.</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={permissions.manageUsers}
+                    disabled={
+                      working ||
+                      user.id === currentUserId ||
+                      user.role === "owner" ||
+                      (currentUserRole !== "owner" && !permissions.manageUsers)
+                    }
+                    onChange={(event) =>
+                      setPermissions((current) => ({
+                        ...current,
+                        manageUsers: event.target.checked,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="admin-toggle-row">
+                  <span>
+                    <strong>Просмотр аналитики</strong>
+                    <small>Доступ к разделу аналитики и активности.</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={permissions.viewAnalytics}
+                    disabled={working || user.id === currentUserId || user.role === "owner"}
+                    onChange={(event) =>
+                      setPermissions((current) => ({
+                        ...current,
+                        viewAnalytics: event.target.checked,
+                      }))
+                    }
+                  />
+                </label>
+              </>
+            )}
             <p className="admin-help">
-              Управление пользователями, аналитика и системные настройки остаются только у
-              владельца.
+              Права на управление пользователями и аналитику могут назначаться владельцем сайта.
             </p>
             <fieldset className="admin-menu-access">
               <legend>Разделы бокового меню</legend>

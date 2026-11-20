@@ -26,11 +26,15 @@ export async function GET(request: Request) {
     [session.user.id, "student"],
   );
   const role = result.rows[0]?.role ?? "student";
-  const permissions = { ...defaultPermissions(role), ...(result.rows[0]?.permissions ?? {}) };
+  const rawPerms =
+    result.rows[0]?.permissions && typeof result.rows[0]?.permissions === "object"
+      ? (result.rows[0].permissions as Record<string, unknown>)
+      : {};
+  const permissions = { ...defaultPermissions(role), ...rawPerms };
   permissions.manageContent = role === "owner" || role === "admin";
-  permissions.manageUsers = role === "owner";
+  permissions.manageUsers = role === "owner" || (role === "admin" && Boolean(rawPerms.manageUsers));
   permissions.manageSettings = role === "owner";
-  permissions.viewAnalytics = role === "owner";
+  permissions.viewAnalytics = role === "owner" || (role === "admin" && Boolean(rawPerms.viewAnalytics));
   const entitlement = await pool.query(
     `SELECT status,starts_at,ends_at,source FROM (
     SELECT status,starts_at,ends_at,'manual_grant'::text AS source FROM linguaplay_user_entitlements WHERE user_id=$1
