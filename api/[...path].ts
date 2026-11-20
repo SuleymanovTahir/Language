@@ -5,8 +5,8 @@ import * as engagement from "../src/server/api/engagement.ts";
 import * as guestTrial from "../src/server/api/guest-trial.ts";
 import * as profile from "../src/server/api/profile.ts";
 import * as sync from "../src/server/api/sync.ts";
-import * as gameRatings from "./game-ratings.ts";
-import * as leaderboard from "./leaderboard.ts";
+import * as gameRatings from "../src/server/api/game-ratings.ts";
+import * as leaderboard from "../src/server/api/leaderboard.ts";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 type RouteHandler = (request: Request) => Promise<Response>;

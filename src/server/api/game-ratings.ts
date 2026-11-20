@@ -1,4 +1,4 @@
-import { auth, pool } from "../src/lib/auth.ts";
+import { auth, pool } from "../../lib/auth.ts";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
