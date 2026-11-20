@@ -11,6 +11,8 @@ import { getActiveProfileId, readProfileItem, writeProfileItem } from "../lib/pr
 import { readSpeechSettings } from "../lib/speech";
 import { ScenarioGame, type ScenarioGameId } from "./ScenarioGames";
 import { SentenceOrderGame } from "./SentenceOrderGame";
+import { GameRatingBar } from "./GameRatingBar";
+import { GameLeaderboard } from "./GameLeaderboard";
 
 import {
   GAME_LIST,
@@ -660,6 +662,7 @@ export function GameHub({
       "pairs",
       "blitz",
       "hangman",
+      "sentenceorder",
       "moles",
       "boxes",
       "wheel",
@@ -688,11 +691,12 @@ export function GameHub({
   );
   const gameGroups = [
     {
-      title: "Слова",
+      title: "Слова и фразы",
       ids: new Set<GameId>([
         "pairs",
         "blitz",
         "hangman",
+        "sentenceorder",
         "wordsearch",
         "anagram",
         "moles",
@@ -3160,6 +3164,15 @@ function ArticleSortGame({
             {score} из {cards.length} правильно
           </h1>
           <p>Время: {timeLabel} · результат добавлен в прогресс.</p>
+          <GameLeaderboard
+            gameId="articles"
+            moduleId={module.id}
+            score={score}
+            total={cards.length}
+            timeSeconds={elapsed}
+            timeLabel={timeLabel}
+          />
+          <GameRatingBar gameId="articles" moduleId={module.id} />
         </div>
       </div>
     );
@@ -3289,6 +3302,7 @@ function ArticleSortGame({
           Завершить и проверить
         </button>
       </footer>
+      <GameRatingBar gameId="articles" moduleId={module.id} />
     </div>
   );
 }
@@ -3551,6 +3565,15 @@ function PairGame({
             Собрано пар: {score} из {cards.length}
           </h1>
           <p>Время: {timeLabel} · пары проверялись по очереди.</p>
+          <GameLeaderboard
+            gameId={gameId}
+            moduleId={module.id}
+            score={score}
+            total={cards.length}
+            timeSeconds={elapsed}
+            timeLabel={timeLabel}
+          />
+          <GameRatingBar gameId={gameId} moduleId={module.id} />
         </div>
       ) : (
         <>
@@ -3741,6 +3764,7 @@ function PairGame({
               {phase === "checking" ? "Проверяем…" : "Проверить пары"}
             </button>
           </footer>
+          <GameRatingBar gameId={gameId} moduleId={module.id} />
         </>
       )}
     </div>
@@ -3832,6 +3856,7 @@ function QuestionGame({
   const [lives, setLives] = useState(0);
   const [hangmanInput, setHangmanInput] = useState("");
   const [hangmanDirection, setHangmanDirection] = useState<"to-target" | "to-native">("to-target");
+  const [speedTimeLeft, setSpeedTimeLeft] = useState(8);
   const [spun, setSpun] = useState(false);
   const [wheelCard, setWheelCard] = useState<VocabCard | null>(null);
   const [wheelSelectedIndex, setWheelSelectedIndex] = useState<number | null>(null);
@@ -3862,6 +3887,22 @@ function QuestionGame({
   }, [done]);
   const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
   useCompletionSignal(done, onComplete, { score, total: rounds.length, timeLabel });
+
+  useEffect(() => {
+    if (gameId !== "speed" || done || feedback) return;
+    setSpeedTimeLeft(8);
+    const interval = window.setInterval(() => {
+      setSpeedTimeLeft((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(interval);
+          finishAnswer(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [gameId, index, done, feedback]);
   useEffect(() => {
     if (!done || !rounds.length || historySaved.current) return;
     historySaved.current = true;
@@ -4124,6 +4165,15 @@ function QuestionGame({
             Новых вопросов: {rounds.length} · ошибки с первой попытки: {firstTryErrors} · повторов:{" "}
             {retryCount} · без ответа: {skippedCount}. Результат первой попытки сохранён отдельно.
           </p>
+          <GameLeaderboard
+            gameId={gameId}
+            moduleId={module.id}
+            score={score}
+            total={answeredCount || rounds.length}
+            timeSeconds={elapsed}
+            timeLabel={timeLabel}
+          />
+          <GameRatingBar gameId={gameId} moduleId={module.id} />
         </div>
       </div>
     );
@@ -4776,8 +4826,11 @@ function QuestionGame({
     content = (
       <>
         <p className="question-kicker">Спринт · отвечайте без пауз</p>
-        <div className="speed-timer" aria-label="Время на ответ">
-          08
+        <div
+          className={`speed-timer ${speedTimeLeft <= 3 ? "urgent" : ""}`}
+          aria-label={`Осталось секунд: ${speedTimeLeft}`}
+        >
+          {String(speedTimeLeft).padStart(2, "0")}
         </div>
         <h1>{german(card)}</h1>
         {renderChoiceButtons(choices, card.translation)}
@@ -5012,6 +5065,7 @@ function QuestionGame({
           Закончить сессию
         </button>
       </footer>
+      <GameRatingBar gameId={gameId} moduleId={module.id} />
     </div>
   );
 }

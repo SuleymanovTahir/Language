@@ -9,6 +9,8 @@ import {
 import { playFeedbackSound } from "../lib/feedbackSound";
 import { speakText } from "../lib/speech";
 import { Icon } from "./Icon";
+import { GameRatingBar } from "./GameRatingBar";
+import { GameLeaderboard } from "./GameLeaderboard";
 
 export function SentenceOrderGame({
   module,
@@ -134,6 +136,16 @@ export function SentenceOrderGame({
           <p>
             Точность: {accuracy}% · Ошибок: {mistakes} · Время: {timeLabel}.
           </p>
+
+          <GameLeaderboard
+            gameId="sentenceorder"
+            moduleId={module.id}
+            score={score}
+            total={total}
+            timeSeconds={elapsed}
+            timeLabel={timeLabel}
+          />
+          <GameRatingBar gameId="sentenceorder" moduleId={module.id} />
 
           <div className="result-difficulty-selector">
             <p>Хотите попробовать другой уровень сложности?</p>
@@ -543,6 +555,8 @@ export function SentenceOrderGame({
               </p>
             </div>
           )}
+
+          <GameRatingBar gameId="sentenceorder" moduleId={module.id} />
         </div>
       </div>
     </div>

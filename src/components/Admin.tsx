@@ -362,6 +362,47 @@ export function AdminUsersScreen({
   const [reloadNonce, setReloadNonce] = useState(0);
   const [notice, setNotice] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"users" | "ratings">("users");
+  const [ratingsData, setRatingsData] = useState<{
+    ratings: Array<{
+      id: string | number;
+      user_id: string | null;
+      user_name: string;
+      user_email: string;
+      game_id: string;
+      module_id: number;
+      rating: number;
+      updated_at: string;
+    }>;
+    summary: Array<{
+      game_id: string;
+      avg_rating: string | number;
+      count: string | number;
+    }>;
+  } | null>(null);
+  const [ratingsLoading, setRatingsLoading] = useState(false);
+  const [ratingsError, setRatingsError] = useState("");
+
+  const loadRatings = async () => {
+    setRatingsLoading(true);
+    setRatingsError("");
+    try {
+      const res = await fetch("/api/game-ratings?admin=true", { credentials: "include" });
+      if (!res.ok) throw new Error("Не удалось загрузить оценки");
+      const json = await res.json();
+      setRatingsData(json);
+    } catch (e) {
+      setRatingsError(e instanceof Error ? e.message : "Ошибка загрузки оценок");
+    } finally {
+      setRatingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === "ratings" && !ratingsData && !ratingsLoading) {
+      void loadRatings();
+    }
+  }, [viewMode]);
   useEffect(() => {
     let alive = true;
     setBusy(true);
@@ -430,6 +471,113 @@ export function AdminUsersScreen({
         </div>
       </div>
       <CommunicationSettings admin />
+      <div className="admin-nav-tabs" style={{ display: "flex", gap: "10px", margin: "16px 0 24px" }}>
+        <button
+          type="button"
+          className={`primary-button compact ${viewMode === "users" ? "" : "ghost"}`}
+          onClick={() => setViewMode("users")}
+        >
+          👥 Пользователи ({counts.all})
+        </button>
+        <button
+          type="button"
+          className={`primary-button compact ${viewMode === "ratings" ? "" : "ghost"}`}
+          onClick={() => setViewMode("ratings")}
+        >
+          ⭐ Оценки игр {ratingsData?.ratings.length ? `(${ratingsData.ratings.length})` : ""}
+        </button>
+      </div>
+
+      {viewMode === "ratings" ? (
+        <section className="admin-ratings-section">
+          <div className="admin-ratings-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <div>
+              <h2 style={{ margin: "0 0 4px" }}>Оценки игр от пользователей</h2>
+              <p style={{ margin: 0, opacity: 0.75, fontSize: "0.9rem" }}>
+                Рейтинги от 1 до 5 звёзд, выставленные игроками.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="secondary-button compact"
+              onClick={() => void loadRatings()}
+              disabled={ratingsLoading}
+            >
+              <Icon name="refresh" size={15} /> {ratingsLoading ? "Загружаю…" : "Обновить"}
+            </button>
+          </div>
+
+          {ratingsError && (
+            <p className="form-error admin-error" role="alert">
+              {ratingsError}
+            </p>
+          )}
+
+          {ratingsLoading && !ratingsData ? (
+            <div className="admin-loading">
+              <span className="account-spinner" /> Загружаю оценки…
+            </div>
+          ) : !ratingsData || ratingsData.ratings.length === 0 ? (
+            <div className="empty-state admin-empty">
+              <span style={{ fontSize: "2.5rem" }}>⭐</span>
+              <h2>Оценок пока нет</h2>
+              <p>Оценки игроков появятся здесь, как только кто-нибудь оценит игру в процессе или в конце раунда.</p>
+            </div>
+          ) : (
+            <>
+              <h3 style={{ margin: "0 0 12px", fontSize: "1rem" }}>Средние оценки по играм</h3>
+              <div className="admin-ratings-summary-grid">
+                {ratingsData.summary.map((item) => (
+                  <article key={item.game_id} className="admin-ratings-summary-card">
+                    <span className="summary-game-id">{item.game_id}</span>
+                    <strong className="summary-stars">
+                      {"★".repeat(Math.round(Number(item.avg_rating)))}
+                      {"☆".repeat(Math.max(0, 5 - Math.round(Number(item.avg_rating))))}
+                      <span className="summary-avg-num"> {item.avg_rating}</span>
+                    </strong>
+                    <small>{item.count} оценок</small>
+                  </article>
+                ))}
+              </div>
+
+              <h3 style={{ margin: "24px 0 12px", fontSize: "1rem" }}>Последние оценки ({ratingsData.ratings.length})</h3>
+              <div className="admin-ratings-table-wrap">
+                <table className="admin-ratings-table">
+                  <thead>
+                    <tr>
+                      <th>Игрок</th>
+                      <th>Email / Логин</th>
+                      <th>Игра</th>
+                      <th>Модуль</th>
+                      <th>Оценка</th>
+                      <th>Дата</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ratingsData.ratings.map((row) => (
+                      <tr key={row.id}>
+                        <td><strong>{row.user_name || "Гость"}</strong></td>
+                        <td><code>{displayLogin(row.user_email)}</code></td>
+                        <td><span className="game-badge">{row.game_id}</span></td>
+                        <td>Модуль {row.module_id}</td>
+                        <td>
+                          <span className="stars-pill">
+                            {"★".repeat(row.rating)}{"☆".repeat(Math.max(0, 5 - row.rating))} ({row.rating}/5)
+                          </span>
+                        </td>
+                        <td>
+                          <small>{new Date(row.updated_at).toLocaleString("ru-RU")}</small>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
+      ) : (
+        <>
       <div className="admin-overview-cards">
         <article>
           <span>Всего</span>
@@ -565,6 +713,8 @@ export function AdminUsersScreen({
           <small>Подписок пока нет. Новые периоды появятся здесь после подключения оплаты.</small>
         )}
       </section>
+        </>
+      )}
       {createOpen && (
         <CreateUserModal
           currentUserRole={currentUser.role}

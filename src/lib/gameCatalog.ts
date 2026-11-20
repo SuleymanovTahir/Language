@@ -71,8 +71,8 @@ export const GAME_LIST: GameInfo[] = [
   },
   {
     id: "sentenceorder",
-    title: "Собери предложение",
-    description: "Расставьте слова в грамматически правильном порядке",
+    title: "Сборка предложений",
+    description: "Соберите предложение из слов модуля (50% лишних слов)",
     mark: "Aa",
   },
   {
