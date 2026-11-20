@@ -2706,6 +2706,34 @@ export type AnswerTelemetry = {
   sessionTotal?: number;
 };
 
+
+// Mute/unmute toggle button for game topbars
+function MuteToggleBtn({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`game-mute-btn${muted ? " muted" : ""}`}
+      onClick={onToggle}
+      title={muted ? "Включить озвучку" : "Выключить озвучку"}
+      aria-label={muted ? "Включить озвучку" : "Выключить озвучку"}
+    >
+      {muted ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+          <line x1="23" y1="9" x2="17" y2="15" />
+          <line x1="17" y1="9" x2="23" y2="15" />
+        </svg>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export function GameSession({
   gameId,
   module,
@@ -2821,6 +2849,8 @@ export function GameSession({
           onAnswer={onAnswer}
           onComplete={handleComplete}
           onNextGame={onNextGame}
+          muted={muted}
+          onToggleMute={toggleMute}
         />
       ) : gameId === "articles" ? (
         <ArticleSortGame
@@ -2831,6 +2861,8 @@ export function GameSession({
           onAnswer={onAnswer}
           onComplete={handleComplete}
           onNextGame={onNextGame}
+          muted={muted}
+          onToggleMute={toggleMute}
         />
       ) : (
         <QuestionGame
@@ -2844,29 +2876,10 @@ export function GameSession({
           onSkip={onSkip}
           onComplete={handleComplete}
           onNextGame={onNextGame}
+          muted={muted}
+          onToggleMute={toggleMute}
         />
       )}
-      <button
-        type="button"
-        className={`game-mute-btn${muted ? " muted" : ""}`}
-        onClick={toggleMute}
-        title={muted ? "Включить озвучку" : "Выключить озвучку"}
-        aria-label={muted ? "Включить озвучку" : "Выключить озвучку"}
-      >
-        {muted ? (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-            <line x1="23" y1="9" x2="17" y2="15" />
-            <line x1="17" y1="9" x2="23" y2="15" />
-          </svg>
-        ) : (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-          </svg>
-        )}
-      </button>
       {resultPill && (
         <div className="game-result-floating-pill" role="status" aria-live="polite">
           <div className="game-result-pill-info">
@@ -3038,6 +3051,8 @@ function ArticleSortGame({
   onAnswer,
   onComplete,
   onNextGame,
+  muted = false,
+  onToggleMute,
 }: {
   module: VocabModule;
   onExit: () => void;
@@ -3045,6 +3060,8 @@ function ArticleSortGame({
   onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void;
   onComplete: (summary?: { score: number; total: number; timeLabel?: string }) => void;
   onNextGame?: () => void;
+  muted?: boolean;
+  onToggleMute?: () => void;
 }) {
   const cards = useMemo(
     () => shuffle(module.cards.filter((card) => card.article)),
@@ -3136,9 +3153,12 @@ function ArticleSortGame({
           <span>ГРУППИРОВКА РОДОВ</span>
           <strong>Время {timeLabel}</strong>
         </div>
-        <strong className="sort-count">
-          {Object.keys(placements).length}/{cards.length}
-        </strong>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {onToggleMute && <MuteToggleBtn muted={muted} onToggle={onToggleMute} />}
+          <strong className="sort-count">
+            {Object.keys(placements).length}/{cards.length}
+          </strong>
+        </div>
       </header>
       <main className="game-center article-sort">
         <div className="game-progress">
@@ -3261,6 +3281,8 @@ function PairGame({
   onAnswer,
   onComplete,
   onNextGame,
+  muted = false,
+  onToggleMute,
 }: {
   gameId: "pairs" | "datajoin";
   module: VocabModule;
@@ -3269,6 +3291,8 @@ function PairGame({
   onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void;
   onComplete: (summary?: { score: number; total: number; timeLabel?: string }) => void;
   onNextGame?: () => void;
+  muted?: boolean;
+  onToggleMute?: () => void;
 }) {
   const cards = useMemo(() => {
     const unique = new Map<string, VocabCard>();
@@ -3492,9 +3516,12 @@ function PairGame({
             {score} / {cards.length} · {timeLabel}
           </strong>
         </div>
-        <button onClick={onRestart}>
-          Начать заново <Icon name="refresh" />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {onToggleMute && <MuteToggleBtn muted={muted} onToggle={onToggleMute} />}
+          <button onClick={onRestart}>
+            Начать заново <Icon name="refresh" />
+          </button>
+        </div>
       </header>
       {done ? (
         <div className="game-result">
@@ -3710,6 +3737,8 @@ function QuestionGame({
   onSkip,
   onComplete,
   onNextGame,
+  muted = false,
+  onToggleMute,
 }: {
   gameId: GameId;
   module: VocabModule;
@@ -3725,6 +3754,8 @@ function QuestionGame({
   onSkip: (card: VocabCard) => void;
   onComplete: (summary?: { score: number; total: number; timeLabel?: string }) => void;
   onNextGame?: () => void;
+  muted?: boolean;
+  onToggleMute?: () => void;
 }) {
   const eligible = module.cards.filter((card) =>
     gameId === "picture"
@@ -4760,7 +4791,10 @@ function QuestionGame({
           <span>{GAME_LIST.find((game) => game.id === gameId)?.title.toLocaleUpperCase()}</span>
           <strong>{questionCounter}</strong>
         </div>
-        <div className="game-score">★ {score}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {onToggleMute && <MuteToggleBtn muted={muted} onToggle={onToggleMute} />}
+          <div className="game-score">★ {score}</div>
+        </div>
       </header>
       <main className="game-center">
         <div className="game-progress">
