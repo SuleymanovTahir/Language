@@ -12528,8 +12528,24 @@ select:not([multiple]) {
 .game-footer-row > span,
 .game-footer > span {
   max-width: 100%;
-  color: #44546d;
+  /* Always dark enough against the accent-tinted footer background */
+  color: color-mix(in srgb, var(--game-accent) 70%, #1a2a40);
   font-size: 13px;
+  font-weight: 500;
+}
+/* "Закончить сессию" и другие text-button внутри футера */
+.game-footer .text-button {
+  color: color-mix(in srgb, var(--game-accent) 80%, #0f1f35);
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 1;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--game-accent) 40%, transparent);
+  text-underline-offset: 2px;
+}
+.game-footer .text-button:hover {
+  color: color-mix(in srgb, var(--game-accent) 95%, #000);
+  opacity: 1;
 }
 .game-footer .primary-button {
   min-height: 50px;
@@ -20245,7 +20261,7 @@ body {
 
 /* Inside footer the label inherits footer color */
 .game-footer .rating-bar-label {
-  color: #44546d;
+  color: color-mix(in srgb, var(--game-accent) 70%, #1a2a40);
   font-size: 11px;
 }
 
@@ -20265,9 +20281,10 @@ body {
   line-height: 1;
 }
 
-/* Inside footer — slightly smaller stars */
+/* Inside footer — slightly smaller stars, accent-tinted when empty */
 .game-footer .rating-star-btn {
   font-size: 16px;
+  color: color-mix(in srgb, var(--game-accent) 35%, #94a3b8);
 }
 
 .rating-star-btn:hover,
