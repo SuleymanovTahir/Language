@@ -3383,6 +3383,18 @@ function Library({
     }
     return modules.indexOf(a) - modules.indexOf(b);
   });
+  const groupForModule = (module: VocabModule) => {
+    if (module.custom || module.id >= 1000) return "Мои наборы";
+    if (module.id >= 200) return "Путешествия и профессии";
+    if (module.id <= 4) return "Первые разговоры";
+    if (module.id <= 8) return "Время и планы";
+    if (module.id <= 11) return "Люди вокруг";
+    if (module.id <= 18) return "Городская жизнь";
+    if (module.id <= 23) return "Дом и быт";
+    if (module.id <= 29) return "Дела и работа";
+    if (module.id <= 34) return "Учёба и мир вокруг";
+    return "Немецкий для работы и IT";
+  };
   return (
     <div className="page">
       <div className="library-heading">
@@ -3486,7 +3498,7 @@ function Library({
           )}
         </div>
       ) : (
-        <div className="module-grid">
+        <div className="module-grid library-path-map">
           {visible.map((module, index) => {
             const mastered = module.cards.filter(
               (card) => (progress[card.id]?.level ?? 0) >= 2,
@@ -3494,26 +3506,34 @@ function Library({
             const percent = module.cards.length
               ? Math.round((mastered / module.cards.length) * 100)
               : 0;
+            const group = groupForModule(module);
+            const beginsGroup = index === 0 || groupForModule(visible[index - 1]) !== group;
             return (
-              <article
-                className="module-card-shell"
-                key={module.id}
-                draggable
-                onDragStart={(event) => {
-                  draggedModule.current = module.id;
-                  event.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  const from = draggedModule.current;
-                  if (from !== null) onReorder(from, module.id);
-                  draggedModule.current = null;
-                }}
-                onDragEnd={() => {
-                  draggedModule.current = null;
-                }}
-              >
+              <div className={`library-map-item ${beginsGroup ? "starts-group" : ""}`} key={module.id}>
+                {beginsGroup && (
+                  <div className="library-group-heading">
+                    <span>Раздел {String(visible.slice(0, index).filter((item, itemIndex, list) => itemIndex === 0 || groupForModule(list[itemIndex - 1]) !== groupForModule(item)).length + 1).padStart(2, "0")}</span>
+                    <strong>{group}</strong>
+                  </div>
+                )}
+                <article
+                  className="module-card-shell"
+                  draggable
+                  onDragStart={(event) => {
+                    draggedModule.current = module.id;
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const from = draggedModule.current;
+                    if (from !== null) onReorder(from, module.id);
+                    draggedModule.current = null;
+                  }}
+                  onDragEnd={() => {
+                    draggedModule.current = null;
+                  }}
+                >
                 <button className="module-card" onClick={() => onStart(module)}>
                   <div
                     className={`module-cover ${["blue", "violet", "teal", "amber", "rose"][index % 5]}`}
@@ -3639,7 +3659,8 @@ function Library({
                     )}
                   </div>
                 )}
-              </article>
+                </article>
+              </div>
             );
           })}
         </div>
