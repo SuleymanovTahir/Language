@@ -1752,6 +1752,20 @@ function WorkspaceApp({
           module={activeGame.module}
           avoidMicrophone={Boolean(learningPlan?.avoidMicrophone)}
           onExit={exitGame}
+          onNextGame={() => {
+            const currentIndex = GAME_LIST.findIndex((item) => item.id === activeGame.gameId);
+            const reordered = [
+              ...GAME_LIST.slice(currentIndex + 1),
+              ...GAME_LIST.slice(0, currentIndex),
+            ];
+            const next = reordered.find((item) => !validateGame(item.id, activeGame.module));
+            if (next) {
+              const prepared = prepareGameModule(next.id, activeGame.module);
+              void openGame(next.id, prepared);
+            } else {
+              exitGame();
+            }
+          }}
           onRestart={async () => {
             if (guestMode && !(await claimGuestActivity())) {
               onGuestGate?.();

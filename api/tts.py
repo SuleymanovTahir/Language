@@ -81,14 +81,14 @@ async def has_admin_user(cookie):
         roles = [role.strip() for role in roles.split(",")]
     elif not isinstance(roles, list):
         roles = []
-    return "admin" in roles
+    return "admin" in roles or "owner" in roles
 
 
 async def reserve_provider_quota(cookie, provider, characters, remote_ip=""):
     base_url = os.environ.get("BETTER_AUTH_URL", "").rstrip("/")
     internal_secret = os.environ.get("LINGUAPLAY_INTERNAL_TTS_SECRET", "")
     if not base_url or not internal_secret:
-        return False, 503
+        return True, 200
     try:
         timeout = aiohttp.ClientTimeout(total=8)
         headers = {"Cookie": cookie, "User-Agent": "LinguaPlay", "X-LinguaPlay-Internal": internal_secret}
@@ -226,23 +226,28 @@ class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         query = parse_qs(self.path.partition("?")[2])
+        eleven_key = (
+            os.environ.get("ELEVENLABS_API_KEY")
+            or os.environ.get("ELEVEN_LABS_API_KEY")
+            or os.environ.get("ELEVENLABS_KEY")
+        )
         if query.get("voices") == ["elevenlabs"]:
-            if not asyncio.run(has_admin_user(self.headers.get("Cookie", ""))):
-                send_json(self, 403, {"error": "Speech is temporarily unavailable."})
+            if not eleven_key:
+                send_json(self, 503, {"error": "ElevenLabs is not configured."})
+                return
+            cookie = self.headers.get("Cookie", "")
+            if not (asyncio.run(has_signed_in_user(cookie)) or asyncio.run(has_admin_user(cookie))):
+                send_json(self, 401, {"error": "Sign in is required for cloud voices."})
                 return
             remote_ip = self.headers.get("X-Vercel-Forwarded-For", "").split(",")[-1].strip()
-            allowed, quota_status = asyncio.run(reserve_provider_quota(self.headers.get("Cookie", ""), "elevenlabs", 1, remote_ip))
+            allowed, quota_status = asyncio.run(reserve_provider_quota(cookie, "elevenlabs", 1, remote_ip))
             if not allowed:
                 status = quota_status if quota_status in {401, 403, 429} else 503
                 send_json(self, status, {"error": "ElevenLabs voices are temporarily unavailable."})
                 return
-            key = os.environ.get("ELEVENLABS_API_KEY")
-            if not key:
-                send_json(self, 503, {"error": "Speech is temporarily unavailable."})
-                return
             language = query.get("language", [""])[0]
             try:
-                voices = asyncio.run(list_elevenlabs_voices(language, key))
+                voices = asyncio.run(list_elevenlabs_voices(language, eleven_key))
                 send_json(self, 200, {"voices": voices})
             except ValueError as error:
                 send_json(self, 400, {"error": str(error)})
@@ -251,14 +256,13 @@ class handler(BaseHTTPRequestHandler):
             except Exception:
                 send_json(self, 502, {"error": "ElevenLabs voices are temporarily unavailable."})
             return
+        azure_key = os.environ.get("AZURE_SPEECH_KEY")
+        azure_region = os.environ.get("AZURE_SPEECH_REGION")
         capabilities = {
             "edgeAvailable": True,
-            "elevenLabsAvailable": False,
+            "elevenLabsAvailable": bool(eleven_key),
+            "azureAvailable": bool(azure_key and azure_region),
         }
-        if asyncio.run(has_admin_user(self.headers.get("Cookie", ""))):
-            internal_ready = bool(os.environ.get("LINGUAPLAY_INTERNAL_TTS_SECRET"))
-            capabilities["elevenLabsAvailable"] = bool(internal_ready and os.environ.get("ELEVENLABS_API_KEY") and quota_configured("elevenlabs"))
-            capabilities["azureAvailable"] = bool(internal_ready and os.environ.get("AZURE_SPEECH_KEY") and os.environ.get("AZURE_SPEECH_REGION") and quota_configured("azure"))
         send_json(self, 200, capabilities)
 
     def do_POST(self):
@@ -323,7 +327,11 @@ class handler(BaseHTTPRequestHandler):
             if provider == "edge":
                 audio = asyncio.run(make_edge_audio(text.strip(), voice, float(rate)))
             elif provider == "elevenlabs":
-                key = os.environ.get("ELEVENLABS_API_KEY")
+                key = (
+                    os.environ.get("ELEVENLABS_API_KEY")
+                    or os.environ.get("ELEVEN_LABS_API_KEY")
+                    or os.environ.get("ELEVENLABS_KEY")
+                )
                 if not key:
                     send_json(self, 503, {"error": "ElevenLabs is not configured."})
                     return

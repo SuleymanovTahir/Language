@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     const role = await pool.query("SELECT role FROM linguaplay_user_roles WHERE user_id=$1", [
       session.user.id,
     ]);
-    if (role.rows[0]?.role !== "owner" || (session.user as { role?: string }).role !== "admin")
+    if (role.rows[0]?.role !== "owner" && (session.user as { role?: string }).role !== "admin")
       return json({ error: "Speech is temporarily unavailable." }, 403);
   }
   const remoteIp = request.headers.get("x-linguaplay-remote-ip") ?? "";

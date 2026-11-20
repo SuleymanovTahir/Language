@@ -768,7 +768,7 @@ export function SettingsDialog({
       window.speechSynthesis.addEventListener("voiceschanged", refresh);
       cleanup = () => window.speechSynthesis.removeEventListener("voiceschanged", refresh);
     }
-    void fetch("/api/tts", { cache: "no-store" })
+    void fetch("/api/tts", { cache: "no-store", credentials: "include" })
       .then((response) =>
         response.ok
           ? (response.json() as Promise<{

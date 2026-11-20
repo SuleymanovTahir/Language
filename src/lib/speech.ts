@@ -223,6 +223,7 @@ export function speakText(
     return speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
   void fetch(endpoint, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider: settings.provider, text, voice, rate }),
   })

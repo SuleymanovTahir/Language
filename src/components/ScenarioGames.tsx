@@ -590,10 +590,11 @@ type Props = {
     },
   ) => void;
   onSkip: (card: VocabCard) => void;
-  onComplete: (totalRounds?: number) => void;
+  onComplete: (summary?: { score: number; total: number; timeLabel?: string } | number) => void;
+  onNextGame?: () => void;
 };
 
-export function ScenarioGame({ gameId, module, onExit, onAnswer, onSkip, onComplete }: Props) {
+export function ScenarioGame({ gameId, module, onExit, onAnswer, onSkip, onComplete, onNextGame }: Props) {
   const initial = useMemo(() => initialScenario(gameId, module), [gameId, module.id]);
   const initialTasks = useMemo(
     () =>
@@ -647,6 +648,14 @@ export function ScenarioGame({ gameId, module, onExit, onAnswer, onSkip, onCompl
     (item) => (attempts.current[item.id]?.count ?? 0) > 1,
   ).length;
 
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (done) return;
+    const timer = window.setInterval(() => setElapsed((v) => v + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [done]);
+  const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+
   useEffect(() => {
     if (!done || historySaved.current) return;
     historySaved.current = true;
@@ -668,8 +677,12 @@ export function ScenarioGame({ gameId, module, onExit, onAnswer, onSkip, onCompl
         },
       ]),
     );
-    completionRef.current(initialTasks.length);
-  }, [done, gameId, initial.variantId, initialTasks, module.id]);
+    completionRef.current({
+      score: firstTryCorrect,
+      total: initialTasks.length,
+      timeLabel,
+    });
+  }, [done, firstTryCorrect, gameId, initial.variantId, initialTasks, module.id, timeLabel]);
 
   const resetForNext = () => {
     const nextIndex = index + 1;
@@ -763,8 +776,13 @@ export function ScenarioGame({ gameId, module, onExit, onAnswer, onSkip, onCompl
             {initialTasks.length} заданий · повторов: {repeatedCount} · без ответа:{" "}
             {skipped.current.size}. Ошибки первой попытки остались в результате.
           </p>
+          {onNextGame && (
+            <button className="secondary-button" onClick={onNextGame}>
+              Следующая игра →
+            </button>
+          )}
           <button className="primary-button" onClick={onExit}>
-            Вернуться к играм
+            К играм
           </button>
         </div>
       </div>

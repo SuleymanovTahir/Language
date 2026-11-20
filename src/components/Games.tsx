@@ -2664,14 +2664,20 @@ type RecognitionLike = {
   stop: () => void;
 };
 
-function useCompletionSignal(completed: boolean, onComplete: () => void) {
+function useCompletionSignal(
+  completed: boolean,
+  onComplete: (summary?: { score: number; total: number; timeLabel?: string }) => void,
+  summary?: { score: number; total: number; timeLabel?: string },
+) {
   const callback = useRef(onComplete);
   const fired = useRef(false);
+  const summaryRef = useRef(summary);
+  summaryRef.current = summary;
   callback.current = onComplete;
   useEffect(() => {
     if (completed && !fired.current) {
       fired.current = true;
-      callback.current();
+      callback.current(summaryRef.current);
     }
   }, [completed]);
 }
@@ -2696,6 +2702,7 @@ export function GameSession({
   onSkip = () => undefined,
   onComplete = () => undefined,
   onRestart,
+  onNextGame,
 }: {
   gameId: GameId;
   module: VocabModule;
@@ -2710,13 +2717,33 @@ export function GameSession({
   onSkip?: (card: VocabCard) => void;
   onComplete?: (totalRounds?: number) => void;
   onRestart?: () => void | boolean | Promise<void | boolean>;
+  onNextGame?: () => void;
 }) {
   const [runKey, setRunKey] = useState(0);
+  const [resultPill, setResultPill] = useState<{
+    score: number;
+    total: number;
+    timeLabel?: string;
+  } | null>(null);
+
   const restart = async () => {
+    setResultPill(null);
     const allowed = await onRestart?.();
     if (allowed === false) return;
     setRunKey((current) => current + 1);
   };
+
+  const handleComplete = (
+    summaryOrRounds?: { score: number; total: number; timeLabel?: string } | number,
+  ) => {
+    if (summaryOrRounds && typeof summaryOrRounds === "object") {
+      setResultPill(summaryOrRounds);
+      onComplete?.(summaryOrRounds.total);
+    } else {
+      onComplete?.(typeof summaryOrRounds === "number" ? summaryOrRounds : undefined);
+    }
+  };
+
   return (
     <>
       <ActivityMediaPanel module={module} />
@@ -2728,7 +2755,8 @@ export function GameSession({
           onExit={onExit}
           onAnswer={onAnswer}
           onSkip={onSkip}
-          onComplete={onComplete}
+          onComplete={handleComplete}
+          onNextGame={onNextGame}
         />
       ) : gameId === "pairs" || gameId === "datajoin" ? (
         <PairGame
@@ -2738,7 +2766,8 @@ export function GameSession({
           onExit={onExit}
           onRestart={restart}
           onAnswer={onAnswer}
-          onComplete={onComplete}
+          onComplete={handleComplete}
+          onNextGame={onNextGame}
         />
       ) : gameId === "articles" ? (
         <ArticleSortGame
@@ -2747,7 +2776,8 @@ export function GameSession({
           onExit={onExit}
           onRestart={restart}
           onAnswer={onAnswer}
-          onComplete={onComplete}
+          onComplete={handleComplete}
+          onNextGame={onNextGame}
         />
       ) : (
         <QuestionGame
@@ -2759,8 +2789,55 @@ export function GameSession({
           onRestart={restart}
           onAnswer={onAnswer}
           onSkip={onSkip}
-          onComplete={onComplete}
+          onComplete={handleComplete}
+          onNextGame={onNextGame}
         />
+      )}
+      {resultPill && (
+        <div className="game-result-floating-pill" role="status" aria-live="polite">
+          <div className="game-result-pill-info">
+            <span
+              className={`game-result-pill-badge ${resultPill.score === resultPill.total ? "star" : ""}`}
+            >
+              {resultPill.score === resultPill.total ? "★" : "✓"}
+            </span>
+            <div className="game-result-pill-details">
+              <span className="game-result-pill-title">
+                {resultPill.score} из {resultPill.total} правильно
+              </span>
+              {resultPill.timeLabel && (
+                <span className="game-result-pill-subtitle">Время: {resultPill.timeLabel}</span>
+              )}
+            </div>
+          </div>
+          <div className="game-result-pill-actions">
+            <button type="button" className="btn-restart" onClick={restart}>
+              Сыграть заново
+            </button>
+            {onNextGame && (
+              <button
+                type="button"
+                className="btn-next"
+                onClick={() => {
+                  setResultPill(null);
+                  onNextGame();
+                }}
+              >
+                Следующая игра →
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-exit"
+              onClick={() => {
+                setResultPill(null);
+                onExit();
+              }}
+            >
+              К играм
+            </button>
+          </div>
+        </div>
       )}
     </>
   );
@@ -2869,12 +2946,14 @@ function ArticleSortGame({
   onRestart,
   onAnswer,
   onComplete,
+  onNextGame,
 }: {
   module: VocabModule;
   onExit: () => void;
   onRestart: () => void;
   onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void;
-  onComplete: () => void;
+  onComplete: (summary?: { score: number; total: number; timeLabel?: string }) => void;
+  onNextGame?: () => void;
 }) {
   const cards = useMemo(
     () => shuffle(module.cards.filter((card) => card.article)),
@@ -2887,8 +2966,10 @@ function ArticleSortGame({
   const [submitted, setSubmitted] = useState(false);
   const [reveal, setReveal] = useState(0);
   const [completed, setCompleted] = useState(false);
-  useCompletionSignal(completed, onComplete);
   const [elapsed, setElapsed] = useState(0);
+  const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+  const score = cards.filter((card) => placements[card.id] === card.article).length;
+  useCompletionSignal(completed, onComplete, { score, total: cards.length, timeLabel });
   const dragId = useRef<string | null>(null);
   useEffect(() => {
     if (submitted) return;
@@ -2928,8 +3009,6 @@ function ArticleSortGame({
     });
     setSelected(cardId);
   };
-  const score = cards.filter((card) => placements[card.id] === card.article).length;
-  const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
   const categories = ["der", "die", "das"] as const;
   if (completed)
     return (
@@ -2954,10 +3033,15 @@ function ArticleSortGame({
           </h1>
           <p>Время: {timeLabel} · результат добавлен в прогресс.</p>
           <button className="primary-button" onClick={onRestart}>
-            Пройти ещё раз
+            Сыграть заново
           </button>
+          {onNextGame && (
+            <button className="secondary-button" onClick={onNextGame}>
+              Следующая игра →
+            </button>
+          )}
           <button className="secondary-button" onClick={onExit}>
-            Вернуться к играм
+            К играм
           </button>
         </div>
       </div>
@@ -3096,13 +3180,15 @@ function PairGame({
   onRestart,
   onAnswer,
   onComplete,
+  onNextGame,
 }: {
   gameId: "pairs" | "datajoin";
   module: VocabModule;
   onExit: () => void;
   onRestart: () => void;
   onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void;
-  onComplete: () => void;
+  onComplete: (summary?: { score: number; total: number; timeLabel?: string }) => void;
+  onNextGame?: () => void;
 }) {
   const cards = useMemo(() => {
     const unique = new Map<string, VocabCard>();
@@ -3147,10 +3233,10 @@ function PairGame({
   const [pairSize, setPairSize] = useState({ width: 1, height: 1 });
   const group = useMemo(() => cards.slice(groupIndex, groupIndex + 5), [cards, groupIndex]);
   const done = showFinalResult;
-  useCompletionSignal(done, onComplete);
+  const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+  useCompletionSignal(done, onComplete, { score, total: cards.length, timeLabel });
   const leftGroup = useMemo(() => shuffle(group), [cards, groupIndex]);
   const rightGroup = useMemo(() => shuffle(group), [cards, groupIndex]);
-  const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
   useEffect(() => {
     if (done || phase !== "intro") return;
     let step = 0;
@@ -3186,8 +3272,10 @@ function PairGame({
           setMatchedPairs(reviewed);
           setReviewHistory((current) => ({ ...current, [groupIndex]: reviewed }));
           setCheckedCount(reviewed.length);
-          if (groupIndex + group.length >= cards.length) setPhase("review");
-          else {
+          if (groupIndex + group.length >= cards.length) {
+            setPhase("review");
+            window.setTimeout(() => setShowFinalResult(true), 900);
+          } else {
             const nextIndex = groupIndex + group.length;
             setFurthestRoundIndex((value) => Math.max(value, nextIndex));
             setGroupIndex(nextIndex);
@@ -3331,10 +3419,15 @@ function PairGame({
             ← Посмотреть ответы
           </button>
           <button className="primary-button" onClick={onRestart}>
-            Пройти ещё раз · новый порядок
+            Сыграть заново
           </button>
+          {onNextGame && (
+            <button className="secondary-button" onClick={onNextGame}>
+              Следующая игра →
+            </button>
+          )}
           <button className="secondary-button" onClick={onExit}>
-            Вернуться к играм
+            К играм
           </button>
         </div>
       ) : (
@@ -3541,6 +3634,7 @@ function QuestionGame({
   onAnswer,
   onSkip,
   onComplete,
+  onNextGame,
 }: {
   gameId: GameId;
   module: VocabModule;
@@ -3554,7 +3648,8 @@ function QuestionGame({
     telemetry?: AnswerTelemetry,
   ) => void;
   onSkip: (card: VocabCard) => void;
-  onComplete: () => void;
+  onComplete: (summary?: { score: number; total: number; timeLabel?: string }) => void;
+  onNextGame?: () => void;
 }) {
   const eligible = module.cards.filter((card) =>
     gameId === "picture"
@@ -3631,7 +3726,14 @@ function QuestionGame({
   const roundStartedAt = useRef(Date.now());
   const card = wheelCard ?? roundQueue[index] ?? module.cards[0];
   const done = index >= roundQueue.length;
-  useCompletionSignal(done, onComplete);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (done) return;
+    const timer = window.setInterval(() => setElapsed((v) => v + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [done]);
+  const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+  useCompletionSignal(done, onComplete, { score, total: rounds.length, timeLabel });
   useEffect(() => {
     if (!done || !rounds.length || historySaved.current) return;
     historySaved.current = true;
@@ -3877,10 +3979,15 @@ function QuestionGame({
             {retryCount} · без ответа: {skippedCount}. Результат первой попытки сохранён отдельно.
           </p>
           <button className="primary-button" onClick={onRestart}>
-            Пройти ещё раз · новый порядок
+            Сыграть заново
           </button>
+          {onNextGame && (
+            <button className="secondary-button" onClick={onNextGame}>
+              Следующая игра →
+            </button>
+          )}
           <button className="secondary-button" onClick={onExit}>
-            Вернуться к играм
+            К играм
           </button>
         </div>
       </div>
