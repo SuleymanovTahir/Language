@@ -1484,6 +1484,7 @@ function WorkspaceApp({
     }
     if (guestMode && !(await claimGuestActivity())) {
       window.history.replaceState(window.history.state, "", "#/games");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
       onGuestGate?.();
       return;
     }
@@ -1539,6 +1540,7 @@ function WorkspaceApp({
         ? window.history.state.linguaPlayReturnHash
         : "#/games";
     window.history.replaceState(null, "", returnHash);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
     setScreen(screenFromHash());
   };
 
@@ -2952,6 +2954,7 @@ function AppContent() {
                 window.location.hash.includes("activity=")
               ) {
                 window.history.replaceState(null, "", "#/games");
+                window.dispatchEvent(new HashChangeEvent("hashchange"));
               }
               setGuestPrompt(false);
               setAuthOpen(false);
