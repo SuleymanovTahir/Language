@@ -97,6 +97,10 @@ function errText(error: unknown) {
   return error instanceof Error ? error.message : "Не удалось выполнить действие.";
 }
 
+function displayLogin(val: string) {
+  return val.endsWith("@clickling.local") ? val.replace("@clickling.local", "") : val;
+}
+
 function CreateUserModal({
   currentUserRole,
   onClose,
@@ -106,6 +110,7 @@ function CreateUserModal({
   onClose: () => void;
   onCreated: (message: string) => void;
 }) {
+  const isOwner = currentUserRole === "owner";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -127,7 +132,19 @@ function CreateUserModal({
       setError("Имя должно содержать не менее 2 символов.");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    const hasAt = trimmedEmail.includes("@");
+    if (!hasAt) {
+      if (!isOwner) {
+        setError("Только владелец сайта может создавать пользователей с логином без @.");
+        return;
+      }
+      if (!/^[a-zA-Z0-9._-]{2,50}$/.test(trimmedEmail)) {
+        setError(
+          "Логин без @ должен состоять из латинских букв, цифр, точек или дефисов (от 2 до 50 символов).",
+        );
+        return;
+      }
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       setError("Укажите корректный email адрес (логин).");
       return;
     }
@@ -192,14 +209,16 @@ function CreateUserModal({
             />
           </label>
           <label className="field-label">
-            Логин · Email
+            {isOwner ? "Логин или Email" : "Логин · Email"}
             <input
-              type="email"
+              type={isOwner ? "text" : "email"}
               required
               autoComplete="off"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="user@example.com"
+              placeholder={
+                isOwner ? "user@example.com или логин (например, alex)" : "user@example.com"
+              }
               disabled={working}
             />
           </label>
@@ -574,8 +593,9 @@ function AdminUserCard({
   onError: (message: string) => void;
   onEnergyUpdated?: (energy: number, cap: number) => void;
 }) {
+  const isOwner = currentUserRole === "owner";
   const [name, setName] = useState(user.name);
-  const [email, setEmail] = useState(user.email);
+  const [email, setEmail] = useState(displayLogin(user.email));
   const [password, setPassword] = useState("");
   const [reason, setReason] = useState(user.ban_reason ?? "");
   const [startsAt, setStartsAt] = useState(dateInput(user.pro_starts_at));
@@ -657,7 +677,7 @@ function AdminUserCard({
         </span>
         <span className="admin-user-heading">
           <strong>{user.name}</strong>
-          <small>{user.email}</small>
+          <small>{displayLogin(user.email)}</small>
         </span>
         <span className={`admin-user-badge ${user.banned ? "ban" : user.is_pro ? "pro" : ""}`}>
           {status}
@@ -837,17 +857,22 @@ function AdminUserCard({
               <input value={name} onChange={(event) => setName(event.target.value)} />
             </label>
             <label className="field-label">
-              Логин · email
+              {isOwner ? "Логин или Email" : "Логин · email"}
               <input
-                type="email"
+                type={isOwner ? "text" : "email"}
                 autoComplete="off"
                 value={email}
+                placeholder={
+                  isOwner ? "user@example.com или логин (например, alex)" : "user@example.com"
+                }
                 onChange={(event) => setEmail(event.target.value)}
               />
             </label>
             <button
               className="secondary-button compact"
-              disabled={working || (name.trim() === user.name && email.trim() === user.email)}
+              disabled={
+                working || (name.trim() === user.name && email.trim() === displayLogin(user.email))
+              }
               onClick={() =>
                 void mutate("update-account", { name, email }, "Имя и email обновлены.")
               }

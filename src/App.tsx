@@ -2836,16 +2836,19 @@ function AppContent() {
     }
     setBusy(true);
     setError("");
+    const normalizedEmail = credentials.email.includes("@")
+      ? credentials.email.trim().toLowerCase()
+      : `${credentials.email.trim().toLowerCase()}@clickling.local`;
     try {
       const result =
         credentials.mode === "sign-in"
           ? await authClient.signIn.email({
-              email: credentials.email,
+              email: normalizedEmail,
               password: credentials.password,
             })
           : await authClient.signUp.email({
               name: credentials.name,
-              email: credentials.email,
+              email: normalizedEmail,
               password: credentials.password,
             });
       if (result.error) throw new Error(result.error.message);

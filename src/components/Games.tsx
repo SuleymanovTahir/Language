@@ -10,6 +10,7 @@ import { AudioQuizBuilder, AudioQuizSession, type AudioQuiz } from "./AudioQuiz"
 import { getActiveProfileId, readProfileItem, writeProfileItem } from "../lib/profileStorage";
 import { readSpeechSettings } from "../lib/speech";
 import { ScenarioGame, type ScenarioGameId } from "./ScenarioGames";
+import { SentenceOrderGame } from "./SentenceOrderGame";
 
 import {
   GAME_LIST,
@@ -2871,6 +2872,18 @@ export function GameSession({
           muted={muted}
           onToggleMute={toggleMute}
         />
+      ) : gameId === "sentenceorder" ? (
+        <SentenceOrderGame
+          key={runKey}
+          module={module}
+          onExit={onExit}
+          onRestart={restart}
+          onAnswer={onAnswer}
+          onComplete={handleComplete}
+          onNextGame={onNextGame}
+          muted={muted}
+          onToggleMute={toggleMute}
+        />
       ) : (
         <QuestionGame
           key={runKey}
@@ -3817,6 +3830,8 @@ function QuestionGame({
   const [chosen, setChosen] = useState<string[]>([]);
   const [letters, setLetters] = useState<string[]>([]);
   const [lives, setLives] = useState(0);
+  const [hangmanInput, setHangmanInput] = useState("");
+  const [hangmanDirection, setHangmanDirection] = useState<"to-target" | "to-native">("to-target");
   const [spun, setSpun] = useState(false);
   const [wheelCard, setWheelCard] = useState<VocabCard | null>(null);
   const [wheelSelectedIndex, setWheelSelectedIndex] = useState<number | null>(null);
@@ -3953,6 +3968,7 @@ function QuestionGame({
     setChosen([]);
     setLetters([]);
     setLives(0);
+    setHangmanInput("");
     setSpun(false);
     setWheelCard(null);
     setWheelSelectedIndex(null);
@@ -4002,6 +4018,7 @@ function QuestionGame({
     setChosen([]);
     setLetters([]);
     setLives(0);
+    setHangmanInput("");
     setSpun(false);
     setWheelCard(null);
     setWheelSpinning(false);
@@ -4018,6 +4035,22 @@ function QuestionGame({
       .toLocaleLowerCase()
       .replace(/[^\p{L}]/gu, "") ?? "";
   const alphabet = [...new Set([...[..."abcdefghijklmnopqrstuvwxyz"], ...[...targetWord]])];
+  const russianHangmanWord = useMemo(() => {
+    if (!card?.translation) return "";
+    const cleaned = card.translation.replace(/\([^)]*\)/g, "").trim();
+    const firstVariant = cleaned.split(/[\/,;]/)[0]?.trim() || cleaned;
+    return firstVariant.normalize("NFC").toLocaleLowerCase().replace(/[^\p{L}]/gu, "");
+  }, [card?.translation]);
+  const hangmanTargetWord =
+    gameId === "hangman" && hangmanDirection === "to-native"
+      ? russianHangmanWord
+      : targetWord;
+  const hangmanAlphabet = useMemo(() => {
+    if (hangmanDirection === "to-native") {
+      return [...new Set([...[..."абвгдеёжзийклмнопрстуфхцчшщъыьэюя"], ...[...hangmanTargetWord]])];
+    }
+    return alphabet;
+  }, [hangmanDirection, hangmanTargetWord, alphabet]);
   const scrambled = useMemo(() => shuffle([...targetWord]), [card.id, targetWord]);
   const nounTiles = useMemo(
     () =>
@@ -4486,27 +4519,123 @@ function QuestionGame({
   else if (gameId === "hangman")
     content = (
       <>
-        <p className="question-kicker">
-          Перевод · откройте слово на{" "}
-          {languageForms[module.languageCode]?.locative ?? module.languageName.toLocaleLowerCase()}{" "}
-          по буквам · ошибок: {lives}/6
-        </p>
-        <h1>{card.translation}</h1>
+        <div className="hangman-header-row">
+          <p className="question-kicker">
+            {hangmanDirection === "to-target"
+              ? `Перевод · откройте слово на ${languageForms[module.languageCode]?.locative ?? module.languageName.toLocaleLowerCase()} по буквам`
+              : "Перевод · откройте слово на русском по буквам"}{" "}
+            · ошибок: {lives}/6
+          </p>
+          <div className="hangman-direction-toggle">
+            <button
+              type="button"
+              className={`hangman-dir-pill ${hangmanDirection === "to-target" ? "active" : ""}`}
+              onClick={() => {
+                if (hangmanDirection !== "to-target") {
+                  setHangmanDirection("to-target");
+                  setLetters([]);
+                  setLives(0);
+                  setHangmanInput("");
+                }
+              }}
+            >
+              🇷🇺 → {module.languageCode.toUpperCase()}
+            </button>
+            <button
+              type="button"
+              className={`hangman-dir-pill ${hangmanDirection === "to-native" ? "active" : ""}`}
+              onClick={() => {
+                if (hangmanDirection !== "to-native") {
+                  setHangmanDirection("to-native");
+                  setLetters([]);
+                  setLives(0);
+                  setHangmanInput("");
+                }
+              }}
+            >
+              {module.languageCode.toUpperCase()} → 🇷🇺
+            </button>
+          </div>
+        </div>
+
+        {hangmanDirection === "to-target" ? (
+          <h1>{card.translation}</h1>
+        ) : (
+          <SpeakablePrompt text={card.word} languageCode={module.languageCode} />
+        )}
+
         <div className="letter-answer">
-          {[...targetWord].map((letter, i) => (
-            <span key={`${letter}-${i}`}>{letters.includes(letter) ? letter : "_"}</span>
+          {[...hangmanTargetWord].map((letter, i) => (
+            <span key={`${letter}-${i}`}>
+              {letters.includes(letter) || feedback ? letter : "_"}
+            </span>
           ))}
         </div>
+
+        {/* Input field to directly type letters or whole words via keyboard */}
+        <form
+          className="hangman-input-bar"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const val = hangmanInput.trim().toLocaleLowerCase().normalize("NFC");
+            if (!val || feedback) return;
+            if (val.length === 1) {
+              if (!letters.includes(val)) {
+                const next = [...letters, val];
+                setLetters(next);
+                if ([...hangmanTargetWord].every((char) => next.includes(char))) {
+                  finishAnswer(true);
+                } else if (!hangmanTargetWord.includes(val)) {
+                  const missed = lives + 1;
+                  setLives(missed);
+                  if (missed >= 6) finishAnswer(false);
+                }
+              }
+            } else {
+              const cleanVal = val.replace(/[^\p{L}]/gu, "");
+              if (norm(cleanVal) === norm(hangmanTargetWord)) {
+                setLetters([...new Set([...letters, ...hangmanTargetWord])]);
+                finishAnswer(true);
+              } else {
+                const missed = lives + 1;
+                setLives(missed);
+                if (missed >= 6) finishAnswer(false);
+              }
+            }
+            setHangmanInput("");
+          }}
+        >
+          <input
+            type="text"
+            autoFocus
+            disabled={Boolean(feedback)}
+            value={hangmanInput}
+            onChange={(e) => setHangmanInput(e.target.value)}
+            placeholder={
+              hangmanDirection === "to-native"
+                ? "Введите букву или слово на русском..."
+                : `Введите букву или слово (${module.languageCode.toUpperCase()})...`
+            }
+          />
+          <button
+            type="submit"
+            className="primary-button compact"
+            disabled={!hangmanInput.trim() || Boolean(feedback)}
+          >
+            Ввести
+          </button>
+        </form>
+
         <div className="alphabet-grid">
-          {alphabet.map((letter) => (
+          {hangmanAlphabet.map((letter) => (
             <button
               key={letter}
               disabled={letters.includes(letter) || Boolean(feedback)}
               onClick={() => {
                 const next = [...letters, letter];
                 setLetters(next);
-                if ([...targetWord].every((char) => next.includes(char))) finishAnswer(true);
-                else if (!targetWord.includes(letter)) {
+                if ([...hangmanTargetWord].every((char) => next.includes(char))) finishAnswer(true);
+                else if (!hangmanTargetWord.includes(letter)) {
                   const missed = lives + 1;
                   setLives(missed);
                   if (missed >= 6) finishAnswer(false);
@@ -4854,7 +4983,9 @@ function QuestionGame({
                           : token,
                       )
                       .join(" ")
-                  : gameId === "finalsound"
+                  : gameId === "hangman"
+                    ? hangmanTargetWord
+                    : gameId === "finalsound"
                     ? "конечный согласный оглушается"
                     : gameId === "articles"
                       ? card.article

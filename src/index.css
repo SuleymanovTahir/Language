@@ -19726,3 +19726,441 @@ body {
 .catalog-word-preview strong {
   color: var(--click-ink);
 }
+
+/* ====================================================================== */
+/* Hangman Game Direct Input & Direction Switcher                         */
+/* ====================================================================== */
+.hangman-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto 8px;
+}
+
+.hangman-direction-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 3px;
+  gap: 4px;
+  border: 1px solid #e2e8f0;
+}
+
+.hangman-dir-pill {
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.15s ease;
+}
+
+.hangman-dir-pill.active {
+  background: #2563eb;
+  color: white;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.3);
+}
+
+.hangman-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  width: 100%;
+  max-width: 440px;
+  margin: 16px auto 12px;
+}
+
+.hangman-input-bar input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 2px solid #cbd5e1;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  background: white;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.hangman-input-bar input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+/* ====================================================================== */
+/* Sentence Builder Game (SentenceOrderGame)                               */
+/* ====================================================================== */
+.sentence-builder-game {
+  max-width: 840px;
+  margin: 0 auto;
+}
+
+.sentence-diff-tabs {
+  display: inline-flex;
+  align-items: center;
+  background: #e2e8f0;
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.diff-tab {
+  border: none;
+  background: transparent;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #475569;
+  transition: all 0.15s ease;
+}
+
+.diff-tab.active {
+  background: #2563eb;
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.sentence-builder-card {
+  background: white;
+  border-radius: 20px;
+  padding: 24px 28px;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+  margin-top: 16px;
+  border: 1px solid #e2e8f0;
+}
+
+.sentence-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.distractor-ratio-badge {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.sentence-prompt-container {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.sentence-lang-flag {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.sentence-russian-prompt {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sentence-assembly-area {
+  min-height: 96px;
+  background: #f1f5f9;
+  border: 2px dashed #94a3b8;
+  border-radius: 16px;
+  padding: 16px;
+  transition: all 0.2s ease;
+  margin-bottom: 20px;
+}
+
+.sentence-assembly-area.correct {
+  background: #f0fdf4;
+  border-color: #4ade80;
+  border-style: solid;
+}
+
+.sentence-assembly-area.wrong {
+  background: #fef2f2;
+  border-color: #f87171;
+  border-style: solid;
+}
+
+.assembly-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+
+.assembly-placeholder {
+  color: #94a3b8;
+  font-size: 14px;
+  text-align: center;
+  margin: 16px 0;
+  font-style: italic;
+}
+
+.assembly-tiles-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.word-tile {
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  user-select: none;
+}
+
+.word-tile.bank {
+  background: white;
+  border-color: #cbd5e1;
+  color: #1e293b;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.word-tile.bank:hover {
+  transform: translateY(-2px);
+  border-color: #2563eb;
+  color: #2563eb;
+  box-shadow: 0 4px 8px rgba(37, 99, 235, 0.15);
+}
+
+.word-tile.placed {
+  background: #2563eb;
+  color: white;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.word-tile.placed.correct {
+  background: #16a34a;
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35);
+}
+
+.word-tile.placed.wrong-distractor {
+  background: #dc2626;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
+}
+
+.word-tile-num {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.word-tile-text {
+  letter-spacing: 0.2px;
+}
+
+.word-tile-remove {
+  font-size: 14px;
+  opacity: 0.8;
+  margin-left: 2px;
+}
+
+.sentence-word-bank {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 20px;
+}
+
+.bank-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+
+.bank-clear-btn {
+  background: none;
+  border: none;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.bank-clear-btn:hover {
+  text-decoration: underline;
+}
+
+.bank-tiles-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.sentence-action-buttons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.sentence-feedback-panel {
+  border-radius: 16px;
+  padding: 18px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.sentence-feedback-panel.correct {
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.sentence-feedback-panel.wrong {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.feedback-message {
+  flex: 1;
+  min-width: 260px;
+}
+
+.correct-title {
+  font-size: 16px;
+  font-weight: 700;
+  display: block;
+}
+
+.wrong-title {
+  font-size: 16px;
+  font-weight: 700;
+  display: block;
+}
+
+.wrong-explanation {
+  margin: 6px 0 4px;
+  font-size: 15px;
+}
+
+.distractor-warning {
+  margin: 4px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b91c1c;
+}
+
+.grammar-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #334155;
+}
+
+.feedback-pronounce-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.feedback-german-text {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.feedback-audio-btn {
+  background: white;
+  border: 1px solid #86efac;
+  color: #15803d;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.feedback-audio-btn:hover {
+  background: #f0fdf4;
+}
+
+.feedback-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.sentence-hint-card {
+  margin-top: 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  padding: 10px 16px;
+  color: #1e40af;
+  font-size: 13px;
+}
+
+.sentence-diff-pills {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.diff-pill {
+  border: 1px solid #cbd5e1;
+  background: white;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.diff-pill:hover,
+.diff-pill.active {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}

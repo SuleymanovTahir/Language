@@ -913,8 +913,8 @@ export function validateGame(id: GameId, module: VocabModule) {
     return "Добавьте минимум 2 предложения с пропуском и разными правильными ответами.";
   if (id === "picture" && cards.some((card) => !card.image?.id))
     return "Добавьте изображение к каждому выбранному слову в редакторе игры.";
-  if (id === "sentenceorder" && !cards.some((card) => card.exampleSentence?.trim()))
-    return "Добавьте примеры предложений к карточкам в редакторе модуля.";
+  if (id === "sentenceorder" && cards.length < 3)
+    return "Для игры нужно хотя бы 3 слова в наборе.";
   if (!cards.length) return "Сначала выберите карточки для игры.";
   return null;
 }

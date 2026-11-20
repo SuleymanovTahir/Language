@@ -142,14 +142,35 @@ export async function POST(request: Request) {
     if ("response" in gate) return gate.response;
 
     const name = text(body.name, 80);
-    const email = text(body.email, 254).toLowerCase();
+    let email = text(body.email, 254).toLowerCase();
     const password = typeof body.password === "string" ? body.password : "";
     const role = text(body.role, 20) || "student";
+    const isOwner = gate.actor.role === "owner";
 
     if (name.length < 2)
       return json({ error: "Имя должно содержать не менее 2 символов." }, 400);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+
+    const hasAt = email.includes("@");
+    if (!hasAt) {
+      if (!isOwner) {
+        return json(
+          { error: "Только владелец сайта может создавать пользователей с логином без @." },
+          403,
+        );
+      }
+      if (!/^[a-zA-Z0-9._-]{2,50}$/.test(email)) {
+        return json(
+          {
+            error:
+              "Логин без @ должен состоять из латинских букв, цифр, точек или дефисов (от 2 до 50 символов).",
+          },
+          400,
+        );
+      }
+      email = `${email}@clickling.local`;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: "Укажите корректный email (логин)." }, 400);
+    }
     if (password.length < 8 || password.length > 128)
       return json({ error: "Пароль должен содержать от 8 до 128 символов." }, 400);
     if (!["admin", "student"].includes(role))
@@ -596,9 +617,33 @@ export async function PATCH(request: Request) {
     } else await authApi.unbanUser({ body: { userId }, headers: request.headers });
   } else if (action === "update-account") {
     const name = text(body.name, 80);
-    const email = text(body.email, 254).toLowerCase();
-    if (name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      return json({ error: "Укажите корректное имя и адрес почты (логин)." }, 400);
+    let email = text(body.email, 254).toLowerCase();
+    const isOwner = gate.actor.role === "owner";
+
+    if (name.length < 2)
+      return json({ error: "Имя должно содержать не менее 2 символов." }, 400);
+
+    const hasAt = email.includes("@");
+    if (!hasAt) {
+      if (!isOwner) {
+        return json(
+          { error: "Только владелец сайта может задавать логин без @." },
+          403,
+        );
+      }
+      if (!/^[a-zA-Z0-9._-]{2,50}$/.test(email)) {
+        return json(
+          {
+            error:
+              "Логин без @ должен состоять из латинских букв, цифр, точек или дефисов (от 2 до 50 символов).",
+          },
+          400,
+        );
+      }
+      email = `${email}@clickling.local`;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return json({ error: "Укажите корректный адрес почты (логин)." }, 400);
+    }
     const emailTaken = await pool.query(
       'SELECT id FROM "user" WHERE lower(email)=$1 AND id<>$2',
       [email, userId],
