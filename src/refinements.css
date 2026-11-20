@@ -1,0 +1,705 @@
+/* Shared route layout. Loaded after the legacy skins so all three maps obey
+   the same node geometry instead of inheriting incompatible grid experiments. */
+.learning-trail {
+  position: relative;
+  isolation: isolate;
+}
+.learning-trail > .learning-trail-line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  overflow: visible;
+  pointer-events: none;
+}
+.learning-trail-line path {
+  fill: none;
+  stroke: #d7e1f1;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.learning-trail::before,
+.course-page .path-step-list::before {
+  display: none;
+}
+.library-page {
+  scroll-margin-top: 90px;
+}
+.library-page .library-heading {
+  display: block;
+  min-height: 172px;
+  padding: 25px 205px 76px 26px;
+  color: var(--click-navy);
+  background: linear-gradient(110deg, #e9f1ff, #f5f8ff 70%, #e5eeff);
+}
+.library-page .library-heading :is(h1, p, .eyebrow) {
+  color: var(--click-navy);
+}
+.library-page .library-heading .eyebrow {
+  color: var(--click-blue);
+}
+.library-page .library-heading h1 {
+  margin: 8px 0;
+}
+.library-page .library-heading > div:first-of-type {
+  max-width: none;
+}
+.library-page .library-heading-actions {
+  right: auto;
+  left: 26px;
+  bottom: 19px;
+  width: auto;
+}
+.library-page .library-heading-actions .secondary-button {
+  color: var(--click-blue);
+  background: white;
+  border: 1px solid #ccdaf0;
+  box-shadow: 0 3px 0 #ccdaf0;
+}
+.library-page-count {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  color: #65748e;
+  font-size: 12px;
+}
+.library-page-count span {
+  color: var(--click-blue);
+}
+.module-grid.library-path-map,
+.course-home .course-unit-list {
+  width: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0 !important;
+  margin: 24px auto 0;
+  padding: 0 0 24px;
+  min-height: 0;
+  overflow: visible;
+}
+.library-path-map .library-map-item,
+.library-path-map .library-map-item.starts-group {
+  width: 100%;
+  align-self: auto;
+  margin: 0;
+  padding: 0 0 42px;
+  transform: none;
+}
+.library-path-map .library-group-heading,
+.trail-level-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 26px;
+  padding: 17px 20px;
+  border-radius: 17px;
+  background: #2659bd;
+  color: white;
+  box-shadow: 0 5px 0 #1e4798;
+  scroll-margin-top: 90px;
+}
+.trail-level-heading {
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+.trail-level-heading span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.trail-level-heading strong {
+  flex: 1 1 200px;
+  font-size: 14px;
+}
+.trail-level-heading small {
+  color: #d9e6ff;
+  font-size: 12px;
+}
+.library-path-map .module-card-shell,
+.library-path-map .starts-group .module-card-shell,
+.course-home .course-unit-card,
+.course-home .course-unit-card:nth-child(n) {
+  width: 70%;
+  margin: 0 0 0 4%;
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+}
+.library-path-map .library-map-item:nth-of-type(4n + 2) .module-card-shell,
+.course-trail-stop:nth-of-type(4n + 2) .course-unit-card {
+  margin-left: 17%;
+}
+.library-path-map .library-map-item:nth-of-type(4n + 3) .module-card-shell,
+.course-trail-stop:nth-of-type(4n + 3) .course-unit-card {
+  margin-left: 29%;
+}
+.library-path-map .library-map-item:nth-of-type(4n) .module-card-shell,
+.course-trail-stop:nth-of-type(4n) .course-unit-card {
+  margin-left: 17%;
+}
+.library-path-map .module-card {
+  width: 100%;
+  min-height: 96px;
+  display: grid;
+  grid-template: auto / 76px minmax(0, 1fr);
+  gap: 14px;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: left;
+}
+.library-path-map .module-card .module-cover {
+  width: 70px;
+  height: 66px;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  border: 5px solid #f8f9fc;
+  border-radius: 50%;
+  box-shadow: none;
+  border-bottom: 6px solid #b7c9ed;
+}
+.library-path-map .module-cover span {
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 800;
+}
+.library-path-map .module-cover svg {
+  width: 20px;
+}
+.library-path-map .module-info {
+  min-width: 0;
+  padding: 14px 38px 14px 16px;
+  background: white;
+  border: 1px solid #e0e6ef;
+  border-radius: 17px;
+  box-shadow: 0 4px 14px rgb(18 37 76 / 4%);
+}
+.library-path-map .module-info h3 {
+  margin: 6px 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.library-path-map .module-info p {
+  font-size: 11px;
+}
+.library-path-map .module-menu-trigger {
+  top: 12px;
+  right: 7px;
+  opacity: 1;
+  background: #f4f7fc;
+}
+.library-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  margin: 10px 0 30px;
+  padding: 16px 0;
+  border-top: 1px solid #dfe6f0;
+}
+.library-pagination > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+}
+.library-pagination button {
+  min-width: 36px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid #dfe6f0;
+  border-radius: 11px;
+  background: white;
+  color: var(--click-blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+.library-pagination button[aria-current="page"] {
+  color: white;
+  background: var(--click-blue);
+  border-color: var(--click-blue);
+}
+.library-pagination button:disabled {
+  opacity: 0.4;
+}
+.course-trail-stop {
+  padding-bottom: 38px;
+}
+.course-home .course-unit-card .course-path-node,
+.course-home .course-unit-card.current .course-path-node {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 90px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.course-home .course-path-node .course-unit-number {
+  width: 70px;
+  height: 65px;
+  margin: 0;
+  border: 0;
+  border-bottom: 6px solid #8f99a9;
+  box-shadow: none;
+  animation: none;
+}
+.course-home .course-unit-card.current .course-unit-number {
+  border-bottom-color: #d88c00;
+  box-shadow: none;
+}
+.course-home .course-unit-card.complete .course-unit-number {
+  border-bottom-color: #174ca9;
+  box-shadow: none;
+}
+.course-home .course-unit-copy {
+  padding: 14px 16px;
+  border-bottom-width: 1px;
+  box-shadow: 0 4px 14px rgb(18 37 76 / 4%);
+}
+.course-home .course-unit-copy em {
+  white-space: normal;
+  font-size: 11px;
+}
+.course-home .course-unit-card:hover {
+  background: transparent;
+  box-shadow: none;
+}
+/* One trail across a chapter, never parallel independent module columns. */
+.course-page .chapter-modules {
+  display: block;
+  padding: 22px 20px;
+}
+.course-page .path-module-route,
+.course-page .path-module-route.complete,
+.course-page .path-module-route:hover {
+  width: 100%;
+  margin: 0 0 32px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.course-page .path-module-heading,
+.course-page .path-module-actions {
+  position: relative;
+  padding: 12px;
+  background: #f1f5fc;
+  border-radius: 15px;
+}
+.course-page .path-module-heading {
+  display: flex;
+  flex-wrap: wrap;
+}
+.course-page .path-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  margin: 28px 0 34px;
+}
+.course-page .path-step {
+  width: 73%;
+  margin-left: 3%;
+  padding: 14px;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  background: white;
+  border: 1px solid #e0e7f1;
+  border-radius: 18px;
+  box-shadow: 0 4px 14px rgb(18 37 76 / 4%);
+}
+.course-page .path-step:nth-child(4n + 2),
+.course-page .path-step:nth-child(4n) {
+  margin-left: 14%;
+}
+.course-page .path-step:nth-child(4n + 3) {
+  margin-left: 26%;
+}
+.course-page .path-step-mark {
+  width: 52px;
+  height: 48px;
+  border-radius: 50%;
+  background: #e9f0ff;
+  color: var(--click-blue);
+  box-shadow: none;
+  border: 0;
+  border-bottom: 5px solid #bdcfee;
+}
+.course-page .path-step:nth-child(3n + 2) .path-step-mark {
+  box-shadow: none;
+  border-bottom-color: #e9cb85;
+}
+.course-page .path-step:nth-child(3n) .path-step-mark {
+  box-shadow: none;
+  border-bottom-color: #b2dace;
+}
+.course-page .path-step.completed .path-step-mark {
+  box-shadow: none;
+  border-bottom-color: #21775f;
+}
+.course-page .path-step > button {
+  box-shadow: none;
+}
+.course-page .path-step-copy strong {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.course-page .path-step-edit {
+  grid-column: 2 / -1;
+}
+/* Explicit text and picker tracks prevent the mascot from squeezing the copy. */
+.games-page .page-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 290px);
+  gap: 24px;
+  min-height: 230px;
+  padding: 30px 175px 30px 30px;
+}
+.games-page .page-heading > div {
+  grid-column: 1;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+.games-page .page-heading h1 {
+  margin: 12px 0;
+}
+.games-page .page-heading p {
+  width: auto;
+  max-width: 48ch;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+.games-page .games-heading-mascot {
+  position: absolute;
+  width: 145px !important;
+  height: 160px !important;
+  top: 32px !important;
+  right: 15px !important;
+}
+.games-page .module-select-label {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  grid-column: 2;
+  margin: 0;
+  padding: 12px;
+  align-self: end;
+}
+.games-page .module-select-label select {
+  color: #203453;
+  background: white;
+  text-overflow: ellipsis;
+}
+/* A small, readable consent card, independent of the application sidebar. */
+.cookie-banner {
+  inset: auto 20px 20px auto;
+  width: min(520px, calc(100vw - 40px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 10px 40px #12254c20;
+}
+.cookie-banner > div {
+  flex: 1 0 100%;
+  min-width: 0;
+}
+.cookie-banner strong {
+  font-size: 14px;
+  line-height: 1.4;
+}
+.cookie-banner p {
+  margin: 6px 0 3px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.cookie-banner :is(.primary-button, .secondary-button) {
+  width: auto;
+  min-height: 37px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.cookie-banner .text-button {
+  display: block;
+  flex: 1;
+  min-width: 65px;
+  color: var(--click-blue);
+  text-align: left;
+  font-size: 11px;
+}
+/* The same menu works from desktop and mobile navigation. */
+.mobile-more-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #12254c52;
+  backdrop-filter: blur(5px);
+  pointer-events: auto;
+}
+.mobile-more-menu {
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 110px);
+  overflow-y: auto;
+  padding: 22px;
+  background: white;
+  color: var(--click-navy);
+  border: 1px solid #dfe6f0;
+  border-radius: 22px;
+  box-shadow: 0 20px 70px #12254c30;
+}
+.mobile-more-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  font-size: 20px;
+}
+.mobile-more-heading > button {
+  padding: 8px;
+  border-radius: 50%;
+  background: #f0f4fa;
+}
+.mobile-more-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.mobile-more-grid :is(a, button) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 70px;
+  padding: 14px;
+  color: var(--click-navy);
+  background: #f4f7fc;
+  border: 1px solid #e4eaf4;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  text-align: left;
+}
+.settings-account-entry {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 16px;
+  background: #edf3ff;
+  border: 1px solid #dce7fc;
+  border-radius: 16px;
+}
+.settings-account-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: var(--click-blue);
+  background: white;
+  border-radius: 50%;
+}
+.settings-account-entry > div {
+  flex: 1 1 200px;
+}
+.settings-account-entry p,
+.auth-method-note {
+  margin-top: 5px;
+  color: #65748e;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.settings-account-entry > button {
+  width: 100%;
+}
+.account-back-button {
+  margin-bottom: 22px;
+  color: var(--click-blue);
+  font-size: 13px;
+}
+@media (max-width: 1100px) {
+  .games-page .page-heading {
+    grid-template-columns: minmax(0, 1fr);
+    padding-right: 175px;
+  }
+  .games-page .module-select-label {
+    grid-column: 1;
+    max-width: 380px;
+  }
+}
+@media (max-width: 700px) {
+  .library-page .library-heading {
+    min-height: 180px;
+    padding: 20px 105px 68px 18px;
+  }
+  .library-page .library-heading-actions {
+    left: 18px;
+    bottom: 16px;
+  }
+  .library-path-map .module-card-shell,
+  .library-path-map .starts-group .module-card-shell,
+  .course-home .course-unit-card,
+  .course-home .course-unit-card:nth-child(n) {
+    width: 87%;
+    margin-left: 0;
+  }
+  .library-path-map .library-map-item:nth-of-type(4n + 2) .module-card-shell,
+  .library-path-map .library-map-item:nth-of-type(4n) .module-card-shell,
+  .course-trail-stop:nth-of-type(4n + 2) .course-unit-card,
+  .course-trail-stop:nth-of-type(4n) .course-unit-card {
+    margin-left: 6%;
+  }
+  .library-path-map .library-map-item:nth-of-type(4n + 3) .module-card-shell,
+  .course-trail-stop:nth-of-type(4n + 3) .course-unit-card {
+    margin-left: 12%;
+  }
+  .library-path-map .module-card,
+  .course-home .course-unit-card .course-path-node {
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 9px;
+  }
+  .library-path-map .module-card .module-cover,
+  .course-home .course-path-node .course-unit-number {
+    width: 52px;
+    height: 50px;
+    min-height: 50px;
+    border-width: 3px;
+    font-size: 14px;
+  }
+  .library-path-map .module-cover svg {
+    display: none;
+  }
+  .library-path-map .module-info {
+    padding: 12px 30px 12px 12px;
+  }
+  .library-path-map .module-info h3,
+  .course-home .course-unit-copy strong {
+    font-size: 13px;
+  }
+  .library-path-map .library-group-heading,
+  .trail-level-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+    padding: 14px 16px;
+  }
+  .trail-level-heading strong {
+    flex: auto;
+  }
+  .course-page .chapter-modules {
+    padding: 18px 12px;
+  }
+  .course-page .path-step {
+    width: 90%;
+    margin-left: 0;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+  .course-page .path-step:nth-child(4n + 2),
+  .course-page .path-step:nth-child(4n) {
+    margin-left: 5%;
+  }
+  .course-page .path-step:nth-child(4n + 3) {
+    margin-left: 10%;
+  }
+  .course-page .path-step-mark {
+    width: 40px;
+    height: 38px;
+  }
+  .course-page .path-step > button {
+    grid-column: 2;
+    width: fit-content;
+  }
+  .course-page .path-step-copy strong {
+    font-size: 12px;
+  }
+  .games-page .page-heading {
+    display: grid;
+    min-height: 240px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    padding: 22px 20px;
+  }
+  .games-page .page-heading > div {
+    padding-right: 64px;
+  }
+  .games-page .games-heading-mascot {
+    width: 80px !important;
+    height: 100px !important;
+    top: 22px !important;
+    right: 8px !important;
+  }
+  .games-page .module-select-label {
+    width: 100%;
+    max-width: none;
+    grid-column: 1;
+    padding: 10px;
+  }
+  .cookie-banner {
+    right: 10px;
+    bottom: calc(78px + env(safe-area-inset-bottom));
+    left: auto;
+    width: calc(100vw - 20px);
+    gap: 8px;
+    padding: 14px;
+  }
+  .cookie-banner .text-button {
+    flex-basis: 100%;
+  }
+  .cookie-banner :is(.primary-button, .secondary-button) {
+    flex: 1;
+    font-size: 11px;
+    min-height: 40px;
+  }
+  .mobile-more-backdrop {
+    align-items: flex-end;
+    padding: 12px 12px calc(80px + env(safe-area-inset-bottom));
+  }
+  .mobile-more-menu {
+    width: 100%;
+  }
+  .library-pagination {
+    gap: 6px;
+  }
+  .library-pagination button {
+    min-width: 30px;
+    padding-inline: 7px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .course-home .course-unit-number {
+    animation: none;
+    transition: none;
+  }
+}

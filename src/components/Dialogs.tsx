@@ -673,6 +673,7 @@ export function SettingsDialog({
   onSave,
   onClose,
   onReset,
+  onOpenAccount,
 }: {
   value: Preferences;
   speechSettings: SpeechSettings;
@@ -682,6 +683,7 @@ export function SettingsDialog({
   onSave: (next: Preferences, speech: SpeechSettings) => void;
   onClose: () => void;
   onReset: () => void;
+  onOpenAccount: () => void;
 }) {
   const language = languageCode.toLowerCase().split("-")[0];
   const fallbackProvider: SpeechProvider = configuredVoices.edge[language] ? "edge" : "device";
@@ -873,6 +875,22 @@ export function SettingsDialog({
         </button>
         <p className="eyebrow">CLICKLING · ВАШ РИТМ</p>
         <h2 id="settings-title">Настройки</h2>
+        <section className="settings-account-entry">
+          <span className="settings-account-icon">
+            <Icon name="settings" />
+          </span>
+          <div>
+            <strong>{authenticated ? "Личный кабинет" : "Ваш личный кабинет"}</strong>
+            <p>
+              {authenticated
+                ? "Имя, фото, почта и безопасность аккаунта."
+                : "Войдите или зарегистрируйтесь, чтобы сохранять прогресс на всех устройствах."}
+            </p>
+          </div>
+          <button className="primary-button compact" onClick={onOpenAccount}>
+            {authenticated ? "Открыть профиль" : "Войти / создать аккаунт"}
+          </button>
+        </section>
         <label className="field-label">
           Имя · необязательно
           <input

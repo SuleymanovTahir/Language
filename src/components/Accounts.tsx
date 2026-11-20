@@ -61,6 +61,7 @@ export function AuthScreen({
   onResetPassword,
   startView = "sign-in",
   guestRequired = false,
+  onBack,
 }: {
   error: string;
   busy: boolean;
@@ -70,6 +71,7 @@ export function AuthScreen({
   onResetPassword: (token: string, password: string) => Promise<boolean>;
   startView?: "sign-in" | "sign-up";
   guestRequired?: boolean;
+  onBack?: () => void;
 }) {
   const resetToken = authResetToken();
   const [view, setView] = useState<AuthView>(() => (resetToken ? "reset-password" : startView));
@@ -164,6 +166,11 @@ export function AuthScreen({
           <span className="account-showcase-orbit orbit-two">Hallo!</span>
         </section>
         <section className="account-card">
+          {onBack && (
+            <button className="account-back-button" onClick={onBack}>
+              ← Вернуться к обучению
+            </button>
+          )}
           <div className="account-logo">
             <span>L</span>
             <strong>ClickLing</strong>
@@ -201,6 +208,7 @@ export function AuthScreen({
                 Электронная почта
                 <input
                   type="email"
+                  placeholder="name@gmail.com"
                   autoComplete="email"
                   autoCapitalize="none"
                   spellCheck={false}
@@ -209,6 +217,12 @@ export function AuthScreen({
                   required
                 />
               </label>
+            )}
+            {(view === "sign-in" || view === "sign-up") && (
+              <p className="auth-method-note">
+                Подойдёт Gmail или любая другая почта. Вход кнопкой Google и по SMS пока не
+                подключён.
+              </p>
             )}
             {view !== "forgot-password" && (
               <label className="field-label">
@@ -347,15 +361,19 @@ export function AccountPanel({
   onClose,
   onSignOut,
   onAccountDeleted,
+  onUpdated,
 }: {
   user: AccountUser;
   openAdminOnMount?: boolean;
   onClose: () => void;
   onSignOut: () => void;
   onAccountDeleted: () => void;
+  onUpdated?: (update: Partial<AccountUser>) => void;
 }) {
   const [adminOpen, setAdminOpen] = useState(openAdminOnMount);
   const [name, setName] = useState(user.name);
+  const [email, setEmail] = useState(user.email);
+  const [savedName, setSavedName] = useState(user.name);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
@@ -384,9 +402,31 @@ export function AccountPanel({
     try {
       const result = await authClient.updateUser({ name: name.trim() });
       if (result.error) throw new Error(result.error.message);
+      setSavedName(name.trim());
+      onUpdated?.({ name: name.trim() });
       setNotice("Имя профиля обновлено.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось сохранить профиль.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const changeEmail = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await authClient.changeEmail({
+        newEmail: email.trim(),
+        callbackURL: `${window.location.origin}/`,
+      });
+      if (result.error) throw new Error(result.error.message);
+      setNotice(
+        "Если адрес доступен, на текущую почту отправлено подтверждение. После него подтвердите новый адрес. До завершения используйте прежний логин.",
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось изменить почту.");
     } finally {
       setBusy(false);
     }
@@ -426,6 +466,7 @@ export function AccountPanel({
         image: `/api/media?id=${encodeURIComponent(id)}&v=${Date.now()}`,
       });
       if (result.error) throw new Error(result.error.message);
+      onUpdated?.({ image: `/api/media?id=${encodeURIComponent(id)}&v=${Date.now()}` });
       setNotice("Фото профиля обновлено.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось загрузить фото.");
@@ -483,7 +524,7 @@ export function AccountPanel({
             <span>{user.name.slice(0, 1).toLocaleUpperCase()}</span>
           )}
           <div>
-            <h2 id="account-panel-title">{user.name}</h2>
+            <h2 id="account-panel-title">{savedName}</h2>
             <p className="account-email">{user.email}</p>
             <span className={`account-role ${role === "owner" || role === "admin" ? "admin" : ""}`}>
               {roleName(role)}
@@ -498,7 +539,7 @@ export function AccountPanel({
         <div className="account-profile-fields">
           <label className="field-label">
             Имя
-            <input value={name} onChange={(event) => setName(event.target.value)} />
+            <input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />
           </label>
           <label className="secondary-button compact account-file-button">
             Изменить фото
@@ -510,12 +551,38 @@ export function AccountPanel({
           </label>
           <button
             className="secondary-button compact"
-            disabled={busy || name.trim() === user.name}
+            disabled={busy || !name.trim() || name.trim() === savedName}
             onClick={() => void saveProfile()}
           >
             Сохранить профиль
           </button>
         </div>
+        <details className="account-details">
+          <summary>Изменить почту / логин</summary>
+          <form className="account-password-fields" onSubmit={(event) => void changeEmail(event)}>
+            <p className="field-help">
+              Ваша почта — это логин. Смена требует подтверждения текущего и нового адреса.
+            </p>
+            <label className="field-label">
+              Новая электронная почта
+              <input
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
+            <button
+              className="secondary-button compact"
+              disabled={
+                busy || !email.trim() || email.trim().toLowerCase() === user.email.toLowerCase()
+              }
+            >
+              Отправить подтверждение
+            </button>
+          </form>
+        </details>
         <BillingStatus />
         <details className="account-details">
           <summary>Приватность и данные</summary>

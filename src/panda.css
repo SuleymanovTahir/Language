@@ -1761,7 +1761,7 @@
   .library-heading h1,
   .library-heading p,
   .library-heading .eyebrow {
-    color: white !important;
+    color: white;
   }
 
   .library-heading p {

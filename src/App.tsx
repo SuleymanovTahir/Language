@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   modules,
   scenarioModules,
@@ -36,6 +37,7 @@ import {
 } from "./lib/profileStorage";
 import { authClient } from "./lib/auth-client";
 import { PandaNote } from "./components/PandaNote";
+import { LearningTrail, Pagination } from "./components/LearningTrail";
 import {
   AccountPanel,
   AuthScreen,
@@ -302,11 +304,15 @@ function WorkspaceApp({
   onSignOut,
   guestMode = false,
   onGuestGate,
+  onOpenAuth,
+  onUserUpdated,
 }: {
   user: AccountUser | null;
   onSignOut: () => void;
   guestMode?: boolean;
   onGuestGate?: () => void;
+  onOpenAuth: () => void;
+  onUserUpdated?: (update: Partial<AccountUser>) => void;
 }) {
   const [screen, setScreen] = useState<Screen>(screenFromHash);
   const [spaces, setSpaces] = useStored<LearningSpace[]>("linguaplay-learning-spaces", [
@@ -1753,7 +1759,7 @@ function WorkspaceApp({
           <button
             className="avatar"
             aria-label={user ? "Открыть личный кабинет" : "Открыть настройки профиля"}
-            onClick={() => (user ? setAccountOpen(true) : setSettingsOpen(true))}
+            onClick={() => (user ? setAccountOpen(true) : onOpenAuth())}
           >
             <span className="avatar-initials">
               {(user?.name || preferences.name || "LP").slice(0, 2).toUpperCase()}
@@ -2226,6 +2232,11 @@ function WorkspaceApp({
       {settingsOpen && (
         <Suspense fallback={null}>
           <SettingsDialog
+            onOpenAccount={() => {
+              setSettingsOpen(false);
+              if (user) setAccountOpen(true);
+              else onOpenAuth();
+            }}
             value={preferences}
             speechSettings={speechSettings}
             languageCode={activeSpace.languageCode}
@@ -2360,6 +2371,7 @@ function WorkspaceApp({
           onClose={() => setAccountOpen(false)}
           onSignOut={onSignOut}
           onAccountDeleted={onSignOut}
+          onUpdated={onUserUpdated}
         />
       )}
     </div>
@@ -2367,6 +2379,7 @@ function WorkspaceApp({
 }
 
 export default function App() {
+  const [authOpen, setAuthOpen] = useState(false);
   const [mode, setMode] = useState<"checking" | "local" | "login" | "active" | "error">("checking");
   const [user, setUser] = useState<AccountUser | null>(null);
   const [guestPrompt, setGuestPrompt] = useState(false);
@@ -2440,6 +2453,12 @@ export default function App() {
   }, [retry]);
 
   const authenticate = async (credentials: Credentials) => {
+    if (mode === "local") {
+      setError(
+        "Сервер аккаунтов не подключён к локальному предпросмотру. Вход и регистрация доступны в версии с работающим API.",
+      );
+      return false;
+    }
     setBusy(true);
     setError("");
     try {
@@ -2527,15 +2546,38 @@ export default function App() {
         <strong>Загружаю ваш кабинет…</strong>
       </main>
     );
-  if (mode === "local")
-    return <WorkspaceApp key="local-cabinet" user={null} onSignOut={() => undefined} />;
+  if (mode === "local" && !authOpen)
+    return (
+      <WorkspaceApp
+        key="local-cabinet"
+        user={null}
+        onOpenAuth={() => setAuthOpen(true)}
+        onSignOut={() => undefined}
+      />
+    );
   if (mode === "active" && user)
-    return <WorkspaceApp key={user.id} user={user} onSignOut={() => void signOut()} />;
-  if (mode === "login" && !guestPrompt && !["admin", "analytics"].includes(screenFromHash()))
+    return (
+      <WorkspaceApp
+        key={user.id}
+        user={user}
+        onUserUpdated={(update) =>
+          setUser((current) => (current ? { ...current, ...update } : current))
+        }
+        onOpenAuth={() => setAuthOpen(true)}
+        onSignOut={() => void signOut()}
+      />
+    );
+  if (
+    mode === "login" &&
+    !authOpen &&
+    !guestPrompt &&
+    !["admin", "analytics"].includes(screenFromHash())
+  )
     return (
       <WorkspaceApp
         key="guest-cabinet"
         user={null}
+        onOpenAuth={() => setAuthOpen(true)}
         guestMode
         onGuestGate={() => setGuestPrompt(true)}
         onSignOut={() => undefined}
@@ -2543,8 +2585,18 @@ export default function App() {
     );
   return (
     <AuthScreen
+      onBack={
+        !guestPrompt && (mode === "local" || mode === "login")
+          ? () => setAuthOpen(false)
+          : undefined
+      }
       key={guestPrompt ? "guest-prompt" : "auth"}
-      error={error}
+      error={
+        error ||
+        (mode === "local"
+          ? "Сейчас открыт локальный режим. Для входа и регистрации нужен работающий сервер аккаунтов."
+          : "")
+      }
       busy={busy}
       onSubmit={authenticate}
       onRequestPasswordReset={requestPasswordReset}
@@ -2824,6 +2876,14 @@ function Sidebar({
   hiddenSections?: string[];
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMoreOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [moreOpen]);
   const nav: { id: Screen; label: string; icon: IconName }[] = [
     { id: "today", label: "Сегодня", icon: "home" },
     { id: "library", label: "Библиотека слов", icon: "library" },
@@ -2878,45 +2938,49 @@ function Sidebar({
           <span>Ещё</span>
         </button>
       </nav>
-      {moreOpen && (
-        <div className="mobile-more-backdrop" onClick={() => setMoreOpen(false)}>
-          <section
-            id="mobile-more-menu"
-            className="mobile-more-menu"
-            aria-label="Остальные разделы"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mobile-more-heading">
-              <strong>Ещё</strong>
-              <button onClick={() => setMoreOpen(false)} aria-label="Закрыть меню">
-                <Icon name="close" size={18} />
-              </button>
-            </div>
-            <div className="mobile-more-grid">
-              {mobileSecondary.map((item) => (
-                <a
-                  key={item.id}
-                  href={`#/${item.id}`}
-                  className={screen === item.id ? "active" : ""}
-                  onClick={() => setMoreOpen(false)}
+      {moreOpen &&
+        createPortal(
+          <div className="mobile-more-backdrop" onClick={() => setMoreOpen(false)}>
+            <section
+              id="mobile-more-menu"
+              className="mobile-more-menu"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Остальные разделы"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mobile-more-heading">
+                <strong>Ещё</strong>
+                <button onClick={() => setMoreOpen(false)} aria-label="Закрыть меню">
+                  <Icon name="close" size={18} />
+                </button>
+              </div>
+              <div className="mobile-more-grid">
+                {mobileSecondary.map((item) => (
+                  <a
+                    key={item.id}
+                    href={`#/${item.id}`}
+                    className={screen === item.id ? "active" : ""}
+                    onClick={() => setMoreOpen(false)}
+                  >
+                    <Icon name={item.icon} />
+                    <span>{item.label}</span>
+                  </a>
+                ))}
+                <button
+                  onClick={() => {
+                    setMoreOpen(false);
+                    onSettings();
+                  }}
                 >
-                  <Icon name={item.icon} />
-                  <span>{item.label}</span>
-                </a>
-              ))}
-              <button
-                onClick={() => {
-                  setMoreOpen(false);
-                  onSettings();
-                }}
-              >
-                <Icon name="settings" />
-                <span>Настройки</span>
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+                  <Icon name="settings" />
+                  <span>Настройки</span>
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body,
+        )}
       <div className="sidebar-bottom">
         <button
           className="language-card"
@@ -3339,6 +3403,13 @@ function Library({
     "manual",
   );
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
+  const libraryTop = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setPage(1);
+    setOpenMenu(null);
+  }, [search, filter, sortBy, sortDirection, modules.length]);
   const draggedModule = useRef<number | null>(null);
   useEffect(() => {
     if (openMenu === null) return;
@@ -3395,8 +3466,17 @@ function Library({
     if (module.id <= 34) return "Учёба и мир вокруг";
     return "Немецкий для работы и IT";
   };
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pagedModules = visible.slice(pageStart, pageStart + pageSize);
+  const changePage = (next: number) => {
+    setPage(Math.max(1, Math.min(next, pageCount)));
+    setOpenMenu(null);
+    libraryTop.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   return (
-    <div className="page">
+    <div className="page library-page" ref={libraryTop}>
       <div className="library-heading">
         <img className="library-mascot" src="/mascots/mascot-2.png" alt="" aria-hidden="true" />
         <div>
@@ -3476,6 +3556,13 @@ function Library({
       {sortBy === "manual" && (
         <p className="library-sort-hint">Зажмите карточку, чтобы изменить порядок.</p>
       )}
+      {visible.length > 0 && (
+        <p className="library-page-count" aria-live="polite">
+          Модули {pageStart + 1}–{Math.min(pageStart + pageSize, visible.length)} из{" "}
+          {visible.length}
+          <span>Один маршрут · шаг за шагом</span>
+        </p>
+      )}
       {visible.length === 0 ? (
         <div className="empty-state">
           <Icon name="search" size={28} />
@@ -3498,8 +3585,9 @@ function Library({
           )}
         </div>
       ) : (
-        <div className="module-grid library-path-map">
-          {visible.map((module, index) => {
+        <LearningTrail className="module-grid library-path-map">
+          {pagedModules.map((module, pageIndex) => {
+            const index = pageStart + pageIndex;
             const mastered = module.cards.filter(
               (card) => (progress[card.id]?.level ?? 0) >= 2,
             ).length;
@@ -3507,12 +3595,26 @@ function Library({
               ? Math.round((mastered / module.cards.length) * 100)
               : 0;
             const group = groupForModule(module);
-            const beginsGroup = index === 0 || groupForModule(visible[index - 1]) !== group;
+            const beginsGroup = pageIndex === 0 || groupForModule(visible[index - 1]) !== group;
             return (
-              <div className={`library-map-item ${beginsGroup ? "starts-group" : ""}`} key={module.id}>
+              <div
+                className={`library-map-item ${beginsGroup ? "starts-group" : ""}`}
+                key={module.id}
+              >
                 {beginsGroup && (
                   <div className="library-group-heading">
-                    <span>Раздел {String(visible.slice(0, index).filter((item, itemIndex, list) => itemIndex === 0 || groupForModule(list[itemIndex - 1]) !== groupForModule(item)).length + 1).padStart(2, "0")}</span>
+                    <span>
+                      Раздел{" "}
+                      {String(
+                        visible
+                          .slice(0, index + 1)
+                          .filter(
+                            (item, itemIndex, list) =>
+                              itemIndex === 0 ||
+                              groupForModule(list[itemIndex - 1]) !== groupForModule(item),
+                          ).length,
+                      ).padStart(2, "0")}
+                    </span>
                     <strong>{group}</strong>
                   </div>
                 )}
@@ -3534,137 +3636,139 @@ function Library({
                     draggedModule.current = null;
                   }}
                 >
-                <button className="module-card" onClick={() => onStart(module)}>
-                  <div
-                    className={`module-cover ${["blue", "violet", "teal", "amber", "rose"][index % 5]}`}
+                  <button className="module-card" onClick={() => onStart(module)}>
+                    <div
+                      data-trail-anchor
+                      className={`module-cover ${["blue", "violet", "teal", "amber", "rose"][index % 5]}`}
+                    >
+                      <span>{String(module.id).padStart(2, "0")}</span>
+                      <Icon
+                        name={index % 3 === 0 ? "spark" : index % 3 === 1 ? "book" : "path"}
+                        size={30}
+                      />
+                    </div>
+                    <div className="module-info">
+                      <div>
+                        <span>
+                          МОДУЛЬ {module.id}
+                          {module.custom ? " · МОЙ" : ""}
+                        </span>
+                        <span
+                          className="module-drag-grip"
+                          title="Перетащите модуль, чтобы изменить порядок"
+                        >
+                          ⠿
+                        </span>
+                        <Icon name="arrow" size={15} />
+                      </div>
+                      <h3>{module.title}</h3>
+                      <p>
+                        {module.cards.length} карточек · {module.level}
+                      </p>
+                      <div className="module-progress">
+                        <i style={{ width: `${percent}%` }} />
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    className="module-menu-trigger"
+                    aria-label={`Действия модуля ${module.title}`}
+                    aria-expanded={openMenu === module.id}
+                    onClick={() => setOpenMenu((value) => (value === module.id ? null : module.id))}
                   >
-                    <span>{String(module.id).padStart(2, "0")}</span>
-                    <Icon
-                      name={index % 3 === 0 ? "spark" : index % 3 === 1 ? "book" : "path"}
-                      size={30}
-                    />
-                  </div>
-                  <div className="module-info">
-                    <div>
-                      <span>
-                        МОДУЛЬ {module.id}
-                        {module.custom ? " · МОЙ" : ""}
-                      </span>
-                      <span
-                        className="module-drag-grip"
-                        title="Перетащите модуль, чтобы изменить порядок"
-                      >
-                        ⠿
-                      </span>
-                      <Icon name="arrow" size={15} />
-                    </div>
-                    <h3>{module.title}</h3>
-                    <p>
-                      {module.cards.length} карточек · {module.level}
-                    </p>
-                    <div className="module-progress">
-                      <i style={{ width: `${percent}%` }} />
-                    </div>
-                  </div>
-                </button>
-                <button
-                  className="module-menu-trigger"
-                  aria-label={`Действия модуля ${module.title}`}
-                  aria-expanded={openMenu === module.id}
-                  onClick={() => setOpenMenu((value) => (value === module.id ? null : module.id))}
-                >
-                  <Icon name="more" size={17} />
-                </button>
-                {openMenu === module.id && (
-                  <div className="module-actions-menu">
-                    <button
-                      onClick={() => {
-                        setOpenMenu(null);
-                        onTest(module);
-                      }}
-                    >
-                      Тест по модулю
-                    </button>
-                    <button
-                      onClick={() => {
-                        setOpenMenu(null);
-                        onCopyTestLink(module);
-                      }}
-                    >
-                      Ссылка на тест
-                    </button>
-                    <button
-                      title="Письменная тренировка по словам этого модуля. Слова и переводы меняются в редакторе карточек."
-                      onClick={() => {
-                        setOpenMenu(null);
-                        onWrite(module);
-                      }}
-                    >
-                      Тренировка: написать перевод
-                    </button>
-                    <button
-                      onClick={() => {
-                        setOpenMenu(null);
-                        onGames(module);
-                      }}
-                    >
-                      Игры и упражнения
-                    </button>
-                    {canManageContent && (
+                    <Icon name="more" size={17} />
+                  </button>
+                  {openMenu === module.id && (
+                    <div className="module-actions-menu">
                       <button
                         onClick={() => {
                           setOpenMenu(null);
-                          onEdit(module);
+                          onTest(module);
                         }}
                       >
-                        Изменить карточки и порядок
+                        Тест по модулю
                       </button>
-                    )}
-                    <button
-                      disabled={index === 0}
-                      onClick={() => {
-                        setOpenMenu(null);
-                        if (visible[index - 1]) onReorder(module.id, visible[index - 1].id);
-                      }}
-                    >
-                      Переместить выше
-                    </button>
-                    <button
-                      disabled={index === visible.length - 1}
-                      onClick={() => {
-                        setOpenMenu(null);
-                        if (visible[index + 1]) onReorder(module.id, visible[index + 1].id);
-                      }}
-                    >
-                      Переместить ниже
-                    </button>
-                    <button
-                      onClick={() => {
-                        setOpenMenu(null);
-                        onExport(module);
-                      }}
-                    >
-                      Экспортировать словарь .txt
-                    </button>
-                    {canManageContent && (
                       <button
-                        className="text-danger"
                         onClick={() => {
                           setOpenMenu(null);
-                          onDelete(module);
+                          onCopyTestLink(module);
                         }}
                       >
-                        Удалить модуль
+                        Ссылка на тест
                       </button>
-                    )}
-                  </div>
-                )}
+                      <button
+                        title="Письменная тренировка по словам этого модуля. Слова и переводы меняются в редакторе карточек."
+                        onClick={() => {
+                          setOpenMenu(null);
+                          onWrite(module);
+                        }}
+                      >
+                        Тренировка: написать перевод
+                      </button>
+                      <button
+                        onClick={() => {
+                          setOpenMenu(null);
+                          onGames(module);
+                        }}
+                      >
+                        Игры и упражнения
+                      </button>
+                      {canManageContent && (
+                        <button
+                          onClick={() => {
+                            setOpenMenu(null);
+                            onEdit(module);
+                          }}
+                        >
+                          Изменить карточки и порядок
+                        </button>
+                      )}
+                      <button
+                        disabled={index === 0}
+                        onClick={() => {
+                          setOpenMenu(null);
+                          if (visible[index - 1]) onReorder(module.id, visible[index - 1].id);
+                        }}
+                      >
+                        Переместить выше
+                      </button>
+                      <button
+                        disabled={index === visible.length - 1}
+                        onClick={() => {
+                          setOpenMenu(null);
+                          if (visible[index + 1]) onReorder(module.id, visible[index + 1].id);
+                        }}
+                      >
+                        Переместить ниже
+                      </button>
+                      <button
+                        onClick={() => {
+                          setOpenMenu(null);
+                          onExport(module);
+                        }}
+                      >
+                        Экспортировать словарь .txt
+                      </button>
+                      {canManageContent && (
+                        <button
+                          className="text-danger"
+                          onClick={() => {
+                            setOpenMenu(null);
+                            onDelete(module);
+                          }}
+                        >
+                          Удалить модуль
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </article>
               </div>
             );
           })}
-        </div>
+        </LearningTrail>
       )}
+      <Pagination page={currentPage} count={pageCount} onChange={changePage} />
     </div>
   );
 }
@@ -3998,7 +4102,7 @@ function PathScreen({
                     <span aria-hidden="true">{openChapterIndex === chapterIndex ? "↑" : "↓"}</span>
                   </button>
                 </header>
-                <div className="chapter-modules">
+                <LearningTrail className="chapter-modules">
                   {chapterModules.map((module) => {
                     const sequence = getSequence(module, chapter.title);
                     const completeCount = sequence.filter(
@@ -4094,7 +4198,7 @@ function PathScreen({
                                 key={node.id}
                                 className={`path-step ${completion?.runs ? "completed" : ""} ${missing ? "missing" : ""}`}
                               >
-                                <span className="path-step-mark">
+                                <span className="path-step-mark" data-trail-anchor>
                                   {completion?.runs ? (
                                     <Icon name="check" size={17} />
                                   ) : (
@@ -4169,7 +4273,7 @@ function PathScreen({
                       </section>
                     );
                   })}
-                </div>
+                </LearningTrail>
                 <section className="chapter-lessons">
                   <div className="chapter-lessons-heading">
                     <div>

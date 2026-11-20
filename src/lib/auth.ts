@@ -133,6 +133,20 @@ export const auth = betterAuth({
       }),
     afterEmailVerification: async (user: { id: string }) => ensureInitialAppRole(user.id),
   },
-  user: { deleteUser: { enabled: true } },
+  user: {
+    deleteUser: { enabled: true },
+    changeEmail: {
+      enabled: true,
+      // Confirm ownership of the existing address before verifying the new one.
+      sendChangeEmailConfirmation: async ({ user, newEmail, url }) =>
+        sendAccountEmail({
+          to: user.email,
+          subject: "Изменение почты ClickLing",
+          intro: `Вы запросили смену почты на ${newEmail}. Подтвердите запрос. Если это были не вы, не переходите по ссылке.`,
+          url,
+          action: "Подтвердить смену почты",
+        }),
+    },
+  },
   plugins: [admin()],
 });

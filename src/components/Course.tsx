@@ -8,6 +8,7 @@ import {
 import { Icon } from "./Icon";
 import { speakText } from "./StudySession";
 import { HelpHint } from "./HelpHint";
+import { LearningTrail } from "./LearningTrail";
 
 export type CourseSkills = {
   vocabulary: number;
@@ -110,7 +111,12 @@ export function CoursePath({
             <button
               key={item}
               className={item === selectedLevel ? "active" : ""}
-              onClick={() => onChooseLevel(item)}
+              onClick={() => {
+                onChooseLevel(item);
+                document
+                  .getElementById(`course-level-${item}`)
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
             >
               {item}
             </button>
@@ -120,7 +126,12 @@ export function CoursePath({
           Уровень
           <select
             value={selectedLevel}
-            onChange={(event) => onChooseLevel(event.target.value as CourseLevel)}
+            onChange={(event) => {
+              onChooseLevel(event.target.value as CourseLevel);
+              document
+                .getElementById(`course-level-${event.target.value}`)
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
           >
             {levels.map((item) => (
               <option key={item} value={item}>
@@ -207,55 +218,66 @@ export function CoursePath({
       <section className="course-units-section">
         <div className="section-title">
           <div>
-            <h2>Маршрут уровня {selectedLevel}</h2>
-            <p>Двигайтесь по порядку: каждый юнит закрепляет 6 навыков.</p>
+            <h2>Весь путь · A1–C1</h2>
+            <p>
+              {GERMAN_COURSE.length} юнитов · {GERMAN_COURSE.length * 6} практик навыков. Все уровни
+              на одном маршруте.
+            </p>
           </div>
         </div>
-        <div className="course-unit-list">
-          {units.map((item, index) => {
+        <LearningTrail className="course-unit-list">
+          {GERMAN_COURSE.map((item, index) => {
             const saved = progress[item.id];
             const unlocked = true;
             const isNext = !saved?.completedAt && unlocked;
             const hasSavedMission = Boolean(missions[item.id]);
             return (
-              <article
-                key={item.id}
-                className={`course-unit-card ${saved?.completedAt ? "complete" : ""} ${isNext && item.id === next?.id ? "current" : ""} ${!saved?.completedAt && item.id !== next?.id ? "future" : ""} ${!unlocked ? "locked" : ""} ${recommendedIds.has(item.id) ? "recommended" : ""}`}
-              >
-                <button
-                  className="course-path-node"
-                  disabled={!unlocked}
-                  onClick={() => onStart(item)}
-                  aria-label={`${hasSavedMission ? "Продолжить" : saved?.completedAt ? "Повторить" : "Начать"}: ${item.title}`}
+              <div className="course-trail-stop" key={item.id}>
+                {(index === 0 || GERMAN_COURSE[index - 1].level !== item.level) && (
+                  <div className="trail-level-heading" id={`course-level-${item.level}`}>
+                    <span>УРОВЕНЬ {item.level}</span>
+                    <strong>{levelCopy[item.level]}</strong>
+                    <small>{courseUnitsForLevel(item.level).length} юнитов</small>
+                  </div>
+                )}
+                <article
+                  className={`course-unit-card ${saved?.completedAt ? "complete" : ""} ${isNext && item.id === next?.id ? "current" : ""} ${!saved?.completedAt && item.id !== next?.id ? "future" : ""} ${!unlocked ? "locked" : ""} ${recommendedIds.has(item.id) ? "recommended" : ""}`}
                 >
-                  <span className="course-unit-number">
-                    {saved?.completedAt ? (
-                      <Icon name="check" size={24} />
-                    ) : item.id === next?.id ? (
-                      <Icon name="arrow" size={23} />
-                    ) : (
-                      String(index + 1).padStart(2, "0")
-                    )}
-                  </span>
-                  <span className="course-unit-copy">
-                    <small className="course-unit-kicker">
-                      {saved?.completedAt
-                        ? "ПРОЙДЕНО"
-                        : item.id === next?.id
-                          ? hasSavedMission
-                            ? "ПРОДОЛЖИТЬ"
-                            : "СТАРТ"
-                          : "ВПЕРЕДИ"}
-                      {recommendedIds.has(item.id) ? " · ВАША ЦЕЛЬ" : ""}
-                    </small>
-                    <strong>{item.title}</strong>
-                    <em>{item.outcome}</em>
-                  </span>
-                </button>
-              </article>
+                  <button
+                    className="course-path-node"
+                    disabled={!unlocked}
+                    onClick={() => onStart(item)}
+                    aria-label={`${hasSavedMission ? "Продолжить" : saved?.completedAt ? "Повторить" : "Начать"}: ${item.title}`}
+                  >
+                    <span className="course-unit-number" data-trail-anchor>
+                      {saved?.completedAt ? (
+                        <Icon name="check" size={24} />
+                      ) : item.id === next?.id ? (
+                        <Icon name="arrow" size={23} />
+                      ) : (
+                        String(index + 1).padStart(2, "0")
+                      )}
+                    </span>
+                    <span className="course-unit-copy">
+                      <small className="course-unit-kicker">
+                        {saved?.completedAt
+                          ? "ПРОЙДЕНО"
+                          : item.id === next?.id
+                            ? hasSavedMission
+                              ? "ПРОДОЛЖИТЬ"
+                              : "СТАРТ"
+                            : "ВПЕРЕДИ"}
+                        {recommendedIds.has(item.id) ? " · ВАША ЦЕЛЬ" : ""}
+                      </small>
+                      <strong>{item.title}</strong>
+                      <em>{item.outcome}</em>
+                    </span>
+                  </button>
+                </article>
+              </div>
             );
           })}
-        </div>
+        </LearningTrail>
       </section>
       <CourseSkillsSummary progress={progress} />
     </div>
