@@ -5196,6 +5196,47 @@ body {
     gap: 8px;
   }
 }
+.game-mute-btn {
+  position: fixed;
+  bottom: 88px;
+  right: 20px;
+  z-index: 110;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1.5px solid #dfe5ed;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+  backdrop-filter: blur(6px);
+}
+.game-mute-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: scale(1.07);
+}
+.game-mute-btn.muted {
+  background: #fff0f2;
+  border-color: #e8788a;
+  color: #c0394f;
+}
+.game-mute-btn.muted:hover {
+  background: #ffe4e8;
+}
+@media (max-width: 680px) {
+  .game-mute-btn {
+    bottom: auto;
+    top: 8px;
+    right: 8px;
+    width: 36px;
+    height: 36px;
+  }
+}
 .game-result-floating-pill {
   position: fixed;
   z-index: 999;
@@ -5588,7 +5629,7 @@ body {
 .pair-columns > div {
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 14px;
 }
 .pair-columns h2 {
   color: #8a95a5;

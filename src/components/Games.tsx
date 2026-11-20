@@ -8,6 +8,7 @@ import { PandaNote } from "./PandaNote";
 import { speakText, speechLocaleForCode } from "./StudySession";
 import { AudioQuizBuilder, AudioQuizSession, type AudioQuiz } from "./AudioQuiz";
 import { getActiveProfileId, readProfileItem, writeProfileItem } from "../lib/profileStorage";
+import { readSpeechSettings } from "../lib/speech";
 import { ScenarioGame, type ScenarioGameId } from "./ScenarioGames";
 
 import {
@@ -2732,6 +2733,34 @@ export function GameSession({
   onNextGame?: () => void;
 }) {
   const [runKey, setRunKey] = useState(0);
+  const [muted, setMuted] = useState(() => {
+    const s = readSpeechSettings();
+    return s.enabled === false || s.provider === "none";
+  });
+  const toggleMute = () => {
+    setMuted((current) => {
+      const next = !current;
+      try {
+        const raw = readProfileItem("linguaplay-speech-settings");
+        const saved: Record<string, unknown> = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+        if (next) {
+          // muting: save current provider as _prevProvider, switch to "none"
+          writeProfileItem(
+            "linguaplay-speech-settings",
+            JSON.stringify({ ...saved, enabled: false, _prevProvider: saved.provider ?? "edge", provider: "none" }),
+          );
+        } else {
+          // unmuting: restore previous provider
+          const restored = saved._prevProvider ?? "edge";
+          writeProfileItem(
+            "linguaplay-speech-settings",
+            JSON.stringify({ ...saved, enabled: true, provider: restored }),
+          );
+        }
+      } catch {}
+      return next;
+    });
+  };
   const [resultPill, setResultPill] = useState<{
     score: number;
     total: number;
@@ -2817,6 +2846,27 @@ export function GameSession({
           onNextGame={onNextGame}
         />
       )}
+      <button
+        type="button"
+        className={`game-mute-btn${muted ? " muted" : ""}`}
+        onClick={toggleMute}
+        title={muted ? "Включить озвучку" : "Выключить озвучку"}
+        aria-label={muted ? "Включить озвучку" : "Выключить озвучку"}
+      >
+        {muted ? (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <line x1="23" y1="9" x2="17" y2="15" />
+            <line x1="17" y1="9" x2="23" y2="15" />
+          </svg>
+        ) : (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+          </svg>
+        )}
+      </button>
       {resultPill && (
         <div className="game-result-floating-pill" role="status" aria-live="polite">
           <div className="game-result-pill-info">
