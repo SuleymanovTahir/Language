@@ -12443,35 +12443,23 @@ select:not([multiple]) {
   min-height: 76px;
   padding: 15px 18px;
   color: #22324b;
-  background: #e6efff;
-  border: 2px solid #bed2fb;
+  background: #ffffff;
+  border: 2px solid #b8cdf4;
   border-radius: 19px;
-  box-shadow: 0 5px 0 #bed2fb;
+  box-shadow: 0 4px 0 #d8e5fa;
   font-size: clamp(16px, 2vw, 22px);
   font-weight: 700;
   transition:
     transform 0.16s ease,
     box-shadow 0.16s ease,
+    border-color 0.16s ease,
     filter 0.16s ease;
-}
-.game-choice-grid button:nth-child(4n + 2) {
-  background: #fff0cc;
-  border-color: #f6cf72;
-  box-shadow: 0 5px 0 #f6cf72;
-}
-.game-choice-grid button:nth-child(4n + 3) {
-  background: #d9f5e8;
-  border-color: #8bd6b4;
-  box-shadow: 0 5px 0 #8bd6b4;
-}
-.game-choice-grid button:nth-child(4n + 4) {
-  background: #f3e2ff;
-  border-color: #d7b3f2;
-  box-shadow: 0 5px 0 #d7b3f2;
 }
 .game-choice-grid button:hover:not(:disabled),
 .grammar-options button:hover:not(:disabled) {
-  transform: translateY(-3px);
+  transform: translateY(-2px);
+  border-color: #6895ee;
+  box-shadow: 0 6px 0 #d8e5fa;
   filter: saturate(1.12);
 }
 .game-choice-grid button:active:not(:disabled) {

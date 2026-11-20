@@ -2626,23 +2626,30 @@ function optionsFor(
   card: VocabCard,
   pool: VocabCard[],
   mode: "translation" | "word" | "article" | "sound",
-  index: number,
+  _index: number,
 ) {
   if (mode === "article") return shuffle(["der", "die", "das"]);
   if (mode === "sound") return shuffle(["p", "t", "k"]);
   const key =
     mode === "translation"
-      ? (item: VocabCard) => item.translation
-      : (item: VocabCard) => germanOption(item, pool);
+      ? (item: VocabCard) => item.translation.trim()
+      : (item: VocabCard) => germanOption(item, pool).trim();
   const target = key(card);
-  const distractors = pool.filter(
-    (item) => item.id !== card.id && key(item).toLowerCase() !== target.toLowerCase(),
+  const isCyrillic = /[а-яёА-ЯЁ]/.test(target);
+
+  const allDistractors = pool
+    .filter((item) => item.id !== card.id)
+    .map(key)
+    .filter((s) => s && s.toLowerCase() !== target.toLowerCase());
+
+  const sameScriptDistractors = allDistractors.filter(
+    (s) => /[а-яёА-ЯЁ]/.test(s) === isCyrillic,
   );
-  const start = distractors.length ? (index * 7) % distractors.length : 0;
-  const rotated = [...distractors.slice(start), ...distractors.slice(0, start)];
-  return shuffle([target, ...rotated.slice(0, 3).map(key)])
-    .filter((value, i, all) => all.indexOf(value) === i)
-    .slice(0, 4);
+  const poolToUse = sameScriptDistractors.length >= 3 ? sameScriptDistractors : allDistractors;
+  const uniqueDistractors = [...new Set(poolToUse)];
+
+  const picked = shuffle(uniqueDistractors).slice(0, 3);
+  return shuffle([target, ...picked]);
 }
 function norm(value: string) {
   return value
@@ -4096,7 +4103,7 @@ function QuestionGame({
           key={`${item}-${i}`}
           disabled={Boolean(feedback)}
           className={
-            feedback && item === correct
+            feedback && norm(item) === norm(correct)
               ? "correct"
               : feedback && chosen.includes(item) && norm(item) !== norm(correct)
                 ? "wrong"
