@@ -2369,3 +2369,1088 @@
     display: none;
   }
 }
+
+/* 2026 journey refresh: compact library, game-like course map and responsive account flows. */
+.account-screen {
+  overflow-y: auto;
+  padding: clamp(16px, 4vw, 48px);
+  background:
+    radial-gradient(circle at 14% 12%, rgb(64 126 236 / 18%), transparent 32rem),
+    radial-gradient(circle at 88% 82%, rgb(255 181 46 / 16%), transparent 28rem), #eef4ff;
+}
+
+.account-layout {
+  width: min(1060px, 100%);
+  min-height: min(760px, calc(100dvh - 48px));
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(390px, 0.92fr);
+  overflow: hidden;
+  background: white;
+  border: 1px solid #dbe5f3;
+  border-radius: 32px;
+  box-shadow: 0 28px 90px rgb(19 55 118 / 18%);
+}
+
+.account-showcase {
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  padding: clamp(36px, 6vw, 68px);
+  color: white;
+  background:
+    radial-gradient(circle at 80% 15%, rgb(255 190 65 / 42%), transparent 24%),
+    linear-gradient(145deg, #0d328b, #2468d7 62%, #4c8ef0);
+}
+
+.account-showcase::before,
+.account-showcase::after {
+  content: "";
+  position: absolute;
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 50%;
+}
+
+.account-showcase::before {
+  width: 420px;
+  height: 420px;
+  right: -170px;
+  bottom: -160px;
+}
+
+.account-showcase::after {
+  width: 230px;
+  height: 230px;
+  left: -90px;
+  bottom: 50px;
+}
+
+.account-showcase-copy {
+  position: relative;
+  z-index: 2;
+}
+
+.account-showcase-badge {
+  display: inline-flex;
+  padding: 8px 11px;
+  color: #ffdb8b;
+  background: rgb(6 31 91 / 28%);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+.account-showcase h2 {
+  max-width: 10ch;
+  margin: 22px 0 14px;
+  font-size: clamp(38px, 5vw, 58px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.account-showcase p {
+  max-width: 38ch;
+  color: rgb(255 255 255 / 78%);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.account-showcase ul {
+  display: grid;
+  gap: 10px;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.account-showcase li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.account-showcase li svg {
+  padding: 2px;
+  color: #153a7b;
+  background: #ffbe3d;
+  border-radius: 50%;
+}
+
+.account-showcase > img {
+  width: min(55%, 290px);
+  height: 320px;
+  position: absolute;
+  right: -8px;
+  bottom: -28px;
+  z-index: 1;
+  object-fit: contain;
+  object-position: bottom;
+  filter: drop-shadow(0 22px 24px rgb(3 22 67 / 24%));
+}
+
+.account-showcase-orbit {
+  position: absolute;
+  z-index: 2;
+  padding: 9px 12px;
+  color: #15356f;
+  background: white;
+  border: 2px solid #dfe9fa;
+  border-bottom-width: 5px;
+  border-radius: 13px;
+  font-size: 12px;
+  font-weight: 850;
+  transform: rotate(-6deg);
+}
+
+.account-showcase-orbit.orbit-one {
+  right: 34px;
+  bottom: 270px;
+}
+
+.account-showcase-orbit.orbit-two {
+  right: 238px;
+  bottom: 112px;
+  transform: rotate(7deg);
+}
+
+.account-layout .account-card {
+  width: auto;
+  min-width: 0;
+  align-self: center;
+  padding: clamp(28px, 4vw, 48px);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.account-layout .account-logo {
+  margin-bottom: 26px;
+}
+
+.account-billing {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+  padding: 18px;
+  background: linear-gradient(145deg, #f5f9ff, #fffaf0);
+  border: 1px solid #dae5f5;
+  border-radius: 20px;
+}
+
+.account-billing-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.account-billing-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.account-billing-heading strong {
+  color: var(--click-navy);
+  font-size: 18px;
+}
+
+.account-billing-heading small {
+  color: var(--click-muted);
+  line-height: 1.45;
+}
+
+.billing-status {
+  flex: 0 0 auto;
+  padding: 7px 9px;
+  color: #5b6780;
+  background: #e9edf4;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.billing-status.active {
+  color: #6b4300;
+  background: #ffda87;
+}
+
+.account-plan-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.account-plan-list article {
+  min-width: 0;
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 15px;
+  background: white;
+  border: 2px solid #e1e8f2;
+  border-bottom-width: 5px;
+  border-radius: 17px;
+}
+
+.account-plan-list article.recommended {
+  border-color: #f0b23a;
+  background: #fffbf2;
+}
+
+.account-plan-list article > strong,
+.account-plan-list article b {
+  color: var(--click-navy);
+}
+
+.account-plan-list article b {
+  font-size: 21px;
+}
+
+.account-plan-list article ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: #66748c;
+  list-style: none;
+  font-size: 10px;
+}
+
+.account-plan-list article li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.account-plan-list article li svg {
+  color: #1d9c72;
+}
+
+.account-plan-list article .primary-button {
+  width: 100%;
+  margin-top: auto;
+}
+
+.plan-badge {
+  position: absolute;
+  top: -9px;
+  right: 10px;
+  padding: 4px 7px;
+  color: #6b4300;
+  background: #ffd46f;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.billing-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: #7a6a4c;
+  line-height: 1.45;
+}
+
+.library-heading {
+  min-height: 158px;
+  padding: 24px 215px 24px 26px;
+  border-radius: 24px;
+}
+
+.library-mascot {
+  width: 174px !important;
+  height: 174px !important;
+  right: 18px !important;
+  bottom: -16px !important;
+}
+
+.library-heading-actions {
+  align-self: center;
+}
+
+.library-heading-actions :is(.secondary-button, .primary-button) {
+  min-height: 44px;
+  padding-inline: 16px;
+  border-radius: 14px;
+}
+
+.library-heading-actions .secondary-button {
+  box-shadow: 0 3px 0 rgb(255 255 255 / 22%);
+}
+
+.library-heading-actions .primary-button {
+  box-shadow: 0 4px 0 #d78b00;
+}
+
+.module-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  padding-top: 10px;
+}
+
+.module-grid::before {
+  display: none;
+}
+
+.module-card-shell:nth-child(odd),
+.module-card-shell:nth-child(even) {
+  transform: none;
+}
+
+.module-card {
+  min-height: 118px;
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  grid-template-rows: 118px;
+  border-radius: 18px;
+  box-shadow: 0 5px 0 #e2e7ef;
+}
+
+.module-cover {
+  width: 78px;
+  min-height: 118px;
+  height: 118px;
+  padding: 13px 11px;
+}
+
+.module-cover span {
+  font-size: 10px;
+}
+
+.module-cover svg {
+  width: 24px;
+  height: 24px;
+}
+
+.module-info {
+  padding: 13px 14px 11px;
+}
+
+.module-info h3 {
+  min-height: 0;
+  margin: 7px 0 5px;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.module-info p {
+  font-size: 10px;
+}
+
+.module-progress {
+  height: 6px;
+}
+
+.course-unit-list {
+  width: min(760px, 100%);
+  min-height: 760px;
+  display: block;
+  padding: 16px 0 40px;
+}
+
+.course-unit-list::before {
+  width: 5px;
+  top: 45px;
+  bottom: 70px;
+  left: 50%;
+  display: block;
+  background: repeating-linear-gradient(#d3dceb 0 10px, transparent 10px 20px);
+}
+
+.course-unit-card,
+.course-unit-card:nth-child(odd),
+.course-unit-card:nth-child(even) {
+  width: 52%;
+  min-height: 112px;
+  display: block;
+  margin: 0 0 8px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+}
+
+.course-unit-card:nth-child(odd) {
+  margin-left: 3%;
+}
+
+.course-unit-card:nth-child(even) {
+  margin-left: 45%;
+}
+
+.course-path-node {
+  width: 100%;
+  min-height: 104px;
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
+
+.course-path-node:hover .course-unit-number {
+  transform: translateY(-4px);
+}
+
+.course-path-node .course-unit-number {
+  width: 76px;
+  height: 70px;
+  display: grid;
+  place-items: center;
+  color: #6f7c92;
+  background: #eef1f6;
+  border: 7px solid white;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 3px #dce3ed,
+    0 8px 0 #cbd3df,
+    0 12px 20px rgb(7 27 79 / 10%);
+  font-size: 17px;
+  font-style: normal;
+  font-weight: 900;
+  transition: transform 0.18s ease;
+}
+
+.course-path-node .course-unit-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 13px 15px;
+  background: white;
+  border: 2px solid #e1e7f0;
+  border-bottom-width: 5px;
+  border-radius: 17px;
+  box-shadow: 0 8px 22px rgb(7 27 79 / 5%);
+}
+
+.course-path-node .course-unit-copy strong {
+  color: var(--click-navy);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.course-path-node .course-unit-copy em {
+  overflow: hidden;
+  color: var(--click-muted);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.course-unit-card.complete .course-unit-number {
+  color: white;
+  background: #2d70df;
+  box-shadow:
+    0 0 0 3px #b9cef4,
+    0 8px 0 #174ca9,
+    0 12px 20px rgb(23 79 196 / 18%);
+}
+
+.course-unit-card.current .course-unit-number {
+  color: #173361;
+  background: var(--click-orange);
+  box-shadow:
+    0 0 0 4px #ffe5ad,
+    0 8px 0 #d88c00,
+    0 14px 24px rgb(255 157 10 / 24%);
+  animation: route-node-breathe 2.2s ease-in-out infinite;
+}
+
+.course-unit-card.current .course-unit-copy {
+  background: #fff9ec;
+  border-color: #f3c96f;
+}
+
+@keyframes route-node-breathe {
+  50% {
+    transform: translateY(-4px) scale(1.04);
+  }
+}
+
+.study-shell {
+  grid-template-rows: 66px minmax(0, 1fr) auto;
+  background:
+    radial-gradient(circle at 14% 12%, rgb(45 112 223 / 9%), transparent 22rem),
+    radial-gradient(circle at 88% 74%, rgb(255 181 46 / 11%), transparent 25rem), #f7f9fd;
+}
+
+.study-stage {
+  width: min(820px, calc(100% - 32px));
+  padding: 24px 0 34px;
+}
+
+.study-label {
+  margin-bottom: 14px;
+}
+
+.flashcard {
+  height: min(390px, calc(100dvh - 280px));
+  min-height: 300px;
+}
+
+.card-face {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 15% 15%, rgb(47 113 233 / 9%), transparent 30%),
+    radial-gradient(circle at 85% 86%, rgb(255 181 46 / 12%), transparent 32%), white;
+  border: 2px solid #dde6f3;
+  border-bottom-width: 7px;
+  border-radius: 28px;
+  box-shadow: 0 20px 50px rgb(17 46 99 / 11%);
+}
+
+.card-face::before,
+.card-face::after {
+  content: "";
+  width: 72px;
+  height: 72px;
+  position: absolute;
+  border: 2px solid rgb(47 113 233 / 10%);
+  border-radius: 22px;
+  transform: rotate(18deg);
+}
+
+.card-face::before {
+  top: 26px;
+  left: 30px;
+}
+
+.card-face::after {
+  right: 34px;
+  bottom: 30px;
+  border-color: rgb(255 181 46 / 16%);
+  transform: rotate(-12deg);
+}
+
+.card-face h1,
+.card-back h2,
+.card-face > p,
+.card-face > span,
+.card-face > button {
+  position: relative;
+  z-index: 1;
+}
+
+.card-face h1 {
+  max-width: 80%;
+  text-align: center;
+}
+
+.flip-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  bottom: 22px;
+  padding: 8px 11px;
+  color: #45608f;
+  background: #edf4ff;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.study-dock {
+  min-height: 112px;
+  padding: 14px max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom));
+}
+
+.rating-panel {
+  width: min(680px, 100%);
+}
+
+.rating-explainer {
+  margin-bottom: 9px;
+  text-align: center;
+}
+
+.rating-buttons button {
+  min-height: 62px;
+  border: 2px solid #dbe4f2;
+  border-bottom-width: 5px;
+  border-radius: 15px;
+}
+
+.rating-buttons button:nth-child(1) {
+  color: #a33f47;
+  background: #fff4f3;
+  border-color: #f1c5c2;
+}
+
+.rating-buttons button:nth-child(2) {
+  color: #8a6210;
+  background: #fff9e9;
+  border-color: #f2d78f;
+}
+
+.rating-buttons button.easy {
+  color: #147557;
+  background: #edfbf5;
+  border-color: #9dddc5;
+}
+
+.games-page {
+  position: relative;
+}
+
+.games-page::before {
+  content: "";
+  position: absolute;
+  inset: 4px -22px auto;
+  height: 420px;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 18% 18%, rgb(47 113 233 / 12%), transparent 24%),
+    radial-gradient(circle at 82% 32%, rgb(255 181 46 / 14%), transparent 22%);
+  pointer-events: none;
+}
+
+.games-page .page-heading {
+  min-height: 190px;
+  align-items: center;
+  padding: 28px 280px 28px 30px;
+  color: white;
+  background:
+    radial-gradient(circle at 82% 0%, rgb(255 204 102 / 38%), transparent 30%),
+    linear-gradient(125deg, #123b94, #2d72de);
+  border: 0;
+  border-radius: 26px;
+}
+
+.games-page .page-heading :is(h1, p, .eyebrow, .module-select-label) {
+  color: white !important;
+}
+
+.games-heading-mascot {
+  width: 190px !important;
+  height: 190px !important;
+  top: 5px !important;
+  right: 26px !important;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 22px rgb(5 24 66 / 24%));
+}
+
+.games-page .module-select-label {
+  position: absolute;
+  right: 220px;
+  bottom: 24px;
+  z-index: 3;
+  padding: 6px 8px 6px 12px;
+  background: rgb(255 255 255 / 14%);
+  border-color: rgb(255 255 255 / 24%);
+}
+
+.game-tile-art {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 80% 15%, rgb(255 255 255 / 72%), transparent 28%),
+    linear-gradient(145deg, color-mix(in srgb, var(--art-accent, #3974da) 24%, white), #fff 78%) !important;
+}
+
+.game-tile-art::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  z-index: -1;
+  background-image:
+    radial-gradient(circle, rgb(255 255 255 / 80%) 0 2px, transparent 3px),
+    linear-gradient(120deg, transparent 60%, rgb(255 255 255 / 40%));
+  background-size:
+    22px 22px,
+    auto;
+  border-radius: 18px;
+}
+
+.game-art-mascot {
+  width: 88px;
+  height: 100px;
+  position: absolute;
+  right: -8px;
+  bottom: -10px;
+  z-index: 0;
+  object-fit: contain;
+  opacity: 0.92;
+  filter: drop-shadow(0 9px 10px rgb(24 49 93 / 16%));
+}
+
+.game-tile-art .gp-scene {
+  width: calc(100% - 64px);
+  position: relative;
+  z-index: 1;
+  justify-self: start;
+}
+
+.mobile-settings-nav {
+  position: relative;
+  z-index: 2;
+  border: 0;
+}
+
+@media (max-width: 900px) {
+  .account-layout {
+    grid-template-columns: minmax(280px, 0.82fr) minmax(380px, 1.18fr);
+  }
+
+  .account-showcase {
+    padding: 34px 28px;
+  }
+
+  .account-showcase h2 {
+    font-size: 38px;
+  }
+
+  .account-showcase > img {
+    width: 220px;
+    right: -38px;
+  }
+
+  .module-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .games-page .page-heading {
+    padding-right: 205px;
+  }
+
+  .games-page .module-select-label {
+    right: 190px;
+  }
+}
+
+@media (max-width: 700px) {
+  .mobile-more-backdrop {
+    inset: 0 0 calc(68px + env(safe-area-inset-bottom));
+    z-index: 1000;
+    pointer-events: auto;
+  }
+
+  .mobile-more-menu {
+    position: relative;
+    z-index: 1001;
+    box-shadow: 0 24px 70px rgb(7 27 79 / 32%);
+  }
+
+  .library-heading {
+    min-height: 146px;
+    padding: 17px 104px 54px 17px;
+  }
+
+  .library-mascot {
+    width: 108px !important;
+    height: 118px !important;
+    right: -2px !important;
+    bottom: -3px !important;
+  }
+
+  .library-heading-actions {
+    width: calc(100% - 104px);
+    left: 9px;
+    bottom: 9px;
+  }
+
+  .library-heading-actions button {
+    min-height: 36px;
+    padding: 6px 8px;
+    border-radius: 11px;
+  }
+
+  .module-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 9px !important;
+  }
+
+  .module-card {
+    min-height: 96px;
+    grid-template-columns: 68px minmax(0, 1fr);
+    grid-template-rows: 96px;
+  }
+
+  .module-cover {
+    width: 68px;
+    height: 96px;
+    min-height: 96px;
+  }
+
+  .course-overview-mascot {
+    width: 78px;
+    height: 76px;
+    position: absolute !important;
+    top: 10px;
+    right: 12px;
+    margin: 0;
+  }
+
+  .course-unit-list {
+    min-height: 690px;
+    padding-top: 10px;
+  }
+
+  .course-unit-list::before {
+    left: 50%;
+    display: block;
+  }
+
+  .course-unit-card,
+  .course-unit-card:nth-child(odd),
+  .course-unit-card:nth-child(even) {
+    width: 72%;
+    min-height: 98px;
+    margin-bottom: 4px;
+  }
+
+  .course-unit-card:nth-child(odd) {
+    margin-left: 0;
+  }
+
+  .course-unit-card:nth-child(even) {
+    margin-left: 28%;
+  }
+
+  .course-path-node {
+    grid-template-columns: 66px minmax(0, 1fr);
+    gap: 8px;
+    min-height: 94px;
+  }
+
+  .course-path-node .course-unit-number {
+    width: 64px;
+    height: 59px;
+    border-width: 6px;
+    box-shadow:
+      0 0 0 3px #dce3ed,
+      0 7px 0 #cbd3df,
+      0 10px 17px rgb(7 27 79 / 10%);
+    font-size: 14px;
+  }
+
+  .course-path-node .course-unit-copy {
+    padding: 10px 11px;
+    border-radius: 14px;
+  }
+
+  .course-path-node .course-unit-copy strong {
+    font-size: 12px;
+  }
+
+  .course-path-node .course-unit-copy em {
+    display: none;
+  }
+
+  .games-page .page-heading {
+    min-height: 184px;
+    padding: 18px 125px 64px 18px;
+  }
+
+  .games-heading-mascot {
+    width: 124px !important;
+    height: 142px !important;
+    top: 3px !important;
+    right: -2px !important;
+  }
+
+  .games-page .module-select-label {
+    width: calc(100% - 34px);
+    right: 17px;
+    bottom: 13px;
+    margin: 0;
+  }
+
+  .game-art-mascot {
+    width: 63px;
+    height: 78px;
+    right: -8px;
+  }
+
+  .game-tile-art .gp-scene {
+    width: calc(100% - 40px);
+  }
+
+  .study-shell {
+    grid-template-rows: 58px minmax(0, 1fr) auto;
+  }
+
+  .study-stage {
+    width: calc(100% - 22px);
+    padding: 14px 0 18px;
+  }
+
+  .study-label {
+    margin-bottom: 10px;
+  }
+
+  .flashcard {
+    height: min(330px, calc(100dvh - 275px));
+    min-height: 255px;
+  }
+
+  .card-face {
+    border-radius: 22px;
+  }
+
+  .card-face h1 {
+    font-size: clamp(28px, 9vw, 38px);
+  }
+
+  .flip-hint {
+    bottom: 16px;
+    max-width: 82%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .study-dock {
+    min-height: 100px;
+    padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+  }
+
+  .rating-explainer {
+    font-size: 12px;
+  }
+
+  .rating-buttons {
+    gap: 5px;
+  }
+
+  .rating-buttons button {
+    min-height: 62px;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 3px;
+    padding: 7px 5px;
+    text-align: center;
+  }
+
+  .rating-buttons kbd {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .account-screen {
+    display: block;
+    padding: 10px;
+  }
+
+  .account-layout {
+    min-height: calc(100dvh - 20px);
+    display: block;
+    border-radius: 24px;
+  }
+
+  .account-showcase {
+    min-height: 156px;
+    padding: 22px 118px 20px 22px;
+  }
+
+  .account-showcase-badge {
+    padding: 6px 8px;
+    font-size: 8px;
+  }
+
+  .account-showcase h2 {
+    max-width: 15ch;
+    margin: 13px 0 0;
+    font-size: clamp(25px, 7vw, 34px);
+    line-height: 1.03;
+  }
+
+  .account-showcase p,
+  .account-showcase ul,
+  .account-showcase-orbit {
+    display: none;
+  }
+
+  .account-showcase > img {
+    width: 125px;
+    height: 145px;
+    right: -3px;
+    bottom: -15px;
+  }
+
+  .account-layout .account-card {
+    padding: 24px 20px 28px;
+  }
+
+  .account-layout .account-logo {
+    margin-bottom: 20px;
+  }
+
+  .account-card h1 {
+    font-size: 29px;
+  }
+
+  .account-card form {
+    gap: 12px;
+    margin-top: 18px;
+  }
+
+  .account-plan-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .account-profile-panel {
+    padding: 20px 16px;
+  }
+
+  .account-profile-panel > .eyebrow,
+  .account-profile-heading {
+    max-width: calc(100% - 86px);
+  }
+
+  .account-profile-mascot {
+    width: 88px;
+    height: 90px;
+    top: 14px;
+    right: 10px;
+  }
+}
+
+@media (max-width: 390px) {
+  .course-unit-card,
+  .course-unit-card:nth-child(odd),
+  .course-unit-card:nth-child(even) {
+    width: 78%;
+  }
+
+  .course-unit-card:nth-child(even) {
+    margin-left: 22%;
+  }
+
+  .course-path-node {
+    grid-template-columns: 59px minmax(0, 1fr);
+  }
+
+  .course-path-node .course-unit-number {
+    width: 57px;
+    height: 54px;
+  }
+
+  .course-path-node .course-unit-copy {
+    padding: 9px;
+  }
+
+  .account-showcase {
+    min-height: 140px;
+    padding-right: 105px;
+  }
+
+  .account-showcase > img {
+    width: 110px;
+    height: 130px;
+  }
+}

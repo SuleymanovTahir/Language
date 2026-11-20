@@ -362,8 +362,16 @@ function GameArtwork({ gameId, module }: { gameId: GameId; module: VocabModule }
       </span>
     );
   }
+  const mascotNumber = ["pairs", "blitz", "moles", "boxes"].includes(gameId)
+    ? 3
+    : ["phonetic", "finalsound", "picture"].includes(gameId)
+      ? 7
+      : ["articles", "builder", "train", "fillblank"].includes(gameId)
+        ? 6
+        : 5;
   return (
     <span className={`game-tile-art art-${gameId}`} aria-hidden="true">
+      <img className="game-art-mascot" src={`/mascots/mascot-${mascotNumber}.png`} alt="" />
       <span className="gp-scene">{art}</span>
     </span>
   );

@@ -136,177 +136,205 @@ export function AuthScreen({
   };
   return (
     <main className="account-screen">
-      <section className="account-card">
-        <div className="account-logo">
-          <span>L</span>
-          <strong>ClickLing</strong>
-        </div>
-        <p className="eyebrow">ЛИЧНЫЙ УЧЕБНЫЙ КАБИНЕТ</p>
-        <h1>{guestRequired && view === "sign-up" ? "Продолжите обучение" : title}</h1>
-        <p className="account-lead">
-          {guestRequired
-            ? "Пробная игра уже пройдена. Создайте аккаунт, чтобы сохранить прогресс и продолжить занятия."
-            : "Прогресс, словари, игры и достижения будут храниться отдельно для каждого пользователя."}
-        </p>
-        <form onSubmit={(event) => void submit(event)}>
+      <div className="account-layout">
+        <section className="account-showcase" aria-label="Возможности ClickLing">
+          <div className="account-showcase-copy">
+            <span className="account-showcase-badge">УЧИТЕСЬ В СВОЁМ РИТМЕ</span>
+            <h2>Немецкий, который становится привычкой</h2>
+            <p>
+              Короткие маршруты, живые игры и умное повторение слов — всё в одном учебном
+              пространстве.
+            </p>
+            <ul>
+              <li>
+                <Icon name="check" size={15} /> Прогресс на всех устройствах
+              </li>
+              <li>
+                <Icon name="check" size={15} /> Игровой путь от A1 до C1
+              </li>
+              <li>
+                <Icon name="check" size={15} /> Личная библиотека и тренировки
+              </li>
+            </ul>
+          </div>
+          <img src="/mascots/mascot-5.png" alt="" aria-hidden="true" />
+          <span className="account-showcase-orbit orbit-one">der</span>
+          <span className="account-showcase-orbit orbit-two">Hallo!</span>
+        </section>
+        <section className="account-card">
+          <div className="account-logo">
+            <span>L</span>
+            <strong>ClickLing</strong>
+          </div>
+          <p className="eyebrow">ЛИЧНЫЙ УЧЕБНЫЙ КАБИНЕТ</p>
+          <h1>{guestRequired && view === "sign-up" ? "Продолжите обучение" : title}</h1>
+          <p className="account-lead">
+            {guestRequired
+              ? "Пробная игра уже пройдена. Создайте аккаунт, чтобы сохранить прогресс и продолжить занятия."
+              : "Прогресс, словари, игры и достижения будут храниться отдельно для каждого пользователя."}
+          </p>
+          <form onSubmit={(event) => void submit(event)}>
+            {view === "sign-up" && (
+              <label className="field-label">
+                Как вас зовут?
+                <input
+                  autoComplete="name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  required
+                  minLength={2}
+                  maxLength={80}
+                />
+              </label>
+            )}
+            {view === "sign-up" && (
+              <p className="account-privacy-copy">
+                После подтверждения почты прогресс будет синхронизироваться между устройствами.
+                Владелец видит агрегированные результаты, но не свободный текст ваших ответов.
+                Подробнее — в настройках аккаунта.
+              </p>
+            )}
+            {view !== "reset-password" && (
+              <label className="field-label">
+                Электронная почта
+                <input
+                  type="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+              </label>
+            )}
+            {view !== "forgot-password" && (
+              <label className="field-label">
+                {view === "reset-password" ? "Новый пароль" : "Пароль"}
+                <input
+                  type="password"
+                  autoComplete={view === "sign-in" ? "current-password" : "new-password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  minLength={8}
+                  maxLength={128}
+                  aria-describedby={
+                    view === "sign-up" || view === "reset-password"
+                      ? "auth-password-help"
+                      : undefined
+                  }
+                />
+                {(view === "sign-up" || view === "reset-password") && (
+                  <small id="auth-password-help" className="field-help">
+                    Не менее 8 символов.
+                  </small>
+                )}
+              </label>
+            )}
+            {(view === "sign-up" || view === "reset-password") && (
+              <label className="field-label">
+                Повторите пароль
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                  minLength={8}
+                  maxLength={128}
+                />
+              </label>
+            )}
+            {(error || localError) && (
+              <p className="form-error" role="alert">
+                {localError || error}
+              </p>
+            )}
+            {notice && (
+              <p className="account-success" role="status">
+                {notice}
+              </p>
+            )}
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={
+                busy ||
+                (view === "sign-up" && password !== confirmPassword) ||
+                (view === "reset-password" && password !== confirmPassword)
+              }
+            >
+              {busy
+                ? "Подключаем кабинет…"
+                : view === "sign-in"
+                  ? "Войти"
+                  : view === "sign-up"
+                    ? "Зарегистрироваться"
+                    : view === "forgot-password"
+                      ? "Отправить ссылку"
+                      : "Сохранить новый пароль"}
+            </button>
+          </form>
+          {view === "sign-in" && (
+            <button
+              className="account-mode-switch"
+              onClick={() => {
+                setView("forgot-password");
+                setNotice("");
+                setLocalError("");
+              }}
+            >
+              Забыли пароль?
+            </button>
+          )}
+          {view === "sign-in" && (
+            <button
+              className="account-mode-switch"
+              onClick={() => {
+                setView("sign-up");
+                setPassword("");
+                setConfirmPassword("");
+                setNotice("");
+                setLocalError("");
+              }}
+            >
+              Нет аккаунта? Зарегистрироваться
+            </button>
+          )}
           {view === "sign-up" && (
-            <label className="field-label">
-              Как вас зовут?
-              <input
-                autoComplete="name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                minLength={2}
-                maxLength={80}
-              />
-            </label>
+            <button
+              className="account-mode-switch"
+              onClick={() => {
+                setView("sign-in");
+                setPassword("");
+                setConfirmPassword("");
+                setNotice("");
+                setLocalError("");
+              }}
+            >
+              Уже есть аккаунт? Войти
+            </button>
           )}
-          {view === "sign-up" && (
-            <p className="account-privacy-copy">
-              После подтверждения почты прогресс будет синхронизироваться между устройствами.
-              Владелец видит агрегированные результаты, но не свободный текст ваших ответов.
-              Подробнее — в настройках аккаунта.
-            </p>
+          {(view === "sign-up" || view === "forgot-password" || view === "reset-password") && (
+            <button
+              className="account-mode-switch"
+              onClick={() => {
+                setView("sign-in");
+                setPassword("");
+                setConfirmPassword("");
+                setNotice("");
+                setLocalError("");
+              }}
+            >
+              Вернуться ко входу
+            </button>
           )}
-          {view !== "reset-password" && (
-            <label className="field-label">
-              Электронная почта
-              <input
-                type="email"
-                autoComplete="email"
-                autoCapitalize="none"
-                spellCheck={false}
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </label>
-          )}
-          {view !== "forgot-password" && (
-            <label className="field-label">
-              {view === "reset-password" ? "Новый пароль" : "Пароль"}
-              <input
-                type="password"
-                autoComplete={view === "sign-in" ? "current-password" : "new-password"}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-                minLength={8}
-                maxLength={128}
-                aria-describedby={
-                  view === "sign-up" || view === "reset-password" ? "auth-password-help" : undefined
-                }
-              />
-              {(view === "sign-up" || view === "reset-password") && (
-                <small id="auth-password-help" className="field-help">
-                  Не менее 8 символов.
-                </small>
-              )}
-            </label>
-          )}
-          {(view === "sign-up" || view === "reset-password") && (
-            <label className="field-label">
-              Повторите пароль
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                required
-                minLength={8}
-                maxLength={128}
-              />
-            </label>
-          )}
-          {(error || localError) && (
-            <p className="form-error" role="alert">
-              {localError || error}
-            </p>
-          )}
-          {notice && (
-            <p className="account-success" role="status">
-              {notice}
-            </p>
-          )}
-          <button
-            className="primary-button"
-            type="submit"
-            disabled={
-              busy ||
-              (view === "sign-up" && password !== confirmPassword) ||
-              (view === "reset-password" && password !== confirmPassword)
-            }
-          >
-            {busy
-              ? "Подключаем кабинет…"
-              : view === "sign-in"
-                ? "Войти"
-                : view === "sign-up"
-                  ? "Зарегистрироваться"
-                  : view === "forgot-password"
-                    ? "Отправить ссылку"
-                    : "Сохранить новый пароль"}
+          <button className="account-retry" onClick={onRetry}>
+            <Icon name="refresh" size={14} /> Проверить соединение
           </button>
-        </form>
-        {view === "sign-in" && (
-          <button
-            className="account-mode-switch"
-            onClick={() => {
-              setView("forgot-password");
-              setNotice("");
-              setLocalError("");
-            }}
-          >
-            Забыли пароль?
-          </button>
-        )}
-        {view === "sign-in" && (
-          <button
-            className="account-mode-switch"
-            onClick={() => {
-              setView("sign-up");
-              setPassword("");
-              setConfirmPassword("");
-              setNotice("");
-              setLocalError("");
-            }}
-          >
-            Нет аккаунта? Зарегистрироваться
-          </button>
-        )}
-        {view === "sign-up" && (
-          <button
-            className="account-mode-switch"
-            onClick={() => {
-              setView("sign-in");
-              setPassword("");
-              setConfirmPassword("");
-              setNotice("");
-              setLocalError("");
-            }}
-          >
-            Уже есть аккаунт? Войти
-          </button>
-        )}
-        {(view === "sign-up" || view === "forgot-password" || view === "reset-password") && (
-          <button
-            className="account-mode-switch"
-            onClick={() => {
-              setView("sign-in");
-              setPassword("");
-              setConfirmPassword("");
-              setNotice("");
-              setLocalError("");
-            }}
-          >
-            Вернуться ко входу
-          </button>
-        )}
-        <button className="account-retry" onClick={onRetry}>
-          <Icon name="refresh" size={14} /> Проверить соединение
-        </button>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
@@ -613,34 +641,68 @@ function BillingStatus() {
     : "";
   return (
     <section className="account-billing">
-      <div>
-        <strong>{data?.entitlement?.active ? "PRO активен" : "Бесплатный тариф"}</strong>
-        {data?.entitlement?.active && date && <small>Доступ до {date}</small>}
+      <div className="account-billing-heading">
+        <div>
+          <span className="eyebrow">ТАРИФ И ОПЛАТА</span>
+          <strong>
+            {data?.entitlement?.active ? "ClickLing PRO активен" : "Ваш учебный план"}
+          </strong>
+          <small>
+            {data?.entitlement?.active && date
+              ? `Доступ открыт до ${date}`
+              : "Начните бесплатно и подключите PRO, когда будете готовы."}
+          </small>
+        </div>
+        <span className={`billing-status ${data?.entitlement?.active ? "active" : ""}`}>
+          {data?.entitlement?.active ? "PRO" : "FREE"}
+        </span>
       </div>
       {error ? (
-        <small>{error}</small>
+        <small className="billing-message">{error}</small>
       ) : (
         data && (
           <>
             <div className="account-plan-list">
-              {(data.plans ?? []).map((plan) => (
-                <span key={plan.code}>
-                  {plan.name} ·{" "}
-                  {new Intl.NumberFormat("ru-RU", {
-                    style: "currency",
-                    currency: plan.currency,
-                  }).format(plan.amountMinor / 100)}{" "}
-                  /{" "}
-                  {plan.interval === "month"
-                    ? "месяц"
-                    : plan.interval === "year"
-                      ? "год"
-                      : "период"}
-                </span>
+              {(data.plans ?? []).map((plan, index) => (
+                <article className={index === 1 ? "recommended" : ""} key={plan.code}>
+                  {index === 1 && <span className="plan-badge">Выгоднее</span>}
+                  <strong>{plan.name}</strong>
+                  <div>
+                    <b>
+                      {new Intl.NumberFormat("ru-RU", {
+                        style: "currency",
+                        currency: plan.currency,
+                        maximumFractionDigits: 0,
+                      }).format(plan.amountMinor / 100)}
+                    </b>
+                    <small>
+                      /{" "}
+                      {plan.interval === "month"
+                        ? "месяц"
+                        : plan.interval === "year"
+                          ? "год"
+                          : "навсегда"}
+                    </small>
+                  </div>
+                  <ul>
+                    <li>
+                      <Icon name="check" size={13} /> Безлимитные тренировки
+                    </li>
+                    <li>
+                      <Icon name="check" size={13} /> Весь учебный маршрут
+                    </li>
+                  </ul>
+                  <button className="primary-button compact" disabled={!data.checkoutEnabled}>
+                    Выбрать план
+                  </button>
+                </article>
               ))}
             </div>
             {!data.checkoutEnabled && (
-              <small>{data.message || "Оплата временно недоступна."}</small>
+              <small className="billing-message">
+                <Icon name="info" size={14} />
+                {data.message || "Оплата временно недоступна."}
+              </small>
             )}
           </>
         )

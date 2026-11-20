@@ -581,7 +581,9 @@ export function StudySession({
                   <p className="transcription">
                     {direction === "de-ru" ? card.transcription : "Переведите на немецкий"}
                   </p>
-                  <span className="flip-hint">Нажмите, чтобы открыть ответ</span>
+                  <span className="flip-hint">
+                    <Icon name="spark" size={14} /> Нажмите, чтобы показать перевод
+                  </span>
                 </div>
                 <div className="card-face card-back">
                   <p>ОТВЕТ</p>
@@ -643,7 +645,7 @@ export function StudySession({
         ) : flipped ? (
           <div className="rating-panel">
             <div className="rating-explainer">
-              <strong>Как вспомнили?</strong>
+              <strong>Насколько легко вспомнилось?</strong>
               <HelpHint>
                 Оцените, насколько легко вспомнили слово. Приложение выберет следующий день повтора.
               </HelpHint>
@@ -651,17 +653,17 @@ export function StudySession({
             <div className="rating-buttons">
               <button onClick={() => advance(false, 1)}>
                 <kbd>1</kbd>
-                <span>Не вспомнил</span>
-                <small>Завтра</small>
+                <span>Повторить</span>
+                <small>Ещё раз завтра</small>
               </button>
               <button onClick={() => advance(true, 2)}>
                 <kbd>2</kbd>
-                <span>С трудом</span>
+                <span>Почти</span>
                 <small>Через 3 дня</small>
               </button>
               <button className="easy" onClick={() => advance(true, 3)}>
                 <kbd>3</kbd>
-                <span>Легко</span>
+                <span>Знаю</span>
                 <small>Через 7 дней</small>
               </button>
             </div>

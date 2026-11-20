@@ -222,35 +222,35 @@ export function CoursePath({
                 key={item.id}
                 className={`course-unit-card ${saved?.completedAt ? "complete" : ""} ${isNext && item.id === next?.id ? "current" : ""} ${!saved?.completedAt && item.id !== next?.id ? "future" : ""} ${!unlocked ? "locked" : ""} ${recommendedIds.has(item.id) ? "recommended" : ""}`}
               >
-                <span className="course-unit-number">
-                  {saved?.completedAt ? (
-                    <Icon name="check" size={17} />
-                  ) : (
-                    String(index + 1).padStart(2, "0")
-                  )}
-                </span>
-                <div className="course-unit-copy">
-                  <div className="course-unit-kicker">
-                    {saved?.completedAt
-                      ? "ПРОЙДЕНО"
-                      : item.id === next?.id
-                        ? "СЛЕДУЮЩИЙ ШАГ"
-                        : "ВПЕРЕДИ"}{" "}
-                    · {item.vocabulary.length} ФРАЗ
-                    {recommendedIds.has(item.id) ? " · ВАША ЦЕЛЬ" : ""}
-                  </div>
-                  <h3>{item.title}</h3>
-                  <p>{item.outcome}</p>
-                  <div className="course-skill-tags">
-                    <span>6 навыков</span>
-                  </div>
-                </div>
                 <button
-                  className={isNext ? "primary-button" : "secondary-button"}
+                  className="course-path-node"
                   disabled={!unlocked}
                   onClick={() => onStart(item)}
+                  aria-label={`${hasSavedMission ? "Продолжить" : saved?.completedAt ? "Повторить" : "Начать"}: ${item.title}`}
                 >
-                  {hasSavedMission ? "Продолжить" : saved?.completedAt ? "Повторить" : "Старт"}
+                  <span className="course-unit-number">
+                    {saved?.completedAt ? (
+                      <Icon name="check" size={24} />
+                    ) : item.id === next?.id ? (
+                      <Icon name="arrow" size={23} />
+                    ) : (
+                      String(index + 1).padStart(2, "0")
+                    )}
+                  </span>
+                  <span className="course-unit-copy">
+                    <small className="course-unit-kicker">
+                      {saved?.completedAt
+                        ? "ПРОЙДЕНО"
+                        : item.id === next?.id
+                          ? hasSavedMission
+                            ? "ПРОДОЛЖИТЬ"
+                            : "СТАРТ"
+                          : "ВПЕРЕДИ"}
+                      {recommendedIds.has(item.id) ? " · ВАША ЦЕЛЬ" : ""}
+                    </small>
+                    <strong>{item.title}</strong>
+                    <em>{item.outcome}</em>
+                  </span>
                 </button>
               </article>
             );

@@ -195,7 +195,7 @@ const defaultSpace: LearningSpace = {
   id: "de-a1-a2",
   languageCode: "de",
   languageName: "Немецкий",
-  flag: "DE",
+  flag: "🇩🇪",
   level: "A1–A2",
   nativeLanguageCode: "ru",
 };
@@ -2608,10 +2608,12 @@ function Sidebar({
           </a>
         ))}
         <button
+          type="button"
           className={`mobile-settings-nav ${moreOpen ? "active" : ""}`}
           onClick={() => setMoreOpen((open) => !open)}
           aria-label="Открыть остальные разделы"
           aria-expanded={moreOpen}
+          aria-controls="mobile-more-menu"
         >
           <Icon name="more" />
           <span>Ещё</span>
@@ -2620,6 +2622,7 @@ function Sidebar({
       {moreOpen && (
         <div className="mobile-more-backdrop" onClick={() => setMoreOpen(false)}>
           <section
+            id="mobile-more-menu"
             className="mobile-more-menu"
             aria-label="Остальные разделы"
             onClick={(event) => event.stopPropagation()}
