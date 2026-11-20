@@ -9,6 +9,7 @@ export type AppPermissions = {
   manageUsers: boolean;
   viewAnalytics: boolean;
   manageSettings: boolean;
+  hiddenSections?: string[];
 };
 export type AccountUser = {
   id: string;
@@ -27,7 +28,8 @@ export type Credentials = {
   email: string;
   password: string;
 };
-const permissionLabels: Record<keyof AppPermissions, string> = {
+type BooleanPermission = Exclude<keyof AppPermissions, "hiddenSections">;
+const permissionLabels: Record<BooleanPermission, string> = {
   manageContent: "Создавать и редактировать модули, игры и уроки",
   manageUsers: "Управлять аккаунтами и ролями",
   viewAnalytics: "Просматривать прогресс и ошибки пользователей",
@@ -1011,7 +1013,7 @@ function AdminUsersPanel({
                               Владелец всегда сохраняет управление пользователями и настройками.
                             </small>
                           )}
-                          {(Object.keys(permissionLabels) as (keyof AppPermissions)[]).map(
+                          {(Object.keys(permissionLabels) as BooleanPermission[]).map(
                             (permission) => {
                               const ownerCoreRight =
                                 role === "owner" &&
@@ -1121,7 +1123,7 @@ function basePermissions(role: string): AppPermissions {
     manageSettings: role === "owner",
   };
 }
-function defaultPermission(role: string, permission: keyof AppPermissions) {
+function defaultPermission(role: string, permission: BooleanPermission) {
   return basePermissions(role)[permission];
 }
 function formatDate(value: string) {

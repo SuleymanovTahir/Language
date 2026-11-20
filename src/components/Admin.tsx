@@ -20,6 +20,7 @@ type AdminUser = AccountUser & {
   ban_reason: string | null;
   ban_expires: string | null;
   xp: number;
+  crystals: number;
   energy: number;
   energy_cap: number;
   answers: number;
@@ -288,7 +289,18 @@ function AdminUserCard({
   const [endsAt, setEndsAt] = useState(dateInput(user.pro_ends_at));
   const [proReason, setProReason] = useState("");
   const [xp, setXp] = useState(String(user.xp));
+  const [crystals, setCrystals] = useState(String(user.crystals));
   const [energy, setEnergy] = useState(String(user.energy));
+  const [role, setRole] = useState(user.role || "student");
+  const [permissions, setPermissions] = useState({
+    manageContent: Boolean(user.permissions?.manageContent),
+    manageUsers: Boolean(user.permissions?.manageUsers),
+    viewAnalytics: Boolean(user.permissions?.viewAnalytics),
+    manageSettings: Boolean(user.permissions?.manageSettings),
+  });
+  const [hiddenSections, setHiddenSections] = useState<string[]>(
+    user.permissions?.hiddenSections ?? [],
+  );
   const [energyReason, setEnergyReason] = useState("");
   const [working, setWorking] = useState(false);
   const mutate = async (
@@ -317,6 +329,21 @@ function AdminUserCard({
     try {
       await adminRequest({}, "DELETE", `?userId=${encodeURIComponent(user.id)}`);
       onSaved("Аккаунт удалён.");
+    } catch (cause) {
+      onError(errText(cause));
+    } finally {
+      setWorking(false);
+    }
+  };
+  const saveAccess = async () => {
+    setWorking(true);
+    onError("");
+    try {
+      await adminRequest(
+        { userId: user.id, role, permissions: { ...permissions, hiddenSections } },
+        "PUT",
+      );
+      onSaved("Роль и права обновлены. Активные сессии пользователя завершены.");
     } catch (cause) {
       onError(errText(cause));
     } finally {
@@ -387,6 +414,86 @@ function AdminUserCard({
           </div>
         )}
         <div className="admin-detail-columns">
+          <section className="admin-edit-section">
+            <h3>Роль и права</h3>
+            <label className="field-label">
+              Роль
+              <select
+                value={role}
+                disabled={working || user.id === currentUserId}
+                onChange={(event) => {
+                  const nextRole = event.target.value;
+                  setRole(nextRole);
+                  setPermissions((current) => ({
+                    ...current,
+                    manageContent: nextRole === "admin",
+                    manageUsers: false,
+                    viewAnalytics: false,
+                    manageSettings: false,
+                  }));
+                }}
+              >
+                <option value="student">Ученик</option>
+                <option value="admin">Администратор контента</option>
+              </select>
+            </label>
+            <label className="admin-toggle-row">
+              <span>
+                <strong>Редактировать материалы</strong>
+                <small>Модули, уроки, игры и каталог.</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={permissions.manageContent}
+                disabled={working || user.id === currentUserId}
+                onChange={(event) =>
+                  setPermissions((current) => ({
+                    ...current,
+                    manageContent: event.target.checked,
+                  }))
+                }
+              />
+            </label>
+            <p className="admin-help">
+              Управление пользователями, аналитика и системные настройки остаются только у
+              владельца.
+            </p>
+            <fieldset className="admin-menu-access">
+              <legend>Разделы бокового меню</legend>
+              {[
+                ["today", "Сегодня"],
+                ["library", "Библиотека"],
+                ["catalog", "Каталог"],
+                ["path", "Учебный путь"],
+                ["materials", "Материалы"],
+                ["games", "Игры"],
+                ["stats", "Прогресс"],
+              ].map(([id, label]) => (
+                <label key={id}>
+                  <input
+                    type="checkbox"
+                    checked={!hiddenSections.includes(id)}
+                    disabled={working || user.id === currentUserId}
+                    onChange={(event) =>
+                      setHiddenSections((current) =>
+                        event.target.checked
+                          ? current.filter((item) => item !== id)
+                          : [...current, id],
+                      )
+                    }
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </fieldset>
+            <button
+              className="secondary-button compact"
+              disabled={working || user.id === currentUserId}
+              onClick={() => void saveAccess()}
+            >
+              Сохранить роль и права
+            </button>
+          </section>
           <section className="admin-edit-section">
             <h3>Аккаунт</h3>
             <label className="field-label">
@@ -510,6 +617,16 @@ function AdminUserCard({
                 />
               </label>
               <label className="field-label">
+                Кристаллы
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={crystals}
+                  onChange={(event) => setCrystals(event.target.value)}
+                />
+              </label>
+              <label className="field-label">
                 Энергия · из {user.energy_cap}
                 <input
                   type="number"
@@ -527,6 +644,20 @@ function AdminUserCard({
               onClick={() => void mutate("set-progress", { xp: Number(xp) }, "XP обновлены.")}
             >
               Сохранить XP
+            </button>
+            <button
+              className="secondary-button compact"
+              disabled={
+                working ||
+                !Number.isInteger(Number(crystals)) ||
+                Number(crystals) < 0 ||
+                Number(crystals) > 10_000_000
+              }
+              onClick={() =>
+                void mutate("set-crystals", { crystals: Number(crystals) }, "Кристаллы обновлены.")
+              }
+            >
+              Сохранить кристаллы
             </button>
             <label className="field-label">
               Причина изменения энергии

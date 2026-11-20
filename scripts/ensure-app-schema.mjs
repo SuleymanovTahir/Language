@@ -3,10 +3,10 @@ import pg from "pg";
 const { Pool } = pg;
 if (!process.env.DATABASE_URL)
   throw new Error("DATABASE_URL is required to prepare the application schema.");
-const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 5);
+const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 22);
 const energyCap = Number.isInteger(configuredEnergyCap)
   ? Math.max(1, Math.min(22, configuredEnergyCap))
-  : 5;
+  : 22;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -107,7 +107,7 @@ try {
     );
     CREATE TABLE IF NOT EXISTS linguaplay_energy_accounts (
       user_id text PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
-      energy integer NOT NULL DEFAULT 5 CHECK (energy BETWEEN 0 AND 22),
+      energy integer NOT NULL DEFAULT 22 CHECK (energy BETWEEN 0 AND 22),
       next_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -263,7 +263,7 @@ try {
     );
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS next_at_after timestamptz;
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS is_pro boolean NOT NULL DEFAULT false;
-    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 5;
+    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 22;
     CREATE INDEX IF NOT EXISTS linguaplay_energy_ledger_user_time_idx ON linguaplay_energy_ledger(user_id,created_at DESC);
   `);
 

@@ -189,6 +189,7 @@ export function StudySession({
   const [hint, setHint] = useState(0);
   const [showRule, setShowRule] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const quick = mode === "quick" || mode === "test";
   const writing = mode === "write";
   const card = cards[index];
@@ -201,6 +202,13 @@ export function StudySession({
   const target = card ? (direction === "de-ru" ? card.translation : german(card)) : "";
   const displayedWord = card ? (direction === "de-ru" ? german(card) : card.translation) : "";
   const pct = cards.length ? ((index + 1) / cards.length) * 100 : 0;
+  const elapsedLabel = `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, "0")}`;
+
+  useEffect(() => {
+    if (mode !== "test" && mode !== "write") return;
+    const timer = window.setInterval(() => setElapsedSeconds((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [mode]);
 
   const navigateCard = (nextIndex: number) => {
     if (nextIndex < 0 || nextIndex >= cards.length) return;
@@ -329,6 +337,11 @@ export function StudySession({
         <span>
           {index + 1} / {cards.length}
         </span>
+        {(mode === "test" || mode === "write") && (
+          <span className="study-timer" aria-label={`Время теста ${elapsedLabel}`}>
+            <Icon name="clock" size={15} /> {elapsedLabel}
+          </span>
+        )}
         <button
           onClick={() =>
             speakText(

@@ -7,10 +7,10 @@ const json = (data: unknown, status = 200) =>
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
 const flags = ["manageContent", "manageUsers", "viewAnalytics", "manageSettings"] as const;
-const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 5);
+const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 22);
 const ENERGY_CAP = Number.isInteger(configuredEnergyCap)
   ? Math.max(1, Math.min(22, configuredEnergyCap))
-  : 5;
+  : 22;
 const configuredEnergyRefill = Number(process.env.LINGUAPLAY_ENERGY_REFILL_MINUTES ?? 30);
 const ENERGY_REFILL_MINUTES = Number.isInteger(configuredEnergyRefill)
   ? Math.max(1, Math.min(1440, configuredEnergyRefill))
@@ -87,6 +87,7 @@ function profileSummary(raw: unknown, serverEnergy: unknown) {
   );
   return {
     xp: statRows.reduce((sum, item) => sum + asNumber(item.xp), 0),
+    crystals: statRows.reduce((sum, item) => sum + asNumber(item.crystals), 0),
     energy: Math.max(
       0,
       Math.min(
@@ -357,10 +358,16 @@ export async function PATCH(request: Request) {
       headers: request.headers,
     });
     details.changed = true;
-  } else if (action === "set-progress") {
+  } else if (action === "set-progress" || action === "set-crystals") {
     const xp = Number(body.xp);
-    if (!Number.isInteger(xp) || xp < 0 || xp > 10_000_000)
+    const crystals = Number(body.crystals);
+    if (action === "set-progress" && (!Number.isInteger(xp) || xp < 0 || xp > 10_000_000))
       return json({ error: "XP должны быть целым числом от 0 до 10 000 000." }, 400);
+    if (
+      action === "set-crystals" &&
+      (!Number.isInteger(crystals) || crystals < 0 || crystals > 10_000_000)
+    )
+      return json({ error: "Кристаллы должны быть целым числом от 0 до 10 000 000." }, 400);
     const stored = await pool.query("SELECT data FROM linguaplay_user_data WHERE user_id=$1", [
       userId,
     ]);
@@ -368,15 +375,20 @@ export async function PATCH(request: Request) {
     const spaces = parseJson(data["linguaplay-stats-by-space"]);
     const spaceId = text(body.spaceId, 120) || Object.keys(spaces)[0] || "de-a1-a2";
     const stats = parseJson(spaces[spaceId]);
-    delete stats.crystals;
     delete stats.freezeCount;
-    spaces[spaceId] = JSON.stringify({ ...stats, xp });
+    spaces[spaceId] = JSON.stringify({
+      ...stats,
+      ...(action === "set-progress" ? { xp } : { crystals }),
+    });
     await pool.query(
       `INSERT INTO linguaplay_user_data(user_id,data,updated_at) VALUES($1,jsonb_build_object('linguaplay-stats-by-space',$2::text),now())
       ON CONFLICT(user_id) DO UPDATE SET data=linguaplay_user_data.data || jsonb_build_object('linguaplay-stats-by-space',$2::text),updated_at=now()`,
       [userId, JSON.stringify(spaces)],
     );
-    Object.assign(details, { xp, spaceId });
+    Object.assign(details, {
+      ...(action === "set-progress" ? { xp } : { crystals }),
+      spaceId,
+    });
   } else if (action === "set-energy") {
     const energy = Number(body.energy);
     if (!Number.isInteger(energy) || energy < 0 || energy > ENERGY_CAP)
@@ -497,6 +509,13 @@ export async function PUT(request: Request) {
       typeof supplied[key] === "boolean" ? supplied[key] : defaults(role)[key],
     ]),
   ) as Record<Permission, boolean>;
+  const allowedSections = ["today", "library", "catalog", "path", "materials", "games", "stats"];
+  const hiddenSections = Array.isArray(supplied.hiddenSections)
+    ? supplied.hiddenSections
+        .filter((item): item is string => typeof item === "string")
+        .filter((item) => allowedSections.includes(item))
+    : [];
+  Object.assign(permissions, { hiddenSections });
   if (role === "owner") {
     permissions.manageUsers = true;
     permissions.manageSettings = true;

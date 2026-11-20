@@ -182,7 +182,7 @@ const defaultStats: UserStats = {
   studySecondsByDay: {},
   lastStudyDay: "",
 };
-const ENERGY_CAP = 5;
+const ENERGY_CAP = 22;
 const ENERGY_REFILL_MS = 30 * 60 * 1000;
 const defaultEnergy: EnergyState = { energy: ENERGY_CAP, nextAt: 0, version: 2 };
 const defaultPreferences: Preferences = {
@@ -415,11 +415,18 @@ function WorkspaceApp({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [streakOpen, setStreakOpen] = useState(false);
   const [energyOpen, setEnergyOpen] = useState(false);
+  const [crystalsOpen, setCrystalsOpen] = useState(false);
+  const [legalOpen, setLegalOpen] = useState(false);
+  const [cookieConsent, setCookieConsent] = useState<"all" | "necessary" | null>(() => {
+    const saved = window.localStorage.getItem("clickling-cookie-consent");
+    return saved === "all" || saved === "necessary" ? saved : null;
+  });
   const [energyClock, setEnergyClock] = useState(Date.now());
   const [serverEnergyUserId, setServerEnergyUserId] = useState<string | null>(null);
   const [serverEnergyCap, setServerEnergyCap] = useState(ENERGY_CAP);
   const [serverEnergyRefillMs, setServerEnergyRefillMs] = useState(ENERGY_REFILL_MS);
   const currentUserId = user?.id ?? null;
+  const previousCorrectStreak = useRef(stats.correctStreak ?? 0);
   const [serverIsPro, setServerIsPro] = useState(false);
   const activityStartPending = useRef<{ activityId: string; idempotencyKey: string } | null>(null);
   const activityStartInFlight = useRef(false);
@@ -441,6 +448,49 @@ function WorkspaceApp({
   const activeLearning = Boolean(
     session || podcastCards || activeGame || activeGrammar || activeCourseUnit,
   );
+
+  useEffect(() => {
+    const streak = stats.correctStreak ?? 0;
+    const previous = previousCorrectStreak.current;
+    previousCorrectStreak.current = streak;
+    if (streak <= previous || ![3, 5, 10].includes(streak)) return;
+    const amount = streak === 10 ? 3 : streak === 5 ? 2 : 1;
+    const applyReward = (nextEnergy: number, cap: number) => {
+      setEnergy((current) => ({
+        energy: Math.min(cap, Math.max(current.energy, nextEnergy)),
+        nextAt: nextEnergy >= cap ? 0 : current.nextAt,
+        version: 2,
+      }));
+      setToast(`Серия из ${streak} правильных ответов · +${amount} к энергии`);
+    };
+    if (!currentUserId) {
+      const snapshot = energySnapshot(energy);
+      applyReward(Math.min(ENERGY_CAP, snapshot.energy + amount), ENERGY_CAP);
+      return;
+    }
+    void fetch("/api/activities/start", {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        streak,
+        idempotencyKey: `streak:${localDay()}:${streak}`,
+      }),
+    })
+      .then(async (response) => {
+        const result = (await response.json().catch(() => ({}))) as {
+          energy?: number;
+          cap?: number;
+          error?: string;
+        };
+        if (!response.ok || typeof result.energy !== "number")
+          throw new Error(result.error || "Не удалось начислить бонус энергии.");
+        applyReward(result.energy, result.cap ?? serverEnergyCap);
+      })
+      .catch((error) =>
+        setToast(error instanceof Error ? error.message : "Не удалось начислить бонус энергии."),
+      );
+  }, [stats.correctStreak, currentUserId, serverEnergyCap]);
 
   useEffect(() => {
     const markInteraction = () => {
@@ -630,7 +680,7 @@ function WorkspaceApp({
   }, [user?.id]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || cookieConsent !== "all") return;
     void fetch("/api/events", {
       method: "POST",
       credentials: "include",
@@ -638,10 +688,10 @@ function WorkspaceApp({
       body: JSON.stringify({ type: "page-view", route: screen }),
       keepalive: true,
     }).catch(() => undefined);
-  }, [screen, user?.id]);
+  }, [screen, user?.id, cookieConsent]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || cookieConsent !== "all") return;
     const trackClick = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -683,7 +733,7 @@ function WorkspaceApp({
     };
     document.addEventListener("click", trackClick);
     return () => document.removeEventListener("click", trackClick);
-  }, [user?.id]);
+  }, [user?.id, cookieConsent]);
 
   useEffect(() => {
     if (screen !== "materials") return;
@@ -1648,6 +1698,7 @@ function WorkspaceApp({
         canManageContent={canManageContent}
         onSettings={() => setSettingsOpen(true)}
         onLanguage={() => setSpacesOpen(true)}
+        hiddenSections={user?.permissions?.hiddenSections}
       />
       <main className="main-area">
         <header className="top-header">
@@ -1664,12 +1715,15 @@ function WorkspaceApp({
             <strong>{stats.streak}</strong>
           </button>
           <button
-            className="stat-pill"
-            title="Кристаллы — визуальная награда без обмена на преимущества"
-            onClick={() => setToast(`${stats.crystals} кристаллов · визуальная награда за ответы`)}
+            className="stat-pill stat-pill-action"
+            title="Кристаллы и пакеты пополнения"
+            onClick={() => setCrystalsOpen(true)}
           >
             <Icon name="gem" size={18} />
             <strong>{stats.crystals}</strong>
+            <span className="stat-pill-plus" aria-hidden="true">
+              +
+            </span>
           </button>
           <button
             className={`stat-pill energy-pill ${serverEnergyReady && energyStats.energy === 0 && !isPro ? "energy-empty" : ""}`}
@@ -1692,13 +1746,19 @@ function WorkspaceApp({
             <strong>
               {!serverEnergyReady ? "…" : isPro ? "PRO" : `${energyStats.energy}/${energyCap}`}
             </strong>
+            <span className="stat-pill-plus" aria-hidden="true">
+              +
+            </span>
           </button>
           <button
             className="avatar"
             aria-label={user ? "Открыть личный кабинет" : "Открыть настройки профиля"}
             onClick={() => (user ? setAccountOpen(true) : setSettingsOpen(true))}
           >
-            {(user?.name || preferences.name || "LP").slice(0, 2).toUpperCase()}
+            <span className="avatar-initials">
+              {(user?.name || preferences.name || "LP").slice(0, 2).toUpperCase()}
+            </span>
+            <span className="account-button-label">{user ? "Кабинет" : "Профиль"}</span>
           </button>
         </header>
         {screen === "today" && (
@@ -2065,6 +2125,12 @@ function WorkspaceApp({
             <AdminAnalyticsScreen />
           </Suspense>
         )}
+        <footer className="site-footer">
+          <span>© {new Date().getFullYear()} ClickLing</span>
+          <button onClick={() => setLegalOpen(true)}>Правовая информация</button>
+          <button onClick={() => setCookieConsent(null)}>Настройки Cookie</button>
+          <span>Передача данных защищена HTTPS</span>
+        </footer>
       </main>
       {toast && (
         <div className="toast-message" role="status">
@@ -2207,6 +2273,32 @@ function WorkspaceApp({
           ready={serverEnergyReady}
           onRefresh={() => void refreshServerEnergy()}
           onClose={() => setEnergyOpen(false)}
+        />
+      )}
+      {crystalsOpen && (
+        <CrystalDialog
+          crystals={stats.crystals}
+          onClose={() => setCrystalsOpen(false)}
+          onOpenAccount={() => {
+            setCrystalsOpen(false);
+            if (user) setAccountOpen(true);
+            else
+              setToast("Покупки станут доступны после входа и подключения платёжного провайдера.");
+          }}
+        />
+      )}
+      {legalOpen && <LegalCenter onClose={() => setLegalOpen(false)} />}
+      {!cookieConsent && (
+        <CookieBanner
+          onNecessary={() => {
+            window.localStorage.setItem("clickling-cookie-consent", "necessary");
+            setCookieConsent("necessary");
+          }}
+          onAccept={() => {
+            window.localStorage.setItem("clickling-cookie-consent", "all");
+            setCookieConsent("all");
+          }}
+          onDetails={() => setLegalOpen(true)}
         />
       )}
       {lessonDraft && (
@@ -2550,6 +2642,170 @@ function EnergyDialog({
   );
 }
 
+function CrystalDialog({
+  crystals,
+  onClose,
+  onOpenAccount,
+}: {
+  crystals: number;
+  onClose: () => void;
+  onOpenAccount: () => void;
+}) {
+  const packages = [
+    { amount: 120, price: "1,99 €" },
+    { amount: 350, price: "4,99 €" },
+    { amount: 800, price: "9,99 €" },
+  ];
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="dialog-card crystal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="crystal-title"
+      >
+        <button className="dialog-close" onClick={onClose} aria-label="Закрыть">
+          <Icon name="close" />
+        </button>
+        <span className="crystal-dialog-mark">
+          <Icon name="gem" size={28} />
+        </span>
+        <p className="eyebrow">КРИСТАЛЛЫ</p>
+        <h2 id="crystal-title">{crystals} в кошельке</h2>
+        <p>
+          Пакеты подготовлены для подключения к защищённой оплате. Списание не выполняется без
+          подтверждённого платёжного провайдера.
+        </p>
+        <div className="crystal-packages">
+          {packages.map((item) => (
+            <article key={item.amount}>
+              <Icon name="gem" size={20} />
+              <strong>{item.amount}</strong>
+              <span>{item.price}</span>
+            </article>
+          ))}
+        </div>
+        <button className="primary-button" onClick={onOpenAccount}>
+          Тариф и оплата
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function CookieBanner({
+  onNecessary,
+  onAccept,
+  onDetails,
+}: {
+  onNecessary: () => void;
+  onAccept: () => void;
+  onDetails: () => void;
+}) {
+  return (
+    <aside className="cookie-banner" aria-label="Настройки файлов Cookie">
+      <div>
+        <strong>Ваш выбор Cookie</strong>
+        <p>
+          Необходимые Cookie поддерживают вход и безопасность. Аналитика включается только после
+          согласия.
+        </p>
+      </div>
+      <button className="text-button" onClick={onDetails}>
+        Подробнее
+      </button>
+      <button className="secondary-button compact" onClick={onNecessary}>
+        Только необходимые
+      </button>
+      <button className="primary-button compact" onClick={onAccept}>
+        Принять все
+      </button>
+    </aside>
+  );
+}
+
+function LegalCenter({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="modal-backdrop legal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="dialog-card legal-center"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="legal-title"
+      >
+        <button className="dialog-close" onClick={onClose} aria-label="Закрыть">
+          <Icon name="close" />
+        </button>
+        <p className="eyebrow">CLICKLING · ПРАВОВАЯ ИНФОРМАЦИЯ</p>
+        <h2 id="legal-title">Документы и прозрачность</h2>
+        <div className="legal-grid">
+          <article>
+            <h3>Конфиденциальность и персональные данные</h3>
+            <p>
+              Аккаунт хранит имя, email, учебный прогресс и созданные материалы. Пароли хранятся
+              только в виде защищённых хешей. Удалить аккаунт и связанные данные можно в личном
+              кабинете.
+            </p>
+          </article>
+          <article>
+            <h3>Cookie</h3>
+            <p>
+              Необходимые Cookie используются для сессии и защиты входа. События аналитики
+              отправляются только после выбора «Принять все». Настройку можно изменить в футере.
+            </p>
+          </article>
+          <article>
+            <h3>Пользовательское соглашение</h3>
+            <p>
+              Сервис предназначен для изучения языков. Запрещены незаконный контент, спам, фишинг,
+              нарушение авторских прав и попытки обойти ограничения доступа.
+            </p>
+          </article>
+          <article>
+            <h3>Оплата, возврат и отмена</h3>
+            <p>
+              Платёжный провайдер пока не подключён, поэтому приложение не выполняет списания. До
+              запуска оплаты здесь должны быть опубликованы продавец, цены, период подписки, порядок
+              отмены и сроки возврата.
+            </p>
+          </article>
+          <article>
+            <h3>Доставка</h3>
+            <p>
+              ClickLing предоставляет цифровую услугу; физические товары и доставка сейчас не
+              предлагаются.
+            </p>
+          </article>
+          <article>
+            <h3>Правообладателям</h3>
+            <p>
+              Контакт для DMCA/abuse и реквизиты владельца должны быть добавлены владельцем домена
+              до публичного запуска пользовательского контента.
+            </p>
+          </article>
+        </div>
+        <p className="legal-warning">
+          <Icon name="info" size={16} /> Это техническая структура документов, а не юридическая
+          консультация. Для публикации нужны реальные реквизиты владельца, юрисдикция, возрастные
+          условия и контакт правообладателей.
+        </p>
+      </section>
+    </div>
+  );
+}
+
 function Sidebar({
   screen,
   languageSpace,
@@ -2557,6 +2813,7 @@ function Sidebar({
   canManageContent,
   onSettings,
   onLanguage,
+  hiddenSections = [],
 }: {
   screen: Screen;
   languageSpace: LearningSpace;
@@ -2564,6 +2821,7 @@ function Sidebar({
   canManageContent: boolean;
   onSettings: () => void;
   onLanguage: () => void;
+  hiddenSections?: string[];
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const nav: { id: Screen; label: string; icon: IconName }[] = [
@@ -2584,8 +2842,9 @@ function Sidebar({
       { id: "admin", label: "Пользователи", icon: "settings" },
       { id: "analytics", label: "Аналитика", icon: "chart" },
     );
+  const visibleNav = nav.filter((item) => canManageUsers || !hiddenSections.includes(item.id));
   const mobilePrimary = new Set<Screen>(["today", "library", "path", "games"]);
-  const mobileSecondary = nav.filter((item) => !mobilePrimary.has(item.id));
+  const mobileSecondary = visibleNav.filter((item) => !mobilePrimary.has(item.id));
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -2593,7 +2852,7 @@ function Sidebar({
         <span>ClickLing</span>
       </div>
       <nav aria-label="Разделы приложения">
-        {nav.map((item) => (
+        {visibleNav.map((item) => (
           <a
             key={item.id}
             href={`#/${item.id}`}
@@ -4086,8 +4345,8 @@ function StatsScreen({
       <div className="page-heading">
         <div>
           <p className="eyebrow">ВАШ ПРОГРЕСС</p>
-          <h1>Статистика</h1>
-          <p>Курс, навыки, словарь и результаты занятий.</p>
+          <h1>Трофейная</h1>
+          <p>Награды, кубки и главные результаты обучения.</p>
         </div>
       </div>
       <Suspense fallback={null}>
