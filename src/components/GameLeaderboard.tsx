@@ -77,7 +77,7 @@ export function GameLeaderboard({
       <div className="leaderboard-header">
         <span className="leaderboard-icon">🏆</span>
         <div>
-          <h3>Рейтинг раунда (как в Wordall)</h3>
+          <h3>Рейтинг раунда</h3>
           <p>
             Места распределяются по количеству баллов, а при равенстве — по скорости ответа.
           </p>

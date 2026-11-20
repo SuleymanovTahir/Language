@@ -4,9 +4,11 @@ import { readProfileItem, writeProfileItem } from "../lib/profileStorage";
 export function GameRatingBar({
   gameId,
   moduleId,
+  inResult = false,
 }: {
   gameId: string;
   moduleId: number;
+  inResult?: boolean;
 }) {
   const cacheKey = `clickling_rating_${gameId}_${moduleId}`;
   const [rating, setRating] = useState<number>(() => {
@@ -53,17 +55,20 @@ export function GameRatingBar({
       // offline fallback
     } finally {
       setBusy(false);
-      window.setTimeout(() => setSavedMessage(false), 3000);
+      window.setTimeout(() => setSavedMessage(false), 2500);
     }
   };
 
   const activeStars = hoverRating > 0 ? hoverRating : rating;
 
   return (
-    <div className="game-inline-rating-bar" aria-label="Оцените игру">
+    <div
+      className={`game-inline-rating-bar ${inResult ? "result-mode" : "edge-mode"}`}
+      aria-label="Оцените игру"
+    >
       <div className="rating-bar-content">
         <span className="rating-bar-label">
-          {rating > 0 ? "Ваша оценка игры:" : "Понравилась игра? Оцените:"}
+          {rating > 0 ? "Ваша оценка:" : "Оценить игру:"}
         </span>
 
         <div className="rating-stars-row" role="radiogroup" aria-label="Оценка от 1 до 5 звёзд">
@@ -77,7 +82,7 @@ export function GameRatingBar({
               onMouseEnter={() => setHoverRating(star)}
               onMouseLeave={() => setHoverRating(0)}
               onClick={() => handleRate(star)}
-              title={`Поставить оценку ${star} из 5`}
+              title={`Поставить ${star} из 5`}
             >
               ★
             </button>
@@ -86,7 +91,7 @@ export function GameRatingBar({
 
         {rating > 0 && (
           <span className="rating-feedback-note">
-            {rating} из 5 {savedMessage ? "· Спасибо за оценку! ✨" : ""}
+            {rating}/5 {savedMessage ? "✨" : ""}
           </span>
         )}
       </div>

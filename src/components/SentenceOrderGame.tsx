@@ -145,7 +145,7 @@ export function SentenceOrderGame({
             timeSeconds={elapsed}
             timeLabel={timeLabel}
           />
-          <GameRatingBar gameId="sentenceorder" moduleId={module.id} />
+          <GameRatingBar gameId="sentenceorder" moduleId={module.id} inResult />
 
           <div className="result-difficulty-selector">
             <p>Хотите попробовать другой уровень сложности?</p>

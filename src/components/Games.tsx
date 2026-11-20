@@ -3172,7 +3172,7 @@ function ArticleSortGame({
             timeSeconds={elapsed}
             timeLabel={timeLabel}
           />
-          <GameRatingBar gameId="articles" moduleId={module.id} />
+          <GameRatingBar gameId="articles" moduleId={module.id} inResult />
         </div>
       </div>
     );
@@ -3573,7 +3573,7 @@ function PairGame({
             timeSeconds={elapsed}
             timeLabel={timeLabel}
           />
-          <GameRatingBar gameId={gameId} moduleId={module.id} />
+          <GameRatingBar gameId={gameId} moduleId={module.id} inResult />
         </div>
       ) : (
         <>
@@ -4173,7 +4173,7 @@ function QuestionGame({
             timeSeconds={elapsed}
             timeLabel={timeLabel}
           />
-          <GameRatingBar gameId={gameId} moduleId={module.id} />
+          <GameRatingBar gameId={gameId} moduleId={module.id} inResult />
         </div>
       </div>
     );
