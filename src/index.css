@@ -5151,15 +5151,6 @@ body {
 .game-feedback.wrong {
   color: #bd4d5a;
 }
-.game-footer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #8894a5;
-  background: #fff;
-  border-top: 1px solid #e8edf2;
-  font-size: 10px;
-}
 .game-result {
   align-self: center;
   justify-self: center;
@@ -12514,7 +12505,27 @@ select:not([multiple]) {
   padding: 8px 20px max(8px, env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--game-accent) 10%, white);
   border-top: 1px solid color-mix(in srgb, var(--game-accent) 24%, white);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
 }
+/* Inner row: text + button */
+.game-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  flex: 1;
+}
+/* Rating bar lives inside footer — no extra padding, flush right */
+.game-footer .game-inline-rating-bar {
+  padding: 2px 0 0;
+  justify-content: flex-end;
+  width: 100%;
+}
+.game-footer-row > span,
 .game-footer > span {
   max-width: 100%;
   color: #44546d;
@@ -12921,7 +12932,10 @@ select:not([multiple]) {
   }
   .game-footer {
     min-height: 58px;
-    padding: 7px 10px max(7px, env(safe-area-inset-bottom));
+    padding: 6px 12px max(6px, env(safe-area-inset-bottom));
+  }
+  .game-footer-row {
+    min-height: 44px;
   }
   .game-footer .primary-button {
     min-height: 46px;
@@ -20186,7 +20200,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 4px 20px 8px;
+  padding: 4px 0 2px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -20197,24 +20211,42 @@ body {
   padding: 10px 16px;
 }
 
+/* When inside a game-footer — no extra padding, just flush right */
+.game-footer .game-inline-rating-bar {
+  padding: 2px 0 0;
+}
+
+/* Result mode gets the white pill; in-footer mode is transparent */
+.game-inline-rating-bar.result-mode .rating-bar-content {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  border-radius: 20px;
+  padding: 5px 12px;
+}
+
 .rating-bar-content {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  padding: 5px 12px;
+  gap: 6px;
+  background: transparent;
+  padding: 3px 0;
   border-radius: 20px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .rating-bar-label {
   font-size: 11px;
   font-weight: 600;
-  color: #475569;
+  color: #64748b;
   letter-spacing: 0.01em;
   white-space: nowrap;
+}
+
+/* Inside footer the label inherits footer color */
+.game-footer .rating-bar-label {
+  color: #44546d;
+  font-size: 11px;
 }
 
 .rating-stars-row {
@@ -20225,12 +20257,17 @@ body {
 .rating-star-btn {
   background: none;
   border: none;
-  font-size: 16px;
+  font-size: 18px;
   cursor: pointer;
-  color: #cbd5e1;
+  color: #94a3b8;
   transition: color 0.15s, transform 0.1s;
   padding: 0 1px;
   line-height: 1;
+}
+
+/* Inside footer — slightly smaller stars */
+.game-footer .rating-star-btn {
+  font-size: 16px;
 }
 
 .rating-star-btn:hover,
@@ -20248,11 +20285,10 @@ body {
 
 @media (max-width: 600px) {
   .game-inline-rating-bar {
-    padding: 2px 10px 4px;
+    padding: 2px 0 2px;
     justify-content: flex-end;
   }
-  .rating-bar-content {
-    gap: 4px;
+  .game-inline-rating-bar.result-mode .rating-bar-content {
     padding: 3px 8px;
     border-radius: 16px;
   }
@@ -20260,8 +20296,11 @@ body {
     font-size: 10px;
   }
   .rating-star-btn {
-    font-size: 13px;
+    font-size: 15px;
     padding: 0;
+  }
+  .game-footer .rating-star-btn {
+    font-size: 14px;
   }
   .rating-feedback-note {
     font-size: 10px;

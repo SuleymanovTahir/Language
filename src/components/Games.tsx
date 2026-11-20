@@ -3294,15 +3294,17 @@ function ArticleSortGame({
         )}
       </main>
       <footer className="game-footer">
-        <button
-          className="primary-button"
-          disabled={submitted || Object.keys(placements).length !== cards.length}
-          onClick={() => setSubmitted(true)}
-        >
-          Завершить и проверить
-        </button>
+        <div className="game-footer-row">
+          <button
+            className="primary-button"
+            disabled={submitted || Object.keys(placements).length !== cards.length}
+            onClick={() => setSubmitted(true)}
+          >
+            Завершить и проверить
+          </button>
+        </div>
+        <GameRatingBar gameId="articles" moduleId={module.id} />
       </footer>
-      <GameRatingBar gameId="articles" moduleId={module.id} />
     </div>
   );
 }
@@ -3745,26 +3747,28 @@ function PairGame({
             </div>
           </main>
           <footer className="game-footer pair-game-footer">
-            <span>
-              {phase === "intro"
-                ? "Карточки показываются по очереди"
-                : phase === "checking"
-                  ? "Верные и ошибочные пары отмечаются под звук"
-                  : phase === "review"
-                    ? "Ответы сохраняются, пока вы не выйдете из игры"
-                    : remainingCount
-                      ? `Соединено ${matchedPairs.length} из ${group.length} · можно менять пары до проверки`
-                      : "Все пары соединены · нажмите проверить"}
-            </span>
-            <button
-              className="primary-button"
-              disabled={phase !== "playing" || remainingCount > 0}
-              onClick={submit}
-            >
-              {phase === "checking" ? "Проверяем…" : "Проверить пары"}
-            </button>
+            <div className="game-footer-row">
+              <span>
+                {phase === "intro"
+                  ? "Карточки показываются по очереди"
+                  : phase === "checking"
+                    ? "Верные и ошибочные пары отмечаются под звук"
+                    : phase === "review"
+                      ? "Ответы сохраняются, пока вы не выйдете из игры"
+                      : remainingCount
+                        ? `Соединено ${matchedPairs.length} из ${group.length} · можно менять пары до проверки`
+                        : "Все пары соединены · нажмите проверить"}
+              </span>
+              <button
+                className="primary-button"
+                disabled={phase !== "playing" || remainingCount > 0}
+                onClick={submit}
+              >
+                {phase === "checking" ? "Проверяем…" : "Проверить пары"}
+              </button>
+            </div>
+            <GameRatingBar gameId={gameId} moduleId={module.id} />
           </footer>
-          <GameRatingBar gameId={gameId} moduleId={module.id} />
         </>
       )}
     </div>
@@ -5056,16 +5060,18 @@ function QuestionGame({
         )}
       </main>
       <footer className="game-footer">
-        <span>
-          {module.practiceNote
-            ? module.practiceNote
-            : `Словарь: модуль ${module.id} · ${module.title}`}
-        </span>
-        <button className="text-button" onClick={finishEarly}>
-          Закончить сессию
-        </button>
+        <div className="game-footer-row">
+          <span>
+            {module.practiceNote
+              ? module.practiceNote
+              : `Словарь: модуль ${module.id} · ${module.title}`}
+          </span>
+          <button className="text-button" onClick={finishEarly}>
+            Закончить сессию
+          </button>
+        </div>
+        <GameRatingBar gameId={gameId} moduleId={module.id} />
       </footer>
-      <GameRatingBar gameId={gameId} moduleId={module.id} />
     </div>
   );
 }
