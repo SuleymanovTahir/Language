@@ -1,11 +1,18 @@
 import pg from "pg";
 
 const { Pool } = pg;
-if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required to prepare the application schema.");
+if (!process.env.DATABASE_URL)
+  throw new Error("DATABASE_URL is required to prepare the application schema.");
 const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 5);
-const energyCap = Number.isInteger(configuredEnergyCap) ? Math.max(1, Math.min(22, configuredEnergyCap)) : 5;
+const energyCap = Number.isInteger(configuredEnergyCap)
+  ? Math.max(1, Math.min(22, configuredEnergyCap))
+  : 5;
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, allowExitOnIdle: true });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 1,
+  allowExitOnIdle: true,
+});
 try {
   // Remove the non-routable account used only by the earlier deployment smoke test.
   await pool.query(`DELETE FROM "user" WHERE email LIKE 'lp-codex-check-%@example.invalid'`);
@@ -260,7 +267,8 @@ try {
     CREATE INDEX IF NOT EXISTS linguaplay_energy_ledger_user_time_idx ON linguaplay_energy_ledger(user_id,created_at DESC);
   `);
 
-  await pool.query(`
+  await pool.query(
+    `
     INSERT INTO linguaplay_energy_accounts(user_id,energy,next_at)
       SELECT id,$1,NULL FROM "user" ON CONFLICT(user_id) DO NOTHING;
     INSERT INTO linguaplay_energy_ledger(user_id,amount,balance_after,next_at_after,reason,idempotency_key)
@@ -269,11 +277,14 @@ try {
     UPDATE linguaplay_user_data
       SET data=data-'linguaplay-energy'-'linguaplay-energy-reward-progress',updated_at=now()
       WHERE data ? 'linguaplay-energy' OR data ? 'linguaplay-energy-reward-progress';
-  `, [energyCap]);
+  `,
+    [energyCap],
+  );
 
   const profiles = await pool.query("SELECT user_id,data FROM linguaplay_user_data");
   for (const row of profiles.rows) {
-    const data = row.data && typeof row.data === "object" && !Array.isArray(row.data) ? { ...row.data } : {};
+    const data =
+      row.data && typeof row.data === "object" && !Array.isArray(row.data) ? { ...row.data } : {};
     let changed = false;
     for (const key of ["linguaplay-stats-by-space", "linguaplay-user-stats"]) {
       if (typeof data[key] !== "string") continue;
@@ -284,61 +295,115 @@ try {
             try {
               const parsed = JSON.parse(value);
               if (parsed && typeof parsed === "object") return JSON.stringify(strip(parsed));
-            } catch { /* Keep plain text values unchanged. */ }
+            } catch {
+              /* Keep plain text values unchanged. */
+            }
             return value;
           }
           if (!value || typeof value !== "object") return value;
-          return Object.fromEntries(Object.entries(value)
-            .filter(([field]) => !["crystals", "freezeCount", "energy", "entitlement", "isPro", "is_pro", "role"].includes(field))
-            .map(([field, item]) => [field, strip(item)]));
+          return Object.fromEntries(
+            Object.entries(value)
+              .filter(
+                ([field]) =>
+                  ![
+                    "crystals",
+                    "freezeCount",
+                    "energy",
+                    "entitlement",
+                    "isPro",
+                    "is_pro",
+                    "role",
+                  ].includes(field),
+              )
+              .map(([field, item]) => [field, strip(item)]),
+          );
         };
         const sanitized = JSON.stringify(strip(JSON.parse(data[key])));
-        if (sanitized !== data[key]) { data[key] = sanitized; changed = true; }
-      } catch { /* Preserve malformed legacy profiles for manual recovery. */ }
+        if (sanitized !== data[key]) {
+          data[key] = sanitized;
+          changed = true;
+        }
+      } catch {
+        /* Preserve malformed legacy profiles for manual recovery. */
+      }
     }
-    if (changed) await pool.query("UPDATE linguaplay_user_data SET data=$2::jsonb,updated_at=now() WHERE user_id=$1", [row.user_id, JSON.stringify(data)]);
+    if (changed)
+      await pool.query(
+        "UPDATE linguaplay_user_data SET data=$2::jsonb,updated_at=now() WHERE user_id=$1",
+        [row.user_id, JSON.stringify(data)],
+      );
   }
 
   const primaryOwnerEmail = process.env.LINGUAPLAY_OWNER_EMAIL?.trim();
-  await pool.query(`
+  await pool.query(
+    `
     INSERT INTO linguaplay_user_roles (user_id, role)
       SELECT id, CASE WHEN role = 'admin' AND $1::boolean = false THEN 'admin' ELSE 'student' END FROM "user"
       ON CONFLICT (user_id) DO NOTHING;
-  `, [Boolean(primaryOwnerEmail || process.env.VERCEL)]);
+  `,
+    [Boolean(primaryOwnerEmail || process.env.VERCEL)],
+  );
 
   if (!process.env.VERCEL && !primaryOwnerEmail) {
     await pool.query(`UPDATE linguaplay_user_roles SET role='owner',updated_at=now() WHERE user_id=(
       SELECT r.user_id FROM linguaplay_user_roles r JOIN "user" u ON u.id=r.user_id
       WHERE r.role IN ('admin','owner') ORDER BY CASE WHEN r.role='owner' THEN 0 ELSE 1 END,u."createdAt" ASC LIMIT 1
     ) AND NOT EXISTS(SELECT 1 FROM linguaplay_user_roles WHERE role='owner')`);
-    await pool.query(`DELETE FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE role='admin' AND id NOT IN (SELECT user_id FROM linguaplay_user_roles WHERE role='owner'))`);
-    await pool.query(`UPDATE "user" u SET role=CASE WHEN r.role='owner' THEN 'admin' ELSE 'user' END FROM linguaplay_user_roles r WHERE r.user_id=u.id`);
+    await pool.query(
+      `DELETE FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE role='admin' AND id NOT IN (SELECT user_id FROM linguaplay_user_roles WHERE role='owner'))`,
+    );
+    await pool.query(
+      `UPDATE "user" u SET role=CASE WHEN r.role='owner' THEN 'admin' ELSE 'user' END FROM linguaplay_user_roles r WHERE r.user_id=u.id`,
+    );
   }
   if (primaryOwnerEmail) {
-    const owner = await pool.query(`SELECT id FROM "user" WHERE lower(email)=lower($1) LIMIT 1`, [primaryOwnerEmail]);
+    const owner = await pool.query(`SELECT id FROM "user" WHERE lower(email)=lower($1) LIMIT 1`, [
+      primaryOwnerEmail,
+    ]);
     if (owner.rows[0]) {
       const ownerId = owner.rows[0].id;
-      await pool.query(`
+      await pool.query(
+        `
         UPDATE linguaplay_user_roles
         SET role = CASE WHEN user_id=$1 THEN 'owner' WHEN role='owner' THEN 'admin' ELSE role END,
             updated_at=now()
         WHERE user_id=$1 OR role='owner'
-      `, [ownerId]);
-      await pool.query(`DELETE FROM "session" WHERE "userId"=$1 AND EXISTS(SELECT 1 FROM "user" WHERE id=$1 AND role<>'admin')`, [ownerId]);
-      await pool.query(`DELETE FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE id<>$1 AND role<>'user')`, [ownerId]);
+      `,
+        [ownerId],
+      );
+      await pool.query(
+        `DELETE FROM "session" WHERE "userId"=$1 AND EXISTS(SELECT 1 FROM "user" WHERE id=$1 AND role<>'admin')`,
+        [ownerId],
+      );
+      await pool.query(
+        `DELETE FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE id<>$1 AND role<>'user')`,
+        [ownerId],
+      );
       await pool.query(`UPDATE "user" SET role='user' WHERE id<>$1 AND role<>'user'`, [ownerId]);
       await pool.query(`UPDATE "user" SET role='admin' WHERE id=$1`, [ownerId]);
     } else {
-      await pool.query(`UPDATE linguaplay_user_roles SET role='admin',updated_at=now() WHERE role='owner'`);
-      await pool.query(`DELETE FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE role<>'user')`);
+      await pool.query(
+        `UPDATE linguaplay_user_roles SET role='admin',updated_at=now() WHERE role='owner'`,
+      );
+      await pool.query(
+        `DELETE FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE role<>'user')`,
+      );
       await pool.query(`UPDATE "user" SET role='user' WHERE role<>'user'`);
-      console.warn("Configured owner account is not present in this database branch; other accounts cannot receive owner access and the configured account will be promoted after sign-in.");
+      console.warn(
+        "Configured owner account is not present in this database branch; other accounts cannot receive owner access and the configured account will be promoted after sign-in.",
+      );
     }
   } else if (process.env.VERCEL) {
-    await pool.query(`UPDATE linguaplay_user_roles SET role='admin',updated_at=now() WHERE role='owner'`);
-    await pool.query(`DELETE FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE role<>'user')`);
+    await pool.query(
+      `UPDATE linguaplay_user_roles SET role='admin',updated_at=now() WHERE role='owner'`,
+    );
+    await pool.query(
+      `DELETE FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE role<>'user')`,
+    );
     await pool.query(`UPDATE "user" SET role='user' WHERE role<>'user'`);
-    console.warn("LINGUAPLAY_OWNER_EMAIL is not configured; owner access remains disabled on Vercel.");
+    console.warn(
+      "LINGUAPLAY_OWNER_EMAIL is not configured; owner access remains disabled on Vercel.",
+    );
   }
 } finally {
   await pool.end();

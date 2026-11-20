@@ -7,7 +7,7 @@ let profileVersions: Record<string, number> = {};
 let pendingProfileKeys = new Set<string>();
 
 const profilePrefix = (userId: string) => `linguaplay-user-data:${encodeURIComponent(userId)}:`;
-const storageKey = (key: string) => activeUserId ? `${profilePrefix(activeUserId)}${key}` : key;
+const storageKey = (key: string) => (activeUserId ? `${profilePrefix(activeUserId)}${key}` : key);
 const serverManagedKeys = new Set(["linguaplay-energy", "linguaplay-energy-reward-progress"]);
 const displayOnlyStatsKeys = new Set(["linguaplay-stats-by-space", "linguaplay-user-stats"]);
 
@@ -19,16 +19,33 @@ function withoutDisplayOnlyStats(raw: string) {
         try {
           const parsed: unknown = JSON.parse(value);
           if (parsed && typeof parsed === "object") return JSON.stringify(strip(parsed));
-        } catch { /* Keep plain text values unchanged. */ }
+        } catch {
+          /* Keep plain text values unchanged. */
+        }
         return value;
       }
       if (!value || typeof value !== "object") return value;
-      return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-        .filter(([key]) => !["crystals", "freezeCount", "energy", "entitlement", "isPro", "is_pro", "role"].includes(key))
-        .map(([key, item]) => [key, strip(item)]));
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .filter(
+            ([key]) =>
+              ![
+                "crystals",
+                "freezeCount",
+                "energy",
+                "entitlement",
+                "isPro",
+                "is_pro",
+                "role",
+              ].includes(key),
+          )
+          .map(([key, item]) => [key, strip(item)]),
+      );
     };
     return JSON.stringify(strip(JSON.parse(raw)));
-  } catch { return raw; }
+  } catch {
+    return raw;
+  }
 }
 
 function reportSync(state: "saved" | "error", message = "") {
@@ -44,7 +61,9 @@ function collectProfileData(userId: string) {
       const profileKey = key.slice(prefix.length);
       if (!serverManagedKeys.has(profileKey)) {
         const value = localStorage.getItem(key) ?? "";
-        data[profileKey] = displayOnlyStatsKeys.has(profileKey) ? withoutDisplayOnlyStats(value) : value;
+        data[profileKey] = displayOnlyStatsKeys.has(profileKey)
+          ? withoutDisplayOnlyStats(value)
+          : value;
       }
     }
   }
@@ -53,7 +72,10 @@ function collectProfileData(userId: string) {
 
 async function sendProfileData(userId: string) {
   if (activeUserId !== userId) return;
-  if (syncing) { syncAgain = true; return; }
+  if (syncing) {
+    syncAgain = true;
+    return;
+  }
   if (!pendingProfileKeys.size) return;
   syncing = true;
   try {
@@ -63,7 +85,12 @@ async function sendProfileData(userId: string) {
     const sentValues: Record<string, string | null> = {};
     for (const key of keys) {
       const value = localStorage.getItem(`${profilePrefix(userId)}${key}`);
-      const safeValue = value === null ? null : displayOnlyStatsKeys.has(key) ? withoutDisplayOnlyStats(value) : value;
+      const safeValue =
+        value === null
+          ? null
+          : displayOnlyStatsKeys.has(key)
+            ? withoutDisplayOnlyStats(value)
+            : value;
       patch[key] = safeValue;
       sentValues[key] = safeValue;
     }
@@ -71,33 +98,58 @@ async function sendProfileData(userId: string) {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patch, versions: Object.fromEntries(keys.map((key) => [key, profileVersions[key] ?? 0])) }),
+      body: JSON.stringify({
+        patch,
+        versions: Object.fromEntries(keys.map((key) => [key, profileVersions[key] ?? 0])),
+      }),
     });
     if (!response.ok) {
-      const body = await response.json().catch(() => ({})) as { error?: string };
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
       throw new Error(body.error || "Не удалось сохранить прогресс на сервере.");
     }
-    const result = await response.json() as { data?: Record<string,string>; versions?: Record<string,number>; conflicts?: string[] };
+    const result = (await response.json()) as {
+      data?: Record<string, string>;
+      versions?: Record<string, number>;
+      conflicts?: string[];
+    };
     if (result.versions) profileVersions = { ...profileVersions, ...result.versions };
     const conflicts = new Set(result.conflicts ?? []);
     for (const key of keys) {
       const current = localStorage.getItem(`${profilePrefix(userId)}${key}`);
-      const safeCurrent = current === null ? null : displayOnlyStatsKeys.has(key) ? withoutDisplayOnlyStats(current) : current;
+      const safeCurrent =
+        current === null
+          ? null
+          : displayOnlyStatsKeys.has(key)
+            ? withoutDisplayOnlyStats(current)
+            : current;
       if (safeCurrent === sentValues[key]) pendingProfileKeys.delete(key);
       if (conflicts.has(key)) {
         const merged = result.data?.[key];
-        if (typeof merged === "string") localStorage.setItem(`${profilePrefix(userId)}${key}`, merged);
+        if (typeof merged === "string")
+          localStorage.setItem(`${profilePrefix(userId)}${key}`, merged);
         else localStorage.removeItem(`${profilePrefix(userId)}${key}`);
         pendingProfileKeys.delete(key);
-        window.dispatchEvent(new CustomEvent("linguaplay-profile-reconciled", { detail: { key, value: merged ?? null } }));
+        window.dispatchEvent(
+          new CustomEvent("linguaplay-profile-reconciled", {
+            detail: { key, value: merged ?? null },
+          }),
+        );
       }
     }
-    reportSync(conflicts.size ? "error" : "saved", conflicts.size ? "Изменения на разных устройствах объединены. Проверьте актуальные данные в приложении." : "");
+    reportSync(
+      conflicts.size ? "error" : "saved",
+      conflicts.size
+        ? "Изменения на разных устройствах объединены. Проверьте актуальные данные в приложении."
+        : "",
+    );
   } catch (error) {
     reportSync("error", error instanceof Error ? error.message : "Синхронизация не удалась.");
   } finally {
     syncing = false;
-    if (syncAgain) { syncAgain = false; if (activeUserId) void sendProfileData(activeUserId); }
+    if (syncAgain) {
+      syncAgain = false;
+      if (activeUserId) void sendProfileData(activeUserId);
+    }
   }
 }
 
@@ -109,8 +161,12 @@ async function migrateEmbeddedAudio(userId: string) {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return;
-    quizzes = parsed.filter((quiz): quiz is Record<string, unknown> => Boolean(quiz && typeof quiz === "object" && !Array.isArray(quiz)));
-  } catch { return; }
+    quizzes = parsed.filter((quiz): quiz is Record<string, unknown> =>
+      Boolean(quiz && typeof quiz === "object" && !Array.isArray(quiz)),
+    );
+  } catch {
+    return;
+  }
   let changed = false;
   for (const quiz of quizzes) {
     if (typeof quiz.audioDataUrl !== "string" || quiz.audioMediaId) continue;
@@ -122,14 +178,19 @@ async function migrateEmbeddedAudio(userId: string) {
       const response = await fetch(`/api/media?id=${encodeURIComponent(mediaId)}`, {
         method: "PUT",
         credentials: "include",
-        headers: { "Content-Type": blob.type || "application/octet-stream", "X-Media-Name": encodeURIComponent(name) },
+        headers: {
+          "Content-Type": blob.type || "application/octet-stream",
+          "X-Media-Name": encodeURIComponent(name),
+        },
         body: blob,
       });
       if (!response.ok) continue;
       quiz.audioMediaId = mediaId;
       delete quiz.audioDataUrl;
       changed = true;
-    } catch { /* Keep the existing in-browser recording if migration cannot reach the server. */ }
+    } catch {
+      /* Keep the existing in-browser recording if migration cannot reach the server. */
+    }
   }
   if (changed) localStorage.setItem(key, JSON.stringify(quizzes));
 }
@@ -157,26 +218,38 @@ export function removeProfileItem(key: string) {
   scheduleProfileSync();
 }
 
-export function getActiveProfileId() { return activeUserId; }
+export function getActiveProfileId() {
+  return activeUserId;
+}
 
 export async function activateProfileStorage(userId: string) {
   const response = await fetch("/api/sync", { credentials: "include", cache: "no-store" });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { error?: string };
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error || "Не удалось загрузить данные личного кабинета.");
   }
-  const remote = await response.json() as { data?: Record<string, unknown>; versions?: Record<string,number> };
+  const remote = (await response.json()) as {
+    data?: Record<string, unknown>;
+    versions?: Record<string, number>;
+  };
   const prefix = profilePrefix(userId);
   let hasLocalProfile = false;
   for (let index = 0; index < localStorage.length; index += 1) {
-    if (localStorage.key(index)?.startsWith(prefix)) { hasLocalProfile = true; break; }
+    if (localStorage.key(index)?.startsWith(prefix)) {
+      hasLocalProfile = true;
+      break;
+    }
   }
 
   if (!hasLocalProfile && !localStorage.getItem(legacyClaimKey)) {
     const legacyItems: Array<[string, string]> = [];
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
-      if (key?.startsWith("linguaplay-") && key !== legacyClaimKey && !key.startsWith("linguaplay-user-data:")) {
+      if (
+        key?.startsWith("linguaplay-") &&
+        key !== legacyClaimKey &&
+        !key.startsWith("linguaplay-user-data:")
+      ) {
         legacyItems.push([key, localStorage.getItem(key) ?? ""]);
       }
     }
@@ -187,17 +260,24 @@ export async function activateProfileStorage(userId: string) {
   const remoteData = remote.data && typeof remote.data === "object" ? remote.data : {};
   profileVersions = remote.versions ?? {};
   pendingProfileKeys = new Set();
-  const remoteEntries = Object.entries(remoteData).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  const remoteEntries = Object.entries(remoteData).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  );
   const remoteKeys = new Set(remoteEntries.map(([key]) => key));
   remoteEntries.forEach(([key, value]) => {
-    if (key.startsWith("linguaplay-") && !serverManagedKeys.has(key)) localStorage.setItem(`${prefix}${key}`, displayOnlyStatsKeys.has(key) ? withoutDisplayOnlyStats(value) : value);
+    if (key.startsWith("linguaplay-") && !serverManagedKeys.has(key))
+      localStorage.setItem(
+        `${prefix}${key}`,
+        displayOnlyStatsKeys.has(key) ? withoutDisplayOnlyStats(value) : value,
+      );
   });
   activeUserId = userId;
   for (let index = 0; index < localStorage.length; index += 1) {
     const localKey = localStorage.key(index);
     if (localKey?.startsWith(prefix)) {
       const profileKey = localKey.slice(prefix.length);
-      if (!serverManagedKeys.has(profileKey) && !remoteKeys.has(profileKey)) pendingProfileKeys.add(profileKey);
+      if (!serverManagedKeys.has(profileKey) && !remoteKeys.has(profileKey))
+        pendingProfileKeys.add(profileKey);
     }
   }
   // The remote profile is now readable by the app. Media migration and the

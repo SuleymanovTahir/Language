@@ -9,7 +9,5 @@
       "maxDuration": 30
     }
   },
-  "crons": [
-    { "path": "/api/cleanup-events", "schedule": "0 3 * * *" }
-  ]
+  "crons": [{ "path": "/api/cleanup-events", "schedule": "0 3 * * *" }]
 }

@@ -54,7 +54,7 @@ export function CoursePath({
 }: {
   level: string;
   progress: CourseProgress;
-  missions?: Record<string,CourseMissionState>;
+  missions?: Record<string, CourseMissionState>;
   goals: string[];
   focus?: string[];
   onChooseLevel: (level: CourseLevel) => void;
@@ -136,9 +136,7 @@ export function CoursePath({
               </>
             )}
           </div>
-          <small>
-            Темы под ваши цели отмечены в программе.
-          </small>
+          <small>Темы под ваши цели отмечены в программе.</small>
         </div>
       )}
       <section className="course-overview-card">
@@ -158,6 +156,17 @@ export function CoursePath({
           <small>
             {completed} из {units.length} юнитов · {percent}%
           </small>
+          <div className="course-progress-metrics" aria-label="Прогресс уровня">
+            <span>
+              <strong>{completed}</strong> пройдено
+            </span>
+            <span>
+              <strong>{Math.max(0, units.length - completed)}</strong> осталось
+            </span>
+            <span>
+              <strong>{units.length * 6}</strong> навыков
+            </span>
+          </div>
         </div>
         {next && (
           <button className="primary-button" onClick={() => onStart(next)}>
@@ -181,8 +190,8 @@ export function CoursePath({
       <section className="course-units-section">
         <div className="section-title">
           <div>
-            <h2>Программа {selectedLevel}</h2>
-            <p>6 навыков в каждом юните.</p>
+            <h2>Маршрут уровня {selectedLevel}</h2>
+            <p>Двигайтесь по порядку: каждый юнит закрепляет 6 навыков.</p>
           </div>
         </div>
         <div className="course-unit-list">
@@ -194,7 +203,7 @@ export function CoursePath({
             return (
               <article
                 key={item.id}
-                className={`course-unit-card ${saved?.completedAt ? "complete" : ""} ${!unlocked ? "locked" : ""} ${recommendedIds.has(item.id) ? "recommended" : ""}`}
+                className={`course-unit-card ${saved?.completedAt ? "complete" : ""} ${isNext && item.id === next?.id ? "current" : ""} ${!saved?.completedAt && item.id !== next?.id ? "future" : ""} ${!unlocked ? "locked" : ""} ${recommendedIds.has(item.id) ? "recommended" : ""}`}
               >
                 <span className="course-unit-number">
                   {saved?.completedAt ? (
@@ -205,19 +214,30 @@ export function CoursePath({
                 </span>
                 <div className="course-unit-copy">
                   <div className="course-unit-kicker">
-                    ЮНИТ {String(index + 1).padStart(2, "0")} · {item.vocabulary.length} ФРАЗ
+                    {saved?.completedAt
+                      ? "ПРОЙДЕНО"
+                      : item.id === next?.id
+                        ? "СЛЕДУЮЩИЙ ШАГ"
+                        : "ВПЕРЕДИ"}{" "}
+                    · {item.vocabulary.length} ФРАЗ
                     {recommendedIds.has(item.id) ? " · ВАША ЦЕЛЬ" : ""}
                   </div>
                   <h3>{item.title}</h3>
                   <p>{item.outcome}</p>
-                  <div className="course-skill-tags"><span>6 навыков</span></div>
+                  <div className="course-skill-tags">
+                    <span>6 навыков</span>
+                  </div>
                 </div>
                 <button
                   className={isNext ? "primary-button" : "secondary-button"}
                   disabled={!unlocked}
                   onClick={() => onStart(item)}
                 >
-                  {hasSavedMission ? "Продолжить миссию" : saved?.completedAt ? "Повторить" : "Открыть"}
+                  {hasSavedMission
+                    ? "Продолжить миссию"
+                    : saved?.completedAt
+                      ? "Повторить"
+                      : "Открыть"}
                 </button>
               </article>
             );
@@ -316,18 +336,31 @@ export function CourseLesson({
   savedProgress?: CourseMissionState;
   onProgressChange?: (progress: CourseMissionState) => void;
 }) {
-  const [step, setStep] = useState(() => Math.max(0,Math.min(6,savedProgress?.step ?? 0)));
-  const [done, setDone] = useState<DoneSteps>(() => ({ ...initialDone,...(savedProgress?.done ?? {}) }));
-  const [listeningChoice, setListeningChoice] = useState<number | null>(() => savedProgress?.listeningChoice ?? null);
-  const [readingChoice, setReadingChoice] = useState<number | null>(() => savedProgress?.readingChoice ?? null);
-  const [sentenceSelection, setSentenceSelection] = useState<number[]>(() => savedProgress?.sentenceSelection ?? []);
+  const [step, setStep] = useState(() => Math.max(0, Math.min(6, savedProgress?.step ?? 0)));
+  const [done, setDone] = useState<DoneSteps>(() => ({
+    ...initialDone,
+    ...(savedProgress?.done ?? {}),
+  }));
+  const [listeningChoice, setListeningChoice] = useState<number | null>(
+    () => savedProgress?.listeningChoice ?? null,
+  );
+  const [readingChoice, setReadingChoice] = useState<number | null>(
+    () => savedProgress?.readingChoice ?? null,
+  );
+  const [sentenceSelection, setSentenceSelection] = useState<number[]>(
+    () => savedProgress?.sentenceSelection ?? [],
+  );
   const [writing, setWriting] = useState(() => savedProgress?.writing ?? "");
-  const [writingExampleVisible, setWritingExampleVisible] = useState(() => savedProgress?.writingExampleVisible ?? false);
+  const [writingExampleVisible, setWritingExampleVisible] = useState(
+    () => savedProgress?.writingExampleVisible ?? false,
+  );
   const [recording, setRecording] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState("");
   const [mediaError, setMediaError] = useState("");
   const [selectedMatch, setSelectedMatch] = useState<number | null>(null);
-  const [matchedWords, setMatchedWords] = useState<number[]>(() => savedProgress?.matchedWords ?? []);
+  const [matchedWords, setMatchedWords] = useState<number[]>(
+    () => savedProgress?.matchedWords ?? [],
+  );
   const [matchMessage, setMatchMessage] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -363,8 +396,27 @@ export function CourseLesson({
   const progressPct = Math.round((step / (stepNames.length - 1)) * 100);
 
   useEffect(() => {
-    onProgressChange?.({ step,done,listeningChoice,readingChoice,sentenceSelection,writing,writingExampleVisible,matchedWords });
-  }, [step,done,listeningChoice,readingChoice,sentenceSelection,writing,writingExampleVisible,matchedWords,onProgressChange]);
+    onProgressChange?.({
+      step,
+      done,
+      listeningChoice,
+      readingChoice,
+      sentenceSelection,
+      writing,
+      writingExampleVisible,
+      matchedWords,
+    });
+  }, [
+    step,
+    done,
+    listeningChoice,
+    readingChoice,
+    sentenceSelection,
+    writing,
+    writingExampleVisible,
+    matchedWords,
+    onProgressChange,
+  ]);
 
   useEffect(
     () => () => {
@@ -749,7 +801,12 @@ export function CourseLesson({
             >
               <Icon name="volume" /> Послушать пример фразы
             </button>
-            <div className="course-recording-note"><HelpHint label="О записи">Микрофон включается после нажатия. Запись останется на этом устройстве и удалится при выходе.</HelpHint></div>
+            <div className="course-recording-note">
+              <HelpHint label="О записи">
+                Микрофон включается после нажатия. Запись останется на этом устройстве и удалится
+                при выходе.
+              </HelpHint>
+            </div>
             {!recording ? (
               <button className="secondary-button" onClick={() => void startRecording()}>
                 <Icon name="headphones" />{" "}

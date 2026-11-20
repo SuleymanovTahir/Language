@@ -1,4 +1,7 @@
-export async function readLimitedRequestBody(request: Request, maxBytes: number): Promise<Uint8Array | null> {
+export async function readLimitedRequestBody(
+  request: Request,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
   if (!request.body) return new Uint8Array();
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -14,7 +17,9 @@ export async function readLimitedRequestBody(request: Request, maxBytes: number)
       }
       chunks.push(part.value);
     }
-  } finally { reader.releaseLock(); }
+  } finally {
+    reader.releaseLock();
+  }
   const body = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {

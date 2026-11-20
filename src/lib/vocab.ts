@@ -27,14 +27,24 @@ export type VocabModule = {
   custom?: boolean;
   practiceNote?: string;
   practiceInstructions?: string;
-  practiceMedia?: { id?: string; kind: "image" | "audio" | "video" | "link"; name: string; mimeType?: string; url?: string };
+  practiceMedia?: {
+    id?: string;
+    kind: "image" | "audio" | "video" | "link";
+    name: string;
+    mimeType?: string;
+    url?: string;
+  };
 };
 
 const headerPattern = /^# МОДУЛЬ (\d+): (.+) \((DE - RUS|RUS - DE)\)$/i;
 const forwardEntryPattern = /^(.+?)(?:\s+\[([^\]]+)\])?\s+-\s+(.+)$/;
 const reverseEntryPattern = /^(.+?)\s*-\s*(.+?)\s+\[([^\]]+)\]$/;
 
-export function parseVocabulary(source: string, moduleId = 1000, title = "Мой словарь"): VocabCard[] {
+export function parseVocabulary(
+  source: string,
+  moduleId = 1000,
+  title = "Мой словарь",
+): VocabCard[] {
   const cards: VocabCard[] = [];
   const seen = new Set<string>();
   for (const [lineIndex, rawLine] of source.split(/\r?\n/).entries()) {
@@ -49,9 +59,7 @@ export function parseVocabulary(source: string, moduleId = 1000, title = "Мой
       : { word: reverse![2].trim(), transcription: reverse![3].trim() };
     const sourceWord = germanMatch.word;
     const articleMatch = sourceWord.match(/^(der|die|das)\s+(.+)$/i);
-    const article = articleMatch
-      ? (articleMatch[1].toLowerCase() as VocabCard["article"])
-      : null;
+    const article = articleMatch ? (articleMatch[1].toLowerCase() as VocabCard["article"]) : null;
     const word = articleMatch ? articleMatch[2].trim() : sourceWord.trim();
     const translation = reverseLine ? reverse![1].trim() : forward![3].trim();
     if (!word || !translation) continue;
@@ -59,7 +67,17 @@ export function parseVocabulary(source: string, moduleId = 1000, title = "Мой
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
     const lowerWord = word.toLocaleLowerCase();
-    const pronouns = new Set(["ich", "du", "er", "sie", "es", "wir", "ihr", "Sie".toLocaleLowerCase(), "man"]);
+    const pronouns = new Set([
+      "ich",
+      "du",
+      "er",
+      "sie",
+      "es",
+      "wir",
+      "ihr",
+      "Sie".toLocaleLowerCase(),
+      "man",
+    ]);
     const partOfSpeech: VocabCard["partOfSpeech"] = article
       ? "noun"
       : pronouns.has(lowerWord)
@@ -113,7 +131,15 @@ export const modules: VocabModule[] = (() => {
     if (header) {
       const id = Number(header[1]);
       const title = header[2].trim();
-      current = grouped.get(id) ?? { id, title, cards: [], languageCode: "de", languageName: "Немецкий", level: "A1–A2", nativeLanguageCode: "ru" };
+      current = grouped.get(id) ?? {
+        id,
+        title,
+        cards: [],
+        languageCode: "de",
+        languageName: "Немецкий",
+        level: "A1–A2",
+        nativeLanguageCode: "ru",
+      };
       grouped.set(id, current);
       direction = header[3].toUpperCase() as "DE - RUS" | "RUS - DE";
       continue;
@@ -131,33 +157,194 @@ export const modules: VocabModule[] = (() => {
 
 export const allCards = modules.flatMap((module) => module.cards);
 
-function scenarioModule(id: number, title: string, entries: Array<[string, string, string, string]>) : VocabModule {
+function scenarioModule(
+  id: number,
+  title: string,
+  entries: Array<[string, string, string, string]>,
+): VocabModule {
   const cards = entries.map(([source, translation, exampleSentence, hint], index) => {
     const card = parseVocabulary(`${source} - ${translation}`, id, title)[0];
-    return { ...card, id: `${id}-${index + 1}`, moduleId: id, exampleSentence, sentenceAnswer: card.article ? `${card.article} ${card.word}` : card.word, hint };
+    return {
+      ...card,
+      id: `${id}-${index + 1}`,
+      moduleId: id,
+      exampleSentence,
+      sentenceAnswer: card.article ? `${card.article} ${card.word}` : card.word,
+      hint,
+    };
   });
-  return { id, title, cards, languageCode: "de", languageName: "Немецкий", level: "A1–A2", nativeLanguageCode: "ru" };
+  return {
+    id,
+    title,
+    cards,
+    languageCode: "de",
+    languageName: "Немецкий",
+    level: "A1–A2",
+    nativeLanguageCode: "ru",
+  };
 }
 
 export const scenarioModules: VocabModule[] = [
   scenarioModule(200, "В аэропорту", [
-    ["der Flughafen", "аэропорт", "Wir treffen uns am ___.", "Место, откуда отправляются самолёты."], ["der Flug", "рейс", "Unser ___ startet um neun Uhr.", "Поездка на самолёте."], ["das Ticket", "билет", "Ich zeige mein ___ am Schalter.", "Документ для посадки."], ["der Pass", "паспорт", "Bitte zeigen Sie Ihren ___.", "Документ для поездок за границу."], ["das Gepäck", "багаж", "Wo kann ich mein ___ abholen?", "Чемоданы и сумки пассажира."], ["das Gate", "выход на посадку", "Das Boarding beginnt an ___.", "Здесь пассажиры заходят в самолёт."], ["der Koffer", "чемодан", "Mein ___ ist sehr schwer.", "Большая дорожная сумка."], ["abfliegen", "вылетать", "Das Flugzeug wird um zehn ___.", "Самолёт отправляется в путь."]
+    [
+      "der Flughafen",
+      "аэропорт",
+      "Wir treffen uns am ___.",
+      "Место, откуда отправляются самолёты.",
+    ],
+    ["der Flug", "рейс", "Unser ___ startet um neun Uhr.", "Поездка на самолёте."],
+    ["das Ticket", "билет", "Ich zeige mein ___ am Schalter.", "Документ для посадки."],
+    ["der Pass", "паспорт", "Bitte zeigen Sie Ihren ___.", "Документ для поездок за границу."],
+    ["das Gepäck", "багаж", "Wo kann ich mein ___ abholen?", "Чемоданы и сумки пассажира."],
+    [
+      "das Gate",
+      "выход на посадку",
+      "Das Boarding beginnt an ___.",
+      "Здесь пассажиры заходят в самолёт.",
+    ],
+    ["der Koffer", "чемодан", "Mein ___ ist sehr schwer.", "Большая дорожная сумка."],
+    ["abfliegen", "вылетать", "Das Flugzeug wird um zehn ___.", "Самолёт отправляется в путь."],
   ]),
   scenarioModule(201, "В отеле", [
-    ["das Hotel", "отель", "Wir übernachten in einem ___.", "Место, где туристы останавливаются на ночь."], ["die Reservierung", "бронь", "Ich habe eine ___ für zwei Nächte.", "Заранее забронированный номер."], ["das Zimmer", "комната / номер", "Unser ___ ist im zweiten Stock.", "В отеле здесь спят гости."], ["der Schlüssel", "ключ", "Hier ist der ___ für Ihr Zimmer.", "Им открывают дверь."], ["das Frühstück", "завтрак", "Ist das ___ im Preis enthalten?", "Утренняя еда."], ["die Rezeption", "стойка регистрации", "Fragen Sie bitte an der ___.", "Здесь встречают гостей."], ["einchecken", "зарегистрироваться", "Wir möchten jetzt ___.", "Оформить приезд в отель."], ["auschecken", "выписаться", "Wir müssen bis elf Uhr ___.", "Завершить проживание и сдать ключ."]
+    [
+      "das Hotel",
+      "отель",
+      "Wir übernachten in einem ___.",
+      "Место, где туристы останавливаются на ночь.",
+    ],
+    [
+      "die Reservierung",
+      "бронь",
+      "Ich habe eine ___ für zwei Nächte.",
+      "Заранее забронированный номер.",
+    ],
+    [
+      "das Zimmer",
+      "комната / номер",
+      "Unser ___ ist im zweiten Stock.",
+      "В отеле здесь спят гости.",
+    ],
+    ["der Schlüssel", "ключ", "Hier ist der ___ für Ihr Zimmer.", "Им открывают дверь."],
+    ["das Frühstück", "завтрак", "Ist das ___ im Preis enthalten?", "Утренняя еда."],
+    [
+      "die Rezeption",
+      "стойка регистрации",
+      "Fragen Sie bitte an der ___.",
+      "Здесь встречают гостей.",
+    ],
+    ["einchecken", "зарегистрироваться", "Wir möchten jetzt ___.", "Оформить приезд в отель."],
+    [
+      "auschecken",
+      "выписаться",
+      "Wir müssen bis elf Uhr ___.",
+      "Завершить проживание и сдать ключ.",
+    ],
   ]),
   scenarioModule(202, "В ресторане", [
-    ["die Speisekarte", "меню", "Können wir bitte die ___ haben?", "Список блюд и напитков."], ["die Rechnung", "счёт", "Die ___, bitte.", "Документ с суммой к оплате."], ["das Wasser", "вода", "Ein Glas ___, bitte.", "Напиток без газа или с газом."], ["bestellen", "заказывать", "Wir möchten jetzt ___.", "Сказать официанту, что вы хотите."], ["lecker", "вкусный", "Die Suppe ist sehr ___.", "Так говорят о приятном вкусе."], ["vegetarisch", "вегетарианский", "Haben Sie ein ___ Gericht?", "Блюдо без мяса и рыбы."], ["der Kellner", "официант", "Der ___ bringt unsere Getränke.", "Сотрудник ресторана, который обслуживает стол."], ["bezahlen", "платить", "Kann ich mit Karte ___.", "Отдать деньги за заказ."]
+    ["die Speisekarte", "меню", "Können wir bitte die ___ haben?", "Список блюд и напитков."],
+    ["die Rechnung", "счёт", "Die ___, bitte.", "Документ с суммой к оплате."],
+    ["das Wasser", "вода", "Ein Glas ___, bitte.", "Напиток без газа или с газом."],
+    ["bestellen", "заказывать", "Wir möchten jetzt ___.", "Сказать официанту, что вы хотите."],
+    ["lecker", "вкусный", "Die Suppe ist sehr ___.", "Так говорят о приятном вкусе."],
+    ["vegetarisch", "вегетарианский", "Haben Sie ein ___ Gericht?", "Блюдо без мяса и рыбы."],
+    [
+      "der Kellner",
+      "официант",
+      "Der ___ bringt unsere Getränke.",
+      "Сотрудник ресторана, который обслуживает стол.",
+    ],
+    ["bezahlen", "платить", "Kann ich mit Karte ___.", "Отдать деньги за заказ."],
   ]),
   scenarioModule(203, "Отпуск и поездка", [
-    ["der Urlaub", "отпуск", "Im Sommer habe ich ___.", "Свободные дни для отдыха."], ["die Reise", "путешествие", "Unsere ___ beginnt morgen.", "Поездка в другое место."], ["der Strand", "пляж", "Wir liegen am ___.", "Место у моря с песком."], ["das Meer", "море", "Das ___ ist heute warm.", "Большой солёный водоём."], ["wandern", "ходить в поход", "Am Wochenende möchten wir ___.", "Долго гулять по природе и горам."], ["die Sonne", "солнце", "Heute scheint die ___.", "На небе тепло и светло."], ["buchen", "бронировать", "Ich möchte ein Zimmer ___.", "Заранее заказать билет или номер."], ["der Reiseführer", "путеводитель", "Der ___ zeigt uns die Altstadt.", "Книга или человек, помогающий туристу."]
+    ["der Urlaub", "отпуск", "Im Sommer habe ich ___.", "Свободные дни для отдыха."],
+    ["die Reise", "путешествие", "Unsere ___ beginnt morgen.", "Поездка в другое место."],
+    ["der Strand", "пляж", "Wir liegen am ___.", "Место у моря с песком."],
+    ["das Meer", "море", "Das ___ ist heute warm.", "Большой солёный водоём."],
+    [
+      "wandern",
+      "ходить в поход",
+      "Am Wochenende möchten wir ___.",
+      "Долго гулять по природе и горам.",
+    ],
+    ["die Sonne", "солнце", "Heute scheint die ___.", "На небе тепло и светло."],
+    ["buchen", "бронировать", "Ich möchte ein Zimmer ___.", "Заранее заказать билет или номер."],
+    [
+      "der Reiseführer",
+      "путеводитель",
+      "Der ___ zeigt uns die Altstadt.",
+      "Книга или человек, помогающий туристу.",
+    ],
   ]),
   scenarioModule(204, "Собеседование · медсестра", [
-    ["die Krankenschwester", "медсестра", "Ich arbeite als ___.", "Женщина, которая ухаживает за пациентами."], ["der Patient", "пациент", "Der ___ wartet auf den Arzt.", "Человек, который получает медицинскую помощь."], ["das Krankenhaus", "больница", "Ich arbeite in einem ___.", "Медицинское учреждение для лечения."], ["die Erfahrung", "опыт", "Ich habe fünf Jahre ___ in der Pflege.", "Знания, полученные на прежней работе."], ["die Schicht", "смена", "Meine ___ beginnt um sieben Uhr.", "Период работы по расписанию."], ["helfen", "помогать", "Ich möchte Menschen ___.", "Поддерживать человека, которому трудно."], ["zuverlässig", "надёжный", "Meine Kolleginnen nennen mich ___.", "На такого сотрудника можно положиться."], ["das Bewerbungsgespräch", "собеседование", "Morgen habe ich ein ___.", "Встреча с работодателем перед приёмом на работу."]
+    [
+      "die Krankenschwester",
+      "медсестра",
+      "Ich arbeite als ___.",
+      "Женщина, которая ухаживает за пациентами.",
+    ],
+    [
+      "der Patient",
+      "пациент",
+      "Der ___ wartet auf den Arzt.",
+      "Человек, который получает медицинскую помощь.",
+    ],
+    [
+      "das Krankenhaus",
+      "больница",
+      "Ich arbeite in einem ___.",
+      "Медицинское учреждение для лечения.",
+    ],
+    [
+      "die Erfahrung",
+      "опыт",
+      "Ich habe fünf Jahre ___ in der Pflege.",
+      "Знания, полученные на прежней работе.",
+    ],
+    ["die Schicht", "смена", "Meine ___ beginnt um sieben Uhr.", "Период работы по расписанию."],
+    ["helfen", "помогать", "Ich möchte Menschen ___.", "Поддерживать человека, которому трудно."],
+    [
+      "zuverlässig",
+      "надёжный",
+      "Meine Kolleginnen nennen mich ___.",
+      "На такого сотрудника можно положиться.",
+    ],
+    [
+      "das Bewerbungsgespräch",
+      "собеседование",
+      "Morgen habe ich ein ___.",
+      "Встреча с работодателем перед приёмом на работу.",
+    ],
   ]),
   scenarioModule(205, "Собеседование · программист", [
-    ["der Programmierer", "программист", "Ich arbeite als ___.", "Специалист, который пишет программы."], ["die Software", "программное обеспечение", "Wir entwickeln neue ___.", "Программы и приложения компьютера."], ["das Team", "команда", "Ich arbeite gern im ___.", "Группа коллег с общей задачей."], ["die Erfahrung", "опыт", "Ich habe ___ mit Python.", "Практика и знания в работе."], ["die Entwicklung", "разработка", "Ich interessiere mich für die ___.", "Создание и улучшение программ."], ["das Projekt", "проект", "Unser ___ startet nächste Woche.", "Работа с общей целью и сроком."], ["die Fähigkeit", "навык", "Eine wichtige ___ ist Problemlösung.", "Умение что-то делать."], ["das Bewerbungsgespräch", "собеседование", "Am Freitag habe ich ein ___.", "Встреча с работодателем перед приёмом на работу."]
-  ])
+    [
+      "der Programmierer",
+      "программист",
+      "Ich arbeite als ___.",
+      "Специалист, который пишет программы.",
+    ],
+    [
+      "die Software",
+      "программное обеспечение",
+      "Wir entwickeln neue ___.",
+      "Программы и приложения компьютера.",
+    ],
+    ["das Team", "команда", "Ich arbeite gern im ___.", "Группа коллег с общей задачей."],
+    ["die Erfahrung", "опыт", "Ich habe ___ mit Python.", "Практика и знания в работе."],
+    [
+      "die Entwicklung",
+      "разработка",
+      "Ich interessiere mich für die ___.",
+      "Создание и улучшение программ.",
+    ],
+    ["das Projekt", "проект", "Unser ___ startet nächste Woche.", "Работа с общей целью и сроком."],
+    ["die Fähigkeit", "навык", "Eine wichtige ___ ist Problemlösung.", "Умение что-то делать."],
+    [
+      "das Bewerbungsgespräch",
+      "собеседование",
+      "Am Freitag habe ich ein ___.",
+      "Встреча с работодателем перед приёмом на работу.",
+    ],
+  ]),
 ];
 
 export const storedModules = (): VocabModule[] => {

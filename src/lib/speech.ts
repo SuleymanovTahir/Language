@@ -17,16 +17,29 @@ const settingsKey = "linguaplay-speech-settings";
 let activeAudio: HTMLAudioElement | null = null;
 let activeAudioUrl = "";
 let audioRequestId = 0;
-let kokoroPromise: ReturnType<(typeof import("kokoro-js"))["KokoroTTS"]["from_pretrained"]> | null = null;
+let kokoroPromise: ReturnType<(typeof import("kokoro-js"))["KokoroTTS"]["from_pretrained"]> | null =
+  null;
 
 export function detectSpeechLanguage(text: string) {
   if (/[\u0400-\u04ff]/.test(text)) return "ru-RU";
-  if (/[äöüß]/i.test(text) || /^(der|die|das|ein|eine|ich|du|wir|sie|und|nicht|mit|für)\b/i.test(text)) return "de-DE";
+  if (
+    /[äöüß]/i.test(text) ||
+    /^(der|die|das|ein|eine|ich|du|wir|sie|und|nicht|mit|für)\b/i.test(text)
+  )
+    return "de-DE";
   return "en-US";
 }
 
 export function speechLocaleForCode(code: string) {
-  const locales: Record<string, string> = { de: "de-DE", en: "en-US", ru: "ru-RU", es: "es-ES", fr: "fr-FR", it: "it-IT", tr: "tr-TR" };
+  const locales: Record<string, string> = {
+    de: "de-DE",
+    en: "en-US",
+    ru: "ru-RU",
+    es: "es-ES",
+    fr: "fr-FR",
+    it: "it-IT",
+    tr: "tr-TR",
+  };
   return locales[code] ?? `${code}-${code.toUpperCase()}`;
 }
 
@@ -34,10 +47,18 @@ export function defaultVoiceFor(provider: SpeechProvider, languageCode: string) 
   const language = languageCode.toLowerCase().split("-")[0];
   const defaults: Record<SpeechProvider, Record<string, string>> = {
     device: {},
-    edge: { de: "de-DE-TanjaNeural", en: "en-US-EmmaMultilingualNeural", fr: "fr-FR-VivienneMultilingualNeural" },
+    edge: {
+      de: "de-DE-TanjaNeural",
+      en: "en-US-EmmaMultilingualNeural",
+      fr: "fr-FR-VivienneMultilingualNeural",
+    },
     kokoro: { en: "af_heart", fr: "ff_siwis" },
     elevenlabs: { de: "", en: "", fr: "" },
-    azure: { de: "de-DE-SeraphinaMultilingualNeural", en: "en-US-EmmaMultilingualNeural", fr: "fr-FR-VivienneMultilingualNeural" },
+    azure: {
+      de: "de-DE-SeraphinaMultilingualNeural",
+      en: "en-US-EmmaMultilingualNeural",
+      fr: "fr-FR-VivienneMultilingualNeural",
+    },
   };
   return defaults[provider][language] ?? "";
 }
@@ -46,11 +67,18 @@ function voiceFor(provider: SpeechProvider, voice: string, languageCode: string)
   const language = languageCode.toLowerCase().split("-")[0];
   if (provider === "elevenlabs") return voice;
   if (provider === "kokoro") {
-    const valid = language === "fr" ? voice === "ff_siwis" : language === "en" ? /^(af_|am_)/.test(voice) : false;
+    const valid =
+      language === "fr"
+        ? voice === "ff_siwis"
+        : language === "en"
+          ? /^(af_|am_)/.test(voice)
+          : false;
     return valid ? voice : defaultVoiceFor(provider, languageCode);
   }
   if (provider === "edge" || provider === "azure") {
-    return voice.toLowerCase().startsWith(`${language}-`) ? voice : defaultVoiceFor(provider, languageCode);
+    return voice.toLowerCase().startsWith(`${language}-`)
+      ? voice
+      : defaultVoiceFor(provider, languageCode);
   }
   return voice;
 }
@@ -63,7 +91,9 @@ export function readSpeechSettings(): SpeechSettings {
     if (!raw) return defaultSpeechSettings;
     const saved = JSON.parse(raw) as Partial<SpeechSettings>;
     return {
-      provider: speechProviders.includes(saved.provider as SpeechProvider) ? saved.provider as SpeechProvider : "device",
+      provider: speechProviders.includes(saved.provider as SpeechProvider)
+        ? (saved.provider as SpeechProvider)
+        : "device",
       voice: typeof saved.voice === "string" ? saved.voice : "",
       rate: typeof saved.rate === "number" ? Math.min(1.1, Math.max(0.55, saved.rate)) : 0.82,
     };
@@ -88,7 +118,9 @@ function speakOnDevice(text: string, lang: string, slow: boolean, settings: Spee
   const language = lang.toLowerCase().split("-")[0];
   const voices = window.speechSynthesis.getVoices();
   const matchingVoices = voices.filter(
-    (voice) => voice.lang.toLowerCase() === lang.toLowerCase() || voice.lang.toLowerCase().startsWith(`${language}-`),
+    (voice) =>
+      voice.lang.toLowerCase() === lang.toLowerCase() ||
+      voice.lang.toLowerCase().startsWith(`${language}-`),
   );
   const selected = matchingVoices.find((voice) => voice.voiceURI === settings.voice);
   utterance.voice = selected ?? matchingVoices[0] ?? null;
@@ -100,7 +132,10 @@ function saveWav(samples: Float32Array, sampleRate: number) {
   const bytesPerSample = 2;
   const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
   const view = new DataView(buffer);
-  const write = (offset: number, value: string) => [...value].forEach((character, index) => view.setUint8(offset + index, character.charCodeAt(0)));
+  const write = (offset: number, value: string) =>
+    [...value].forEach((character, index) =>
+      view.setUint8(offset + index, character.charCodeAt(0)),
+    );
   write(0, "RIFF");
   view.setUint32(4, 36 + samples.length * bytesPerSample, true);
   write(8, "WAVE");
@@ -123,8 +158,14 @@ function saveWav(samples: Float32Array, sampleRate: number) {
 
 async function synthesizeWithKokoro(text: string, lang: string, voice: string, rate: number) {
   const language = lang.toLowerCase().split("-")[0];
-  if (language !== "en" && language !== "fr") throw new Error("Kokoro supports English and French in this app.");
-  kokoroPromise ??= import("kokoro-js").then(({ KokoroTTS }) => KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", { dtype: "q8", device: "wasm" }));
+  if (language !== "en" && language !== "fr")
+    throw new Error("Kokoro supports English and French in this app.");
+  kokoroPromise ??= import("kokoro-js").then(({ KokoroTTS }) =>
+    KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
+      dtype: "q8",
+      device: "wasm",
+    }),
+  );
   const tts = await kokoroPromise;
   const speed = Math.max(0.55, Math.min(1.1, rate));
   let audio;
@@ -132,7 +173,9 @@ async function synthesizeWithKokoro(text: string, lang: string, voice: string, r
     const { phonemize } = await import("phonemizer");
     const phonemes = await phonemize(text, "fr-fr");
     const encoded = await tts.tokenizer(phonemes.join(" "), { truncation: true });
-    const frenchOptions = { voice: "ff_siwis", speed } as unknown as Parameters<typeof tts.generate_from_ids>[1];
+    const frenchOptions = { voice: "ff_siwis", speed } as unknown as Parameters<
+      typeof tts.generate_from_ids
+    >[1];
     audio = await tts.generate_from_ids(encoded.input_ids, frenchOptions);
   } else {
     const englishVoice = voice === "af_bella" || voice === "am_fenrir" ? voice : "af_heart";
@@ -150,7 +193,12 @@ function playAudioBlob(blob: Blob, requestId: number) {
   void activeAudio.play().catch(() => stopCurrentAudio());
 }
 
-export function speakText(text: string, lang = detectSpeechLanguage(text), slow = false, override?: SpeechSettings) {
+export function speakText(
+  text: string,
+  lang = detectSpeechLanguage(text),
+  slow = false,
+  override?: SpeechSettings,
+) {
   if (typeof window === "undefined" || !text.trim()) return false;
   stopCurrentAudio();
   window.speechSynthesis?.cancel();
@@ -161,7 +209,8 @@ export function speakText(text: string, lang = detectSpeechLanguage(text), slow 
   const requestId = audioRequestId;
   const language = lang.toLowerCase().split("-")[0];
   if (settings.provider === "kokoro") {
-    if (!defaultVoiceFor("kokoro", lang) && !settings.voice) return speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
+    if (!defaultVoiceFor("kokoro", lang) && !settings.voice)
+      return speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
     void synthesizeWithKokoro(text, lang, voiceFor("kokoro", settings.voice, lang), rate)
       .then((blob) => playAudioBlob(blob, requestId))
       .catch(() => speakOnDevice(text, lang, slow, { ...settings, provider: "device" }));
@@ -170,7 +219,8 @@ export function speakText(text: string, lang = detectSpeechLanguage(text), slow 
 
   const endpoint = "/api/tts";
   const voice = voiceFor(settings.provider, settings.voice || "", language);
-  if (settings.provider === "edge" && !voice) return speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
+  if (settings.provider === "edge" && !voice)
+    return speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
   void fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -181,7 +231,8 @@ export function speakText(text: string, lang = detectSpeechLanguage(text), slow 
       playAudioBlob(await response.blob(), requestId);
     })
     .catch(() => {
-      if (requestId === audioRequestId) speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
+      if (requestId === audioRequestId)
+        speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
     });
   return true;
 }
