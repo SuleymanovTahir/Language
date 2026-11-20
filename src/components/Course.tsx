@@ -140,6 +140,12 @@ export function CoursePath({
         </div>
       )}
       <section className="course-overview-card">
+        <img
+          className="course-overview-mascot"
+          src="/mascots/mascot-4.png"
+          alt=""
+          aria-hidden="true"
+        />
         <div>
           <span className="eyebrow">УРОВЕНЬ {selectedLevel}</span>
           <h2>

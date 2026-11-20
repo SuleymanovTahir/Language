@@ -439,6 +439,12 @@ export function AccountPanel({
         <button className="dialog-close" onClick={onClose} aria-label="Закрыть">
           <Icon name="close" />
         </button>
+        <img
+          className="account-profile-mascot"
+          src="/mascots/mascot-8.png"
+          alt=""
+          aria-hidden="true"
+        />
         <p className="eyebrow">ЛИЧНЫЙ КАБИНЕТ</p>
         <div className="account-profile-heading">
           {user.image ? (

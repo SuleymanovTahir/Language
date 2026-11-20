@@ -3077,6 +3077,7 @@ function Library({
   return (
     <div className="page">
       <div className="library-heading">
+        <img className="library-mascot" src="/mascots/mascot-2.png" alt="" aria-hidden="true" />
         <div>
           <p className="eyebrow">ВАШИ МАТЕРИАЛЫ</p>
           <h1>Библиотека</h1>
@@ -3400,6 +3401,7 @@ function PathScreen({
   });
   const [editingModuleId, setEditingModuleId] = useState<number | null>(null);
   const [selectionByModule, setSelectionByModule] = useState<Record<number, string>>({});
+  const [openChapterIndex, setOpenChapterIndex] = useState<number | null>(0);
   useEffect(() => {
     writeProfileItem("linguaplay-saved-activities", JSON.stringify(activities));
   }, [activities]);
@@ -3588,6 +3590,7 @@ function PathScreen({
   return (
     <div className="page course-page">
       <div className="page-heading">
+        <img className="builder-heading-mascot" src="/mascots/mascot-6.png" alt="" aria-hidden="true" />
         <div>
           <p className="eyebrow">
             КОНСТРУКТОР · {modules[0]?.languageName ?? "ЯЗЫК"} {modules[0]?.level ?? ""}
@@ -3630,7 +3633,10 @@ function PathScreen({
             );
             const chapterLessons = lessons.filter((lesson) => lesson.chapter === chapter.title);
             return (
-              <section className={`course-chapter chapter-${chapterIndex % 4}`} key={chapter.title}>
+              <section
+                className={`course-chapter chapter-${chapterIndex % 4} ${openChapterIndex === chapterIndex ? "open" : "collapsed"}`}
+                key={chapter.title}
+              >
                 <header>
                   <span className="chapter-number">
                     ГЛАВА {String(chapterIndex + 1).padStart(2, "0")}
@@ -3646,6 +3652,19 @@ function PathScreen({
                   <div className="chapter-progress">
                     <i style={{ width: `${chapterPercent}%` }} />
                   </div>
+                  <button
+                    className="chapter-toggle"
+                    type="button"
+                    aria-expanded={openChapterIndex === chapterIndex}
+                    onClick={() =>
+                      setOpenChapterIndex((current) =>
+                        current === chapterIndex ? null : chapterIndex,
+                      )
+                    }
+                  >
+                    {openChapterIndex === chapterIndex ? "Свернуть главу" : "Открыть главу"}
+                    <span aria-hidden="true">{openChapterIndex === chapterIndex ? "↑" : "↓"}</span>
+                  </button>
                 </header>
                 <div className="chapter-modules">
                   {chapterModules.map((module) => {

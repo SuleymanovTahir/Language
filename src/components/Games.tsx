@@ -1041,6 +1041,7 @@ export function GameHub({
   return (
     <div className="page games-page">
       <div className="page-heading">
+        <img className="games-heading-mascot" src="/mascots/mascot-3.png" alt="" aria-hidden="true" />
         <div>
           <p className="eyebrow">
             {selectedModule?.languageName ?? "УЧЕБНЫЙ КАБИНЕТ"} · {selectedModule?.level ?? ""}

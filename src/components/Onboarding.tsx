@@ -140,6 +140,12 @@ export function CourseOnboarding({
         <div className="onboarding-progress" aria-label={`Шаг ${step + 1} из 3`}>
           <i style={{ width: `${(step + 1) * 33.333}%` }} />
         </div>
+        <img
+          className="onboarding-mascot"
+          src="/mascots/mascot-1.png"
+          alt=""
+          aria-hidden="true"
+        />
         {step === 0 && (
           <div className="onboarding-content placement-start-content">
             <p className="eyebrow">ПЕРСОНАЛЬНЫЙ МАРШРУТ · 1/3</p>

@@ -678,6 +678,13 @@ export function AdminAnalyticsScreen() {
     1,
     ...(data?.daily ?? []).map((item) => Math.max(item.signups, item.active_users)),
   );
+  const totalViews = (data?.pages ?? []).reduce((sum, item) => sum + item.views, 0);
+  const totalActions = (data?.actions ?? []).reduce((sum, item) => sum + item.clicks, 0);
+  const maxPageViews = Math.max(1, ...(data?.pages ?? []).map((item) => item.views));
+  const maxActionClicks = Math.max(1, ...(data?.actions ?? []).map((item) => item.clicks));
+  const activeShare = data?.summary?.total_users
+    ? Math.round((data.summary.active_users_7d / data.summary.total_users) * 100)
+    : 0;
   return (
     <div className="page admin-page analytics-page">
       <div className="page-heading admin-page-heading">
@@ -782,6 +789,90 @@ export function AdminAnalyticsScreen() {
                 </span>
               </div>
             </section>
+            <div className="analytics-insight-grid">
+              <section className="analytics-panel analytics-engagement-panel">
+                <div className="analytics-panel-heading">
+                  <div>
+                    <h2>Здоровье аудитории</h2>
+                    <p>Доля пользователей, которые возвращались за последние 7 дней.</p>
+                  </div>
+                  <span>7 дней</span>
+                </div>
+                <div className="analytics-donut-row">
+                  <div
+                    className="analytics-donut"
+                    style={{ "--value": `${activeShare * 3.6}deg` } as React.CSSProperties}
+                    role="img"
+                    aria-label={`${activeShare}% активных пользователей`}
+                  >
+                    <strong>{activeShare}%</strong>
+                    <small>активны</small>
+                  </div>
+                  <div className="analytics-mini-facts">
+                    <article>
+                      <strong>{data.summary.active_users_7d}</strong>
+                      <span>вернулись за неделю</span>
+                    </article>
+                    <article>
+                      <strong>{totalViews}</strong>
+                      <span>просмотров разделов</span>
+                    </article>
+                    <article>
+                      <strong>{totalActions}</strong>
+                      <span>целевых действий</span>
+                    </article>
+                  </div>
+                </div>
+              </section>
+              <section className="analytics-panel analytics-ranking-panel">
+                <div className="analytics-panel-heading">
+                  <div>
+                    <h2>Вовлечение по разделам</h2>
+                    <p>Какие части приложения открывают чаще всего.</p>
+                  </div>
+                </div>
+                <div className="analytics-horizontal-bars">
+                  {data.pages.slice(0, 6).map((item) => (
+                    <article key={item.route}>
+                      <div>
+                        <strong>{routeName(item.route)}</strong>
+                        <span>{item.views}</span>
+                      </div>
+                      <i>
+                        <b style={{ width: `${(item.views / maxPageViews) * 100}%` }} />
+                      </i>
+                    </article>
+                  ))}
+                  {!data.pages.length && (
+                    <p className="admin-analytics-empty">Данные появятся после просмотров.</p>
+                  )}
+                </div>
+              </section>
+              <section className="analytics-panel analytics-ranking-panel">
+                <div className="analytics-panel-heading">
+                  <div>
+                    <h2>Популярные действия</h2>
+                    <p>Что пользователи нажимают внутри приложения.</p>
+                  </div>
+                </div>
+                <div className="analytics-horizontal-bars action-bars">
+                  {data.actions.slice(0, 6).map((item) => (
+                    <article key={`${item.route}-${item.action}`}>
+                      <div>
+                        <strong>{actionName(item.action)}</strong>
+                        <span>{item.clicks}</span>
+                      </div>
+                      <i>
+                        <b style={{ width: `${(item.clicks / maxActionClicks) * 100}%` }} />
+                      </i>
+                    </article>
+                  ))}
+                  {!data.actions.length && (
+                    <p className="admin-analytics-empty">Данные появятся после действий.</p>
+                  )}
+                </div>
+              </section>
+            </div>
             <div className="analytics-two-column">
               <section className="analytics-panel">
                 <div className="analytics-panel-heading">
