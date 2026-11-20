@@ -35,6 +35,7 @@ import {
   writeProfileItem,
 } from "./lib/profileStorage";
 import { authClient } from "./lib/auth-client";
+import { PandaNote } from "./components/PandaNote";
 import {
   AccountPanel,
   AuthScreen,
@@ -2602,6 +2603,10 @@ function Sidebar({
             <span>{item.label}</span>
           </a>
         ))}
+        <button className="mobile-settings-nav" onClick={onSettings} aria-label="Настройки">
+          <Icon name="settings" />
+          <span>Настройки</span>
+        </button>
       </nav>
       <div className="sidebar-bottom">
         <button
@@ -2789,9 +2794,14 @@ function Today({
           <span className="eyebrow">
             ПЕРСОНАЛЬНЫЙ ВЫБОР · ОКОЛО {mission.durationMinutes} МИНУТ
           </span>
-          <h2>{mission.title}</h2>
-          <p>{mission.explanation}</p>
-          <small>{mission.cards.length} заданий · сначала повтор, затем слова по вашей цели</small>
+          <h2>Маленькая миссия на сегодня</h2>
+          <p>
+            {mission.cards.length} заданий · {mission.durationMinutes} минут для вашего прогресса
+          </p>
+          <details className="mission-details">
+            <summary>Почему эта миссия?</summary>
+            <small>{mission.explanation}</small>
+          </details>
         </div>
         <div className="daily-mission-actions">
           <button
@@ -3582,13 +3592,13 @@ function PathScreen({
           <p className="eyebrow">
             КОНСТРУКТОР · {modules[0]?.languageName ?? "ЯЗЫК"} {modules[0]?.level ?? ""}
           </p>
-          <h1>Материалы и задания</h1>
-          <p>
-            Настраивайте свои карточки, игры, аудио и уроки. Последовательная программа курса
-            находится в разделе «Учебный путь».
-          </p>
+          <h1>Мастерская приключений</h1>
+          <p>Ваши слова превращаются в игры. Соберите маршрут и отправляйтесь в путь.</p>
         </div>
       </div>
+      <PandaNote title="Вы — автор следующего уровня">
+        Настройте маршрут: карточки, игра, аудио или свой урок. Панда пройдёт его вместе с вами.
+      </PandaNote>
       {chapters.length ? (
         <div className="course-chapters">
           {chapters.map((chapter, chapterIndex) => {
@@ -4033,6 +4043,15 @@ function StatsScreen({
           <small>{reviewed} карточек уже повторяли</small>
         </div>
       </div>
+      <PandaNote
+        title={
+          unlocked
+            ? `Уже ${unlocked} наград. Так держать!`
+            : "Большой путь начинается с маленького шага"
+        }
+      >
+        Каждая тренировка приближает к новой награде.
+      </PandaNote>
       <section className="achievements-panel">
         <div className="section-title">
           <div>

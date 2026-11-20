@@ -866,11 +866,12 @@ export function SettingsDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
+        data-panda-dialog="settings"
       >
         <button className="dialog-close" onClick={onClose} aria-label="Закрыть">
           <Icon name="close" />
         </button>
-        <p className="eyebrow">LINGUAPLAY</p>
+        <p className="eyebrow">CLICKLING · ВАШ РИТМ</p>
         <h2 id="settings-title">Настройки</h2>
         <label className="field-label">
           Имя · необязательно

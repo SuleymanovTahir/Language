@@ -4,6 +4,7 @@ import type { VocabCard, VocabModule } from "../lib/vocab";
 import { loadMediaFile, removeMediaFile, saveMediaFile } from "../lib/mediaStore";
 import { playFeedbackSound, playPairIntroTone, playWheelSpinSound } from "../lib/feedbackSound";
 import { Icon } from "./Icon";
+import { PandaNote } from "./PandaNote";
 import { speakText, speechLocaleForCode } from "./StudySession";
 import { AudioQuizBuilder, AudioQuizSession, type AudioQuiz } from "./AudioQuiz";
 import { getActiveProfileId, readProfileItem, writeProfileItem } from "../lib/profileStorage";
@@ -1044,7 +1045,7 @@ export function GameHub({
           <p className="eyebrow">
             {selectedModule?.languageName ?? "УЧЕБНЫЙ КАБИНЕТ"} · {selectedModule?.level ?? ""}
           </p>
-          <h1>Игровая практика</h1>
+          <h1>Поиграем?</h1>
           <p>
             {selectedModule
               ? `Выберите навык и тренируйтесь на словах из модуля «${selectedModule.title}».`
@@ -1070,6 +1071,9 @@ export function GameHub({
           </label>
         )}
       </div>
+      <PandaNote title="Одна игра — маленькая победа">
+        Посмотрите на пример, выберите игру и попробуйте на своих словах.
+      </PandaNote>
       <div className="practice-tabs">
         <button
           className={activeTab === "games" ? "active" : ""}
@@ -1483,6 +1487,20 @@ export function GameHub({
               ИГРА · {builderModule.languageName} · {builderModule.level}
             </p>
             <h2 id="activity-title">{editingActivityId ? "Изменить игру" : "Создать игру"}</h2>
+            <PandaNote title="Соберём своё приключение">
+              Выберите механику, добавьте слова — и можно играть.
+            </PandaNote>
+            <div className="builder-steps" aria-label="Этапы создания игры">
+              <span>
+                <b>1</b> Формат
+              </span>
+              <span>
+                <b>2</b> Слова
+              </span>
+              <span>
+                <b>3</b> Запуск
+              </span>
+            </div>
             <div className="activity-builder-layout">
               <div className="activity-builder-config">
                 <label className="field-label">
@@ -1511,7 +1529,7 @@ export function GameHub({
                     <span>Выберите формат — справа появится пример экрана.</span>
                   </div>
                   <div className="template-picker-grid">
-                    {builderGames.map((game, index) => (
+                    {builderGames.map((game) => (
                       <button
                         type="button"
                         key={game.id}
@@ -1519,7 +1537,7 @@ export function GameHub({
                         onClick={() => setActivityGame(game.id)}
                         aria-pressed={activityGame === game.id}
                       >
-                        <span className={`game-mark color-${index % 5}`}>{game.mark}</span>
+                        <GameArtwork gameId={game.id} module={builderModule} />
                         <span>
                           <strong>{game.title}</strong>
                           <small>{game.description}</small>

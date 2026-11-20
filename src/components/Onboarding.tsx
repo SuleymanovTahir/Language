@@ -143,8 +143,8 @@ export function CourseOnboarding({
         {step === 0 && (
           <div className="onboarding-content placement-start-content">
             <p className="eyebrow">ПЕРСОНАЛЬНЫЙ МАРШРУТ · 1/3</p>
-            <h2 id="onboarding-title">Какой у вас уровень немецкого?</h2>
-            <p>Сначала оцените себя. Затем пройдите тест или начните с выбранного уровня.</p>
+            <h2 id="onboarding-title">С чего начнём?</h2>
+            <p>Выберите свой немецкий. Панда поможет с остальным.</p>
             <div
               className="start-choice-grid self-level-grid"
               role="radiogroup"
@@ -201,13 +201,13 @@ export function CourseOnboarding({
                 <span>{placementReport.comparison}</span>
               </div>
             )}
-            <p className="placement-ai-note">
+            <div className="placement-ai-note">
               Письмо проверит Gemini · не вводите личные данные{" "}
               <HelpHint label="О данных письма">
                 Текст отправится Google. На бесплатном тарифе Gemini Google может использовать
                 запросы для улучшения сервисов. Используйте вымышленные данные.
               </HelpHint>
-            </p>
+            </div>
             <div className="dialog-actions placement-start-actions">
               <button className="secondary-button" disabled={!selfLevel} onClick={() => setStep(1)}>
                 Продолжить без теста
