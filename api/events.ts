@@ -1,5 +1,12 @@
 import { auth, pool } from "../src/lib/auth.ts";
 import { readLimitedRequestBody } from "../src/lib/readLimitedRequestBody.ts";
+import { ensureLearningEvents } from "../src/server/api/learningEventsSchema.ts";
+import {
+  ensureAnalyticsSchema,
+  getAnalyticsActor,
+  saveAnalyticsEvent,
+  withVisitorCookie,
+} from "../src/server/api/analytics.ts";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -10,30 +17,11 @@ const trim = (value: unknown, limit = 300) =>
   typeof value === "string" ? value.slice(0, limit) : null;
 const idText = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? String(value) : trim(value, 120);
-let learningEventsReady: Promise<void> | null = null;
-async function ensureLearningEvents() {
-  learningEventsReady ??= pool
-    .query(`CREATE TABLE IF NOT EXISTS linguaplay_learning_events (
-    id bigserial PRIMARY KEY,event_key text UNIQUE,user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-    session_id text NOT NULL,item_id text NOT NULL,language_code text NOT NULL DEFAULT '',level text NOT NULL DEFAULT '',skill text NOT NULL,topic text NOT NULL DEFAULT '',variant_id text NOT NULL DEFAULT '',
-    first_try_correct boolean,attempt_count integer NOT NULL DEFAULT 1,hint_used boolean NOT NULL DEFAULT false,skipped boolean NOT NULL DEFAULT false,
-    duration_ms integer,created_at timestamptz NOT NULL DEFAULT now());
-    ALTER TABLE linguaplay_learning_events ADD COLUMN IF NOT EXISTS language_code text NOT NULL DEFAULT '';
-    ALTER TABLE linguaplay_learning_events ADD COLUMN IF NOT EXISTS level text NOT NULL DEFAULT '';
-    CREATE UNIQUE INDEX IF NOT EXISTS linguaplay_learning_events_event_key_idx ON linguaplay_learning_events(event_key) WHERE event_key IS NOT NULL;
-    CREATE INDEX IF NOT EXISTS linguaplay_learning_events_user_time_idx ON linguaplay_learning_events(user_id,created_at DESC);`)
-    .then(() => undefined)
-    .catch((error) => {
-      learningEventsReady = null;
-      throw error;
-    });
-  await learningEventsReady;
-}
-
 export async function POST(request: Request) {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== new URL(request.url).origin)
+    return json({ error: "Недопустимый источник." }, 403);
   const session = await auth.api.getSession({ headers: request.headers });
-  if (!session?.user?.id) return json({ error: "Sign in is required." }, 401);
-  await ensureLearningEvents();
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > 12_000) return json({ error: "Event payload is too large." }, 413);
   const bytes = await readLimitedRequestBody(request, 12_000);
@@ -65,6 +53,74 @@ export async function POST(request: Request) {
   )
     return json({ error: "Unsupported event." }, 400);
 
+  if (event.analyticsConsent !== true)
+    return json({ error: "События аналитики сохраняются только после согласия на аналитику." }, 403);
+
+  const actor = getAnalyticsActor(request);
+  const allowedRoutes = [
+    "today",
+    "library",
+    "path",
+    "materials",
+    "games",
+    "stats",
+    "admin",
+    "analytics",
+  ];
+  if (type === "page-view" || type === "target-action") {
+    const route = trim(event.route, 40);
+    const action = trim(event.action, 80);
+    if (
+      !route ||
+      !allowedRoutes.includes(route) ||
+      (type === "target-action" && (!action || !/^[\p{L}\p{N}_-]+$/u.test(action)))
+    )
+      return json({ error: "Invalid analytics event." }, 400);
+  }
+
+  if (!session?.user?.id) {
+    await ensureAnalyticsSchema();
+    const daily = await pool.query(
+      "SELECT COUNT(*)::int AS count FROM linguaplay_analytics_events WHERE visitor_id=$1 AND created_at >= date_trunc('day', now())",
+      [actor.visitorId],
+    );
+    if (daily.rows[0]?.count >= 1000) return json({ error: "Daily activity event limit reached." }, 429);
+    const guestAllowedTypes = new Set([
+      "page-view",
+      "target-action",
+      "game-start",
+      "game-answer",
+      "game-skip",
+      "game-progress",
+      "game-complete",
+      "practice-start",
+      "practice-answer",
+      "practice-progress",
+      "practice-complete",
+      "study-answer",
+    ]);
+    if (!guestAllowedTypes.has(type)) return json({ error: "Unsupported guest event." }, 400);
+    try {
+      await saveAnalyticsEvent(
+        {
+          userId: null,
+          actor,
+          type,
+          route: trim(event.route, 40),
+          action: trim(event.action, 80),
+          activity: trim(event.activity, 180),
+          payload: analyticsPayload(event),
+        },
+      );
+      return withVisitorCookie(json({ saved: true }), actor);
+    } catch {
+      return json({ error: "Unable to save analytics event." }, 503);
+    }
+  }
+
+  await ensureLearningEvents();
+  await ensureAnalyticsSchema();
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -72,7 +128,7 @@ export async function POST(request: Request) {
       session.user.id,
     ]);
     const daily = await client.query(
-      "SELECT COUNT(*)::int AS count FROM linguaplay_events WHERE user_id=$1 AND created_at >= date_trunc('day', now())",
+      "SELECT COUNT(*)::int AS count FROM linguaplay_analytics_events WHERE user_id=$1 AND created_at >= date_trunc('day', now())",
       [session.user.id],
     );
     if (daily.rows[0].count >= 1000) {
@@ -83,35 +139,16 @@ export async function POST(request: Request) {
     if (type === "page-view" || type === "target-action") {
       const route = trim(event.route, 40);
       const action = trim(event.action, 80);
-      const allowedRoutes = [
-        "today",
-        "library",
-        "path",
-        "materials",
-        "games",
-        "stats",
-        "admin",
-        "analytics",
-      ];
-      if (
-        !route ||
-        !allowedRoutes.includes(route) ||
-        (type === "target-action" && (!action || !/^[\p{L}\p{N}_-]+$/u.test(action)))
-      ) {
-        await client.query("ROLLBACK");
-        return json({ error: "Invalid analytics event." }, 400);
-      }
-      await client.query(
-        `
-      INSERT INTO linguaplay_events (user_id,event_type,activity,payload)
-      VALUES ($1,$2,$3,$4::jsonb)
-    `,
-        [
-          session.user.id,
+      await saveAnalyticsEvent(
+        {
+          userId: session.user.id,
+          actor,
           type,
-          type === "target-action" ? action : route,
-          JSON.stringify(type === "target-action" ? { route, action } : { route }),
-        ],
+          route,
+          action,
+          payload: {},
+        },
+        client,
       );
       await client.query("COMMIT");
       return json({ saved: true });
@@ -256,6 +293,18 @@ export async function POST(request: Request) {
         }),
       ],
     );
+    await saveAnalyticsEvent(
+      {
+        userId: session.user.id,
+        actor,
+        type,
+        route: trim(event.route, 40),
+        action: trim(event.action, 80),
+        activity: trim(event.activity, 180),
+        payload: analyticsPayload(event),
+      },
+      client,
+    );
     await client.query("COMMIT");
     return json({ saved: true });
   } catch {
@@ -264,4 +313,31 @@ export async function POST(request: Request) {
   } finally {
     client.release();
   }
+}
+
+function analyticsPayload(event: Record<string, unknown>) {
+  const allowed = [
+    "activityId",
+    "itemId",
+    "moduleId",
+    "moduleTitle",
+    "mode",
+    "skill",
+    "topic",
+    "variantId",
+    "languageCode",
+    "level",
+    "roundIndex",
+    "roundTotal",
+    "durationMs",
+    "durationMinutes",
+    "correct",
+    "firstTryCorrect",
+    "attemptCount",
+    "hintUsed",
+    "skipped",
+  ];
+  return Object.fromEntries(
+    allowed.filter((key) => event[key] !== undefined).map((key) => [key, event[key]]),
+  );
 }

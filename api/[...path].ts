@@ -1,3 +1,7 @@
+import { auth } from "../src/lib/auth.ts";
+import * as activities from "../src/server/api/activities/start.ts";
+import * as activityAnswers from "../src/server/api/activities/answer.ts";
+import * as engagement from "../src/server/api/engagement.ts";
 import * as guestTrial from "../src/server/api/guest-trial.ts";
 import * as profile from "../src/server/api/profile.ts";
 import * as sync from "../src/server/api/sync.ts";
@@ -13,10 +17,30 @@ const routes: RouteTable = {
   },
   "/api/profile": { GET: profile.GET },
   "/api/sync": { GET: sync.GET, PUT: sync.PUT },
+  "/api/engagement": { GET: engagement.GET, POST: engagement.POST },
 };
 
 async function dispatch(request: Request) {
   const route = new URL(request.url).pathname.replace(/\/+$/, "") || "/";
+
+  if (route === "/api/auth" || route.startsWith("/api/auth/")) return auth.handler(request);
+
+  if (route === "/api/activities/start") {
+    if (request.method === "GET") return activities.GET(request);
+    if (request.method === "POST") return activities.POST(request);
+    return Response.json(
+      { error: "Method not allowed." },
+      { status: 405, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  if (route === "/api/activities/answer") {
+    if (request.method === "POST") return activityAnswers.POST(request);
+    return Response.json(
+      { error: "Method not allowed." },
+      { status: 405, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   const endpoint = routes[route];
   if (!endpoint)
     return Response.json(

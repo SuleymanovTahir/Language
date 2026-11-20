@@ -60,40 +60,48 @@ function ipHash(request: Request) {
 }
 
 export async function GET(request: Request) {
-  await ensureTable();
-  const remoteHash = ipHash(request);
-  if (process.env.VERCEL && !remoteHash)
-    return json({ error: "Trial service is unavailable." }, 503);
-  let token = tokenFrom(request);
-  let headers: HeadersInit = {};
-  if (!token || !/^[\w-]{32,100}$/.test(token)) {
-    token = randomBytes(32).toString("base64url");
-    headers = { "Set-Cookie": cookieHeader(request, token) };
-  }
-  const result = await pool.query(
-    `
+  try {
+    await ensureTable();
+    const remoteHash = ipHash(request);
+    if (process.env.VERCEL && !remoteHash)
+      return json({ error: "Trial service is unavailable." }, 503);
+    let token = tokenFrom(request);
+    let headers: HeadersInit = {};
+    if (!token || !/^[\w-]{32,100}$/.test(token)) {
+      token = randomBytes(32).toString("base64url");
+      headers = { "Set-Cookie": cookieHeader(request, token) };
+    }
+    const result = await pool.query(
+      `
     SELECT
       (SELECT blocked_until FROM linguaplay_guest_trials WHERE token_hash=$1) AS token_blocked_until,
       (SELECT blocked_until FROM linguaplay_guest_ip_trials WHERE ip_hash=$2) AS ip_blocked_until
   `,
-    [hashToken(token), remoteHash],
-  );
-  const candidates = [result.rows[0]?.token_blocked_until, result.rows[0]?.ip_blocked_until]
-    .filter((value) => value !== null && value !== undefined)
-    .map((value) => new Date(value).getTime())
-    .filter(Number.isFinite);
-  const latestBlockedUntil = candidates.length ? Math.max(...candidates) : null;
-  const blockedUntil =
-    latestBlockedUntil === null ? null : new Date(latestBlockedUntil).toISOString();
-  return json(
-    { eligible: !blockedUntil || new Date(blockedUntil).getTime() <= Date.now(), blockedUntil },
-    200,
-    headers,
-  );
+      [hashToken(token), remoteHash],
+    );
+    const candidates = [result.rows[0]?.token_blocked_until, result.rows[0]?.ip_blocked_until]
+      .filter((value) => value !== null && value !== undefined)
+      .map((value) => new Date(value).getTime())
+      .filter(Number.isFinite);
+    const latestBlockedUntil = candidates.length ? Math.max(...candidates) : null;
+    const blockedUntil =
+      latestBlockedUntil === null ? null : new Date(latestBlockedUntil).toISOString();
+    return json(
+      { eligible: !blockedUntil || new Date(blockedUntil).getTime() <= Date.now(), blockedUntil },
+      200,
+      headers,
+    );
+  } catch {
+    return json({ error: "Trial service is unavailable." }, 503);
+  }
 }
 
 export async function POST(request: Request) {
-  await ensureTable();
+  try {
+    await ensureTable();
+  } catch {
+    return json({ error: "Trial service is unavailable." }, 503);
+  }
   const remoteHash = ipHash(request);
   if (process.env.VERCEL && !remoteHash)
     return json({ error: "Trial service is unavailable." }, 503);
@@ -104,7 +112,12 @@ export async function POST(request: Request) {
     headers = { "Set-Cookie": cookieHeader(request, token) };
   }
   const key = hashToken(token);
-  const client = await pool.connect();
+  let client;
+  try {
+    client = await pool.connect();
+  } catch {
+    return json({ error: "Trial service is unavailable." }, 503);
+  }
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(hashtext('linguaplay-guest-trial:' || $1))", [

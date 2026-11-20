@@ -1,4 +1,12 @@
 import { auth, ensureInitialAppRole, pool } from "../src/lib/auth.ts";
+import { ensureEngagementSchema } from "../src/server/api/engagement.ts";
+import {
+  captureDailyAnalyticsSnapshot,
+  ensureAnalyticsSchema,
+} from "../src/server/api/analytics.ts";
+import { ensureBillingSchema } from "../src/server/api/billingSchema.ts";
+import { ensureLearningEvents } from "../src/server/api/learningEventsSchema.ts";
+import { ENERGY_CAP, ensureEnergyTables } from "../src/server/api/activities/start.ts";
 import { randomUUID } from "node:crypto";
 
 const json = (data: unknown, status = 200) =>
@@ -7,10 +15,6 @@ const json = (data: unknown, status = 200) =>
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
 const flags = ["manageContent", "manageUsers", "viewAnalytics", "manageSettings"] as const;
-const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 5);
-const ENERGY_CAP = Number.isInteger(configuredEnergyCap)
-  ? Math.max(1, Math.min(22, configuredEnergyCap))
-  : 5;
 const configuredEnergyRefill = Number(process.env.LINGUAPLAY_ENERGY_REFILL_MINUTES ?? 30);
 const ENERGY_REFILL_MINUTES = Number.isInteger(configuredEnergyRefill)
   ? Math.max(1, Math.min(1440, configuredEnergyRefill))
@@ -159,18 +163,33 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  try {
+    return await getAdminData(request);
+  } catch (error) {
+    console.error("Admin API GET failed", error);
+    return json({ error: "Не удалось загрузить данные панели администратора." }, 500);
+  }
+}
+
+async function getAdminData(request: Request) {
   const gate = await ownerFor(request);
   if ("response" in gate) return gate.response;
   if (new URL(request.url).searchParams.get("view") === "analytics") return getAnalytics();
+  await ensureEngagementSchema();
+  await ensureAnalyticsSchema();
+  await ensureEnergyTables();
+  await ensureBillingSchema();
 
-  const [users, events, active] = await Promise.all([
+  const [users, events, active, subscriptions] = await Promise.all([
     pool.query(`SELECT u.id,u.name,u.email,u."emailVerified" AS email_verified,u.image,u.role AS auth_role,u."createdAt" AS created_at,
       u.banned,u."banReason" AS ban_reason,u."banExpires" AS ban_expires,r.role,r.permissions,
-      COUNT(DISTINCT e.id)::int AS event_count, COUNT(DISTINCT e.id) FILTER (WHERE e.is_correct = false)::int AS errors,
-      MAX(e.created_at) AS last_activity, MAX(s."updatedAt") AS last_login, GREATEST(MAX(e.created_at),MAX(s."updatedAt")) AS last_seen,
-      ent.status AS pro_status,ent.starts_at AS pro_starts_at,ent.ends_at AS pro_ends_at,d.data AS profile_data,COALESCE(en.energy,5) AS server_energy
+      COALESCE(e.event_count,0) AS event_count,COALESCE(e.errors,0) AS errors,
+      GREATEST(e.last_activity,a.last_activity) AS last_activity,s.last_login,GREATEST(e.last_activity,s.last_login,a.last_activity) AS last_seen,
+      ent.status AS pro_status,ent.starts_at AS pro_starts_at,ent.ends_at AS pro_ends_at,d.data AS profile_data,COALESCE(en.energy,22) AS server_energy,cw.balance AS crystal_balance
       FROM "user" u LEFT JOIN linguaplay_user_roles r ON r.user_id=u.id
-      LEFT JOIN linguaplay_events e ON e.user_id=u.id LEFT JOIN "session" s ON s."userId"=u.id
+      LEFT JOIN LATERAL (SELECT COUNT(*)::int AS event_count,COUNT(*) FILTER (WHERE is_correct=false)::int AS errors,MAX(created_at) AS last_activity FROM linguaplay_events WHERE user_id=u.id) e ON true
+      LEFT JOIN LATERAL (SELECT MAX(created_at) AS last_activity FROM linguaplay_analytics_events WHERE user_id=u.id) a ON true
+      LEFT JOIN LATERAL (SELECT MAX("updatedAt") AS last_login FROM "session" WHERE "userId"=u.id) s ON true
       LEFT JOIN LATERAL (
         SELECT status,starts_at,ends_at FROM (
           SELECT status,starts_at,ends_at FROM linguaplay_user_entitlements WHERE user_id=u.id
@@ -180,11 +199,20 @@ export async function GET(request: Request) {
           ends_at DESC NULLS LAST LIMIT 1
       ) ent ON true LEFT JOIN linguaplay_user_data d ON d.user_id=u.id
       LEFT JOIN linguaplay_energy_accounts en ON en.user_id=u.id
-      GROUP BY u.id,r.role,r.permissions,ent.status,ent.starts_at,ent.ends_at,d.data,en.energy ORDER BY u."createdAt" DESC`),
+      LEFT JOIN clickling_ai_wallet cw ON cw.user_id=u.id
+      ORDER BY u."createdAt" DESC`),
     pool.query(`SELECT e.id,e.user_id,u.name,e.event_type,e.module_title,e.activity,e.round_index,e.round_total,e.is_correct,e.payload-'prompt'-'selectedAnswer'-'correctAnswer'-'answer'-'text' AS payload,e.created_at
       FROM linguaplay_events e JOIN "user" u ON u.id=e.user_id ORDER BY e.created_at DESC LIMIT 200`),
     pool.query(
       `SELECT s.user_id,u.name,s.activity_title,s.module_title,s.current_index,s.total,s.updated_at FROM linguaplay_active_sessions s JOIN "user" u ON u.id=s.user_id ORDER BY s.updated_at DESC`,
+    ),
+    pool.query(
+      `SELECT s.id::text,s.account_id,u.name,u.email,p.name AS plan_name,s.status,p.amount_minor,p.currency,
+              s.period_start,s.period_end,s.cancel_at_period_end,s.provider
+       FROM linguaplay_subscriptions s
+       JOIN "user" u ON u.id=s.account_id
+       JOIN linguaplay_plans p ON p.code=s.plan_code
+       ORDER BY s.period_start DESC LIMIT 300`,
     ),
   ]);
   const now = Date.now();
@@ -200,6 +228,7 @@ export async function GET(request: Request) {
         role: row.role ?? "student",
         permissions: row.permissions ?? {},
         ...summary,
+        crystals: Number(row.crystal_balance ?? summary.crystals),
         energy_cap: ENERGY_CAP,
         is_pro:
           row.pro_status === "active" &&
@@ -215,30 +244,130 @@ export async function GET(request: Request) {
     }),
     events: events.rows,
     active: active.rows,
+    subscriptions: subscriptions.rows,
     actor: { id: gate.actor.user.id, role: gate.actor.role },
   });
 }
 
 async function getAnalytics() {
-  const [daily, users, actions, pages, recent, learning] = await Promise.all([
-    pool.query(`SELECT day::date AS day, SUM(signups)::int AS signups, SUM(active_users)::int AS active_users FROM (
-      SELECT date_trunc('day',u."createdAt") AS day,COUNT(*) AS signups,0 AS active_users FROM "user" u WHERE u."createdAt">=now()-interval '30 days' GROUP BY 1
-      UNION ALL SELECT date_trunc('day',e.created_at) AS day,0 AS signups,COUNT(DISTINCT e.user_id) AS active_users FROM linguaplay_events e WHERE e.created_at>=now()-interval '30 days' GROUP BY 1
-      ) daily GROUP BY day ORDER BY day`),
-    pool.query(`WITH seen AS (SELECT u.id,u.name,u.email,u."createdAt" AS created_at,GREATEST(MAX(s."updatedAt"),MAX(e.created_at)) AS last_seen FROM "user" u LEFT JOIN "session" s ON s."userId"=u.id LEFT JOIN linguaplay_events e ON e.user_id=u.id GROUP BY u.id)
+  await ensureEngagementSchema();
+  await ensureAnalyticsSchema();
+  await ensureBillingSchema();
+  await ensureLearningEvents();
+  await captureDailyAnalyticsSnapshot();
+  const [daily, users, actions, pages, recent, actors, devices, locations, retention, commerce, snapshots, learning] = await Promise.all([
+    pool.query(`WITH activity AS NOT MATERIALIZED (
+        SELECT date_trunc('day',created_at AT TIME ZONE 'UTC') AS day,'u:'||user_id AS identity FROM linguaplay_events WHERE created_at>=now()-interval '30 days'
+        UNION ALL SELECT date_trunc('day',created_at AT TIME ZONE 'UTC'),COALESCE('u:'||user_id,'v:'||visitor_id) FROM linguaplay_analytics_events WHERE created_at>=now()-interval '30 days'
+      ), active_daily AS (SELECT day,COUNT(DISTINCT identity)::int AS active_users FROM activity GROUP BY day), signups AS (
+        SELECT date_trunc('day',"createdAt" AT TIME ZONE 'UTC') AS day,COUNT(*)::int AS signups FROM "user" WHERE "createdAt">=now()-interval '30 days' GROUP BY 1
+      ) SELECT COALESCE(s.day,a.day)::date AS day,COALESCE(s.signups,0)::int AS signups,COALESCE(a.active_users,0)::int AS active_users
+        FROM signups s FULL OUTER JOIN active_daily a ON a.day=s.day ORDER BY day`),
+    pool.query(`WITH activity AS NOT MATERIALIZED (
+        SELECT user_id,NULL::text AS visitor_id,created_at FROM linguaplay_events
+        UNION ALL SELECT user_id,visitor_id,created_at FROM linguaplay_analytics_events
+      ), previous_active AS (
+        SELECT DISTINCT user_id FROM activity WHERE user_id IS NOT NULL AND created_at>=now()-interval '60 days' AND created_at<now()-interval '30 days'
+      ), current_active AS (
+        SELECT DISTINCT user_id FROM activity WHERE user_id IS NOT NULL AND created_at>=now()-interval '30 days'
+      ), previous_guests AS (
+        SELECT DISTINCT visitor_id FROM linguaplay_analytics_events WHERE visitor_id IS NOT NULL AND created_at>=now()-interval '60 days' AND created_at<now()-interval '30 days'
+      ), current_guests AS (
+        SELECT DISTINCT visitor_id FROM linguaplay_analytics_events WHERE visitor_id IS NOT NULL AND created_at>=now()-interval '30 days'
+      ), seen AS (
+        SELECT u.id,u.name,u.email,u."createdAt" AS created_at,GREATEST(s.last_seen,e.last_seen,a.last_seen) AS last_seen
+        FROM "user" u
+        LEFT JOIN LATERAL (SELECT MAX("updatedAt") AS last_seen FROM "session" WHERE "userId"=u.id) s ON true
+        LEFT JOIN LATERAL (SELECT MAX(created_at) AS last_seen FROM linguaplay_events WHERE user_id=u.id) e ON true
+        LEFT JOIN LATERAL (SELECT MAX(created_at) AS last_seen FROM linguaplay_analytics_events WHERE user_id=u.id) a ON true
+      )
       SELECT COUNT(*) FILTER (WHERE created_at>=now()-interval '7 days')::int AS new_users_7d,
       COUNT(*) FILTER (WHERE last_seen<now()-interval '14 days' OR (last_seen IS NULL AND created_at<now()-interval '14 days'))::int AS dormant_users,
       COUNT(*) FILTER (WHERE last_seen>=now()-interval '7 days')::int AS active_users_7d,
-      (SELECT COUNT(*)::int FROM "user") AS total_users FROM seen`),
-    pool.query(
-      `SELECT payload->>'action' AS action,payload->>'route' AS route,COUNT(*)::int AS clicks FROM linguaplay_events WHERE event_type='target-action' AND created_at>=now()-interval '30 days' GROUP BY 1,2 ORDER BY clicks DESC LIMIT 20`,
-    ),
-    pool.query(
-      `SELECT payload->>'route' AS route,COUNT(*)::int AS views,COUNT(DISTINCT user_id)::int AS users FROM linguaplay_events WHERE event_type='page-view' AND created_at>=now()-interval '30 days' GROUP BY 1 ORDER BY views DESC`,
-    ),
-    pool.query(
-      `SELECT e.id,u.name,e.payload->>'route' AS route,e.payload->>'action' AS action,e.created_at FROM linguaplay_events e JOIN "user" u ON u.id=e.user_id WHERE e.event_type='target-action' ORDER BY e.created_at DESC LIMIT 100`,
-    ),
+      (SELECT COUNT(*)::int FROM "user") AS total_users,
+      (SELECT COUNT(DISTINCT COALESCE('u:'||user_id,'v:'||visitor_id))::int FROM activity WHERE created_at>=(date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')) AS dau,
+      (SELECT COUNT(DISTINCT COALESCE('u:'||user_id,'v:'||visitor_id))::int FROM activity WHERE created_at>=now()-interval '7 days') AS wau,
+      (SELECT COUNT(DISTINCT COALESCE('u:'||user_id,'v:'||visitor_id))::int FROM activity WHERE created_at>=now()-interval '30 days') AS mau,
+      (SELECT COUNT(DISTINCT visitor_id)::int FROM linguaplay_analytics_events WHERE visitor_id IS NOT NULL AND created_at>=now()-interval '30 days') AS guests_30d,
+      (SELECT COUNT(*)::int FROM previous_active) AS active_users_previous_30d,
+      (SELECT COUNT(*)::int FROM current_active c JOIN previous_active p USING(user_id)) AS retained_users_30d,
+      (SELECT COUNT(*)::int FROM previous_active p WHERE NOT EXISTS(SELECT 1 FROM current_active c WHERE c.user_id=p.user_id)) AS churned_users_30d,
+      COALESCE(ROUND(100.0*(SELECT COUNT(*) FROM previous_active p WHERE NOT EXISTS(SELECT 1 FROM current_active c WHERE c.user_id=p.user_id))/NULLIF((SELECT COUNT(*) FROM previous_active),0),1),0)::float AS user_churn_rate_30d,
+      (SELECT COUNT(*)::int FROM previous_guests p WHERE EXISTS(SELECT 1 FROM current_guests c WHERE c.visitor_id=p.visitor_id)) AS returning_guests_30d,
+      (SELECT COUNT(*)::int FROM previous_guests p WHERE NOT EXISTS(SELECT 1 FROM current_guests c WHERE c.visitor_id=p.visitor_id)) AS churned_guests_30d,
+      COALESCE(ROUND(100.0*(SELECT COUNT(*) FROM previous_guests p WHERE NOT EXISTS(SELECT 1 FROM current_guests c WHERE c.visitor_id=p.visitor_id))/NULLIF((SELECT COUNT(*) FROM previous_guests),0),1),0)::float AS guest_churn_rate_30d,
+      COALESCE((SELECT ROUND(100.0*COUNT(DISTINCT COALESCE('u:'||user_id,'v:'||visitor_id)) FILTER (WHERE created_at>=(date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'))/NULLIF(COUNT(DISTINCT COALESCE('u:'||user_id,'v:'||visitor_id)) FILTER (WHERE created_at>=now()-interval '30 days'),0),1)::float FROM activity),0) AS stickiness,
+      (SELECT COUNT(*)::int FROM clickling_feedback) AS feedback_count,
+      (SELECT ROUND(AVG(rating)::numeric,1)::float FROM clickling_feedback) AS feedback_average
+      FROM seen`),
+    pool.query(`WITH actions AS (
+        SELECT payload->>'action' AS action,payload->>'route' AS route FROM linguaplay_events WHERE event_type='target-action' AND created_at>=now()-interval '30 days'
+        UNION ALL SELECT action,route FROM linguaplay_analytics_events WHERE event_type='target-action' AND created_at>=now()-interval '30 days'
+      ) SELECT action,route,COUNT(*)::int AS clicks FROM actions GROUP BY 1,2 ORDER BY clicks DESC LIMIT 20`),
+    pool.query(`WITH page_views AS (
+        SELECT payload->>'route' AS route,'u:'||user_id AS identity FROM linguaplay_events WHERE event_type='page-view' AND created_at>=now()-interval '30 days'
+        UNION ALL SELECT route,COALESCE('u:'||user_id,'v:'||visitor_id) FROM linguaplay_analytics_events WHERE event_type='page-view' AND created_at>=now()-interval '30 days'
+      ) SELECT route,COUNT(*)::int AS views,COUNT(DISTINCT identity)::int AS users FROM page_views WHERE route IS NOT NULL GROUP BY route ORDER BY views DESC`),
+    pool.query(`WITH recent AS (
+        SELECT e.id,u.name,u.email,e.payload->>'route' AS route,e.payload->>'action' AS action,e.created_at,e.user_id,NULL::text AS country,NULL::text AS region,NULL::text AS device_type
+          FROM linguaplay_events e JOIN "user" u ON u.id=e.user_id WHERE e.event_type='target-action'
+        UNION ALL SELECT a.id,COALESCE(u.name,'Гость · '||left(a.visitor_id,10)),u.email,a.route,a.action,a.created_at,a.user_id,a.country,a.region,a.device_type
+          FROM linguaplay_analytics_events a LEFT JOIN "user" u ON u.id=a.user_id WHERE a.event_type='target-action'
+      ) SELECT id,name,email,route,action,created_at,country,region,device_type FROM recent ORDER BY created_at DESC LIMIT 100`),
+    pool.query(`SELECT a.id,a.user_id,u.name,u.email,a.visitor_id,a.event_type,a.route,a.action,a.activity,a.country,a.region,a.ip_hash,
+        a.device_type,a.browser,a.os,a.locale,a.referrer_host,a.payload,a.created_at,
+        CASE WHEN a.user_id IS NOT NULL THEN COALESCE(u.name,'Пользователь') ELSE 'Гость' END AS author
+      FROM linguaplay_analytics_events a LEFT JOIN "user" u ON u.id=a.user_id
+      ORDER BY a.created_at DESC LIMIT 100`),
+    pool.query(`SELECT device_type,browser,os,COUNT(*)::int AS events,
+        COUNT(DISTINCT COALESCE('u:'||user_id,'v:'||visitor_id))::int AS people
+      FROM linguaplay_analytics_events WHERE created_at>=now()-interval '30 days'
+      GROUP BY device_type,browser,os ORDER BY people DESC,events DESC LIMIT 20`),
+    pool.query(`SELECT country,region,COUNT(*)::int AS events,
+        COUNT(DISTINCT COALESCE('u:'||user_id,'v:'||visitor_id))::int AS people
+      FROM linguaplay_analytics_events WHERE created_at>=now()-interval '30 days'
+      GROUP BY country,region ORDER BY people DESC,events DESC LIMIT 20`),
+    pool.query(`WITH cohorts AS (
+        SELECT id,"createdAt" AS signup_at,date_trunc('week',"createdAt" AT TIME ZONE 'UTC')::date AS cohort_week
+        FROM "user" WHERE "createdAt">=(SELECT tracking_started_at FROM linguaplay_analytics_settings WHERE id=1)
+      ), activity AS NOT MATERIALIZED (
+        SELECT user_id,created_at FROM linguaplay_events
+        UNION ALL SELECT user_id,created_at FROM linguaplay_analytics_events WHERE user_id IS NOT NULL
+      ) SELECT c.cohort_week,COUNT(DISTINCT c.id)::int AS cohort_size,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.signup_at+interval '7 days'<=now())::int AS activation_eligible,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.signup_at+interval '7 days'<=now() AND EXISTS(SELECT 1 FROM activity a WHERE a.user_id=c.id AND a.created_at>=c.signup_at AND a.created_at<c.signup_at+interval '7 days'))::int AS activated_7d,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.signup_at+interval '2 days'<=now())::int AS d1_eligible,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.signup_at+interval '2 days'<=now() AND EXISTS(SELECT 1 FROM activity a WHERE a.user_id=c.id AND a.created_at>=c.signup_at+interval '1 day' AND a.created_at<c.signup_at+interval '2 days'))::int AS d1_retained,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.signup_at+interval '8 days'<=now())::int AS d7_eligible,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.signup_at+interval '8 days'<=now() AND EXISTS(SELECT 1 FROM activity a WHERE a.user_id=c.id AND a.created_at>=c.signup_at+interval '7 days' AND a.created_at<c.signup_at+interval '8 days'))::int AS d7_retained,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.signup_at+interval '31 days'<=now())::int AS d30_eligible,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.signup_at+interval '31 days'<=now() AND EXISTS(SELECT 1 FROM activity a WHERE a.user_id=c.id AND a.created_at>=c.signup_at+interval '30 days' AND a.created_at<c.signup_at+interval '31 days'))::int AS d30_retained
+      FROM cohorts c GROUP BY c.cohort_week ORDER BY c.cohort_week DESC`),
+    pool.query(`WITH paid AS (
+        SELECT currency,SUM(amount_minor)::bigint AS gross_minor,
+          (SUM(amount_minor) FILTER (WHERE created_at>=now()-interval '30 days'))::bigint AS gross_30d_minor,
+          COUNT(*)::int AS successful_payments,COUNT(DISTINCT account_id)::int AS paying_customers,
+          ROUND(SUM(amount_minor)::numeric/NULLIF(COUNT(DISTINCT account_id),0),2)::numeric AS ltv_minor
+        FROM linguaplay_payments
+        WHERE lower(status) IN ('paid','succeeded','complete','completed','captured','settled')
+        GROUP BY currency
+      ), subs AS (
+        SELECT COUNT(*) FILTER (WHERE lower(s.status) IN ('active','trialing') AND s.period_end>now())::int AS active_subscriptions,
+          COUNT(*) FILTER (WHERE lower(s.status) IN ('canceled','cancelled','expired') AND s.updated_at>=now()-interval '30 days')::int AS cancellations_30d,
+          COUNT(*) FILTER (WHERE lower(s.status) IN ('past_due','unpaid'))::int AS past_due_subscriptions
+        FROM linguaplay_subscriptions s JOIN linguaplay_plans p ON p.code=s.plan_code
+      ), mrr AS (
+        SELECT p.currency,SUM(CASE p.interval WHEN 'month' THEN p.amount_minor::numeric WHEN 'year' THEN p.amount_minor::numeric/12 ELSE 0 END)::numeric AS mrr_minor
+        FROM linguaplay_subscriptions s JOIN linguaplay_plans p ON p.code=s.plan_code
+        WHERE lower(s.status) IN ('active','trialing') AND s.period_end>now() GROUP BY p.currency
+      ) SELECT COALESCE((SELECT jsonb_agg(to_jsonb(paid) ORDER BY currency) FROM paid),'[]'::jsonb) AS by_currency,
+          COALESCE((SELECT jsonb_agg(jsonb_build_object('currency',currency,'mrr_minor',mrr_minor) ORDER BY currency) FROM mrr),'[]'::jsonb) AS mrr_by_currency,
+          subs.active_subscriptions,subs.cancellations_30d,subs.past_due_subscriptions,
+          (SELECT COUNT(DISTINCT account_id)::int FROM linguaplay_payments WHERE lower(status) IN ('paid','succeeded','complete','completed','captured','settled')) AS paying_accounts,
+          (SELECT COUNT(*)::int FROM linguaplay_payments WHERE lower(status) IN ('failed','declined','canceled','cancelled') AND created_at>=now()-interval '30 days') AS failed_payments_30d,
+          (SELECT COUNT(*)::int FROM "user") AS total_accounts
+        FROM subs`),
+    pool.query(`SELECT snapshot_day,metrics FROM linguaplay_analytics_daily_snapshots ORDER BY snapshot_day DESC LIMIT 3650`),
     pool.query(`SELECT language_code,level,skill,variant_id,COUNT(*) FILTER (WHERE NOT skipped)::int AS answers,
         COUNT(DISTINCT session_id)::int AS sessions,
         COUNT(*) FILTER (WHERE first_try_correct=true)::int AS first_try_correct,
@@ -250,17 +379,34 @@ async function getAnalytics() {
       GROUP BY language_code,level,skill,variant_id HAVING COUNT(*) FILTER (WHERE NOT skipped)>=5
       ORDER BY sessions DESC,answers DESC LIMIT 40`),
   ]);
-  const dormant =
-    await pool.query(`WITH seen AS (SELECT u.id,u.name,u.email,u."createdAt" AS created_at,GREATEST(MAX(s."updatedAt"),MAX(e.created_at)) AS last_seen FROM "user" u LEFT JOIN "session" s ON s."userId"=u.id LEFT JOIN linguaplay_events e ON e.user_id=u.id GROUP BY u.id)
-    SELECT id,name,email,created_at,last_seen FROM seen WHERE last_seen<now()-interval '14 days' OR (last_seen IS NULL AND created_at<now()-interval '14 days') ORDER BY last_seen ASC NULLS FIRST LIMIT 100`);
+  const dormant = await pool.query(`WITH seen AS (
+      SELECT u.id,u.name,u.email,u."createdAt" AS created_at,GREATEST(s.last_seen,e.last_seen,a.last_seen) AS last_seen
+      FROM "user" u
+      LEFT JOIN LATERAL (SELECT MAX("updatedAt") AS last_seen FROM "session" WHERE "userId"=u.id) s ON true
+      LEFT JOIN LATERAL (SELECT MAX(created_at) AS last_seen FROM linguaplay_events WHERE user_id=u.id) e ON true
+      LEFT JOIN LATERAL (SELECT MAX(created_at) AS last_seen FROM linguaplay_analytics_events WHERE user_id=u.id) a ON true
+    ) SELECT id,name,email,created_at,last_seen FROM seen
+      WHERE last_seen<now()-interval '14 days' OR (last_seen IS NULL AND created_at<now()-interval '14 days')
+      ORDER BY last_seen ASC NULLS FIRST LIMIT 100`);
+  const feedback = await pool.query(`SELECT f.id,f.rating,f.choice,f.text,f.created_at,f.country,f.region,f.ip_hash,f.metadata,f.visitor_id,
+      u.id AS user_id,u.name,u.email,
+      CASE WHEN f.user_id IS NOT NULL THEN COALESCE(u.name,'Пользователь') ELSE 'Гость · '||left(f.visitor_id,10) END AS author
+      FROM clickling_feedback f LEFT JOIN "user" u ON u.id=f.user_id ORDER BY f.created_at DESC LIMIT 200`);
   return json({
     daily: daily.rows,
     summary: users.rows[0],
     actions: actions.rows,
     pages: pages.rows,
     recent: recent.rows,
+    actors: actors.rows,
+    devices: devices.rows,
+    locations: locations.rows,
+    retention: retention.rows,
+    commerce: commerce.rows[0],
+    snapshots: snapshots.rows,
     learning: learning.rows,
     dormant: dormant.rows,
+    feedback: feedback.rows,
   });
 }
 
@@ -382,28 +528,33 @@ export async function PATCH(request: Request) {
       (!Number.isInteger(crystals) || crystals < 0 || crystals > 10_000_000)
     )
       return json({ error: "Кристаллы должны быть целым числом от 0 до 10 000 000." }, 400);
-    const stored = await pool.query("SELECT data FROM linguaplay_user_data WHERE user_id=$1", [
-      userId,
-    ]);
-    const data = parseJson(stored.rows[0]?.data);
-    const spaces = parseJson(data["linguaplay-stats-by-space"]);
-    const spaceId = text(body.spaceId, 120) || Object.keys(spaces)[0] || "de-a1-a2";
-    const stats = parseJson(spaces[spaceId]);
-    delete stats.freezeCount;
-    spaces[spaceId] = JSON.stringify({
-      ...stats,
-      ...(action === "set-progress" ? { xp } : { crystals }),
-    });
-    await pool.query(
-      `INSERT INTO linguaplay_user_data(user_id,data,updated_at) VALUES($1,jsonb_build_object('linguaplay-stats-by-space',$2::text),now())
-      ON CONFLICT(user_id) DO UPDATE SET data=linguaplay_user_data.data || jsonb_build_object('linguaplay-stats-by-space',$2::text),updated_at=now()`,
-      [userId, JSON.stringify(spaces)],
-    );
-    Object.assign(details, {
-      ...(action === "set-progress" ? { xp } : { crystals }),
-      spaceId,
-    });
+    if (action === "set-crystals") {
+      await ensureEngagementSchema();
+      await pool.query(
+        `INSERT INTO clickling_ai_wallet(user_id,balance) VALUES($1,$2)
+        ON CONFLICT(user_id) DO UPDATE SET balance=EXCLUDED.balance,updated_at=now()`,
+        [userId, crystals],
+      );
+      Object.assign(details, { crystals });
+    } else {
+      const stored = await pool.query("SELECT data FROM linguaplay_user_data WHERE user_id=$1", [
+        userId,
+      ]);
+      const data = parseJson(stored.rows[0]?.data);
+      const spaces = parseJson(data["linguaplay-stats-by-space"]);
+      const spaceId = text(body.spaceId, 120) || Object.keys(spaces)[0] || "de-a1-a2";
+      const stats = parseJson(spaces[spaceId]);
+      delete stats.freezeCount;
+      spaces[spaceId] = JSON.stringify({ ...stats, xp });
+      await pool.query(
+        `INSERT INTO linguaplay_user_data(user_id,data,updated_at) VALUES($1,jsonb_build_object('linguaplay-stats-by-space',$2::text),now())
+        ON CONFLICT(user_id) DO UPDATE SET data=linguaplay_user_data.data || jsonb_build_object('linguaplay-stats-by-space',$2::text),updated_at=now()`,
+        [userId, JSON.stringify(spaces)],
+      );
+      Object.assign(details, { xp, spaceId });
+    }
   } else if (action === "set-energy") {
+    await ensureEnergyTables();
     const energy = Number(body.energy);
     if (!Number.isInteger(energy) || energy < 0 || energy > ENERGY_CAP)
       return json({ error: `Энергия должна быть целым числом от 0 до ${ENERGY_CAP}.` }, 400);

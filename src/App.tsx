@@ -33,13 +33,16 @@ import {
 import {
   activateProfileStorage,
   deactivateProfileStorage,
+  getActiveProfileId,
+  primeProfileStorage,
   readProfileItem,
+  resumeCachedProfileStorage,
   writeProfileItem,
 } from "./lib/profileStorage";
 import { authClient } from "./lib/auth-client";
 import { PandaNote } from "./components/PandaNote";
 import { Trophy } from "./components/Trophy";
-import { Companion, NotFound } from "./components/Companion";
+import { Companion, FeedbackSurvey, NotFound } from "./components/Companion";
 import { LearningTrail, Pagination } from "./components/LearningTrail";
 import {
   AccountPanel,
@@ -188,9 +191,9 @@ const defaultStats: UserStats = {
   studySecondsByDay: {},
   lastStudyDay: "",
 };
-const ENERGY_CAP = 5;
+const ENERGY_CAP = 22;
 const ENERGY_REFILL_MS = 30 * 60 * 1000;
-const defaultEnergy: EnergyState = { energy: ENERGY_CAP, nextAt: 0, version: 2 };
+const defaultEnergy: EnergyState = { energy: ENERGY_CAP, nextAt: 0, version: 3 };
 const defaultPreferences: Preferences = {
   autoSpeak: false,
   highContrast: false,
@@ -228,21 +231,49 @@ function useStored<T>(key: string, initial: T): [T, React.Dispatch<React.SetStat
       return initial;
     }
   });
+  const lastPersistedValue = useRef(value);
+  const suppressedPersistValue = useRef<{ value: T } | null>(null);
   useEffect(() => {
+    if (Object.is(lastPersistedValue.current, value)) return;
+    lastPersistedValue.current = value;
+    if (suppressedPersistValue.current) {
+      const suppressed = suppressedPersistValue.current.value;
+      suppressedPersistValue.current = null;
+      if (Object.is(suppressed, value)) return;
+    }
     writeProfileItem(key, JSON.stringify(value));
   }, [key, value]);
   useEffect(() => {
-    const reconcile = (event: Event) => {
-      const detail = (event as CustomEvent<{ key: string; value: string | null }>).detail;
-      if (detail?.key !== key) return;
+    const setStoredValue = (raw: string | null) => {
       try {
-        setValue(detail.value ? (JSON.parse(detail.value) as T) : initial);
+        const next = raw ? (JSON.parse(raw) as T) : initial;
+        suppressedPersistValue.current = { value: next };
+        setValue(next);
       } catch {
+        suppressedPersistValue.current = { value: initial };
         setValue(initial);
       }
     };
+    const reconcile = (event: Event) => {
+      const detail = (event as CustomEvent<{ key: string; value: string | null }>).detail;
+      if (detail?.key !== key) return;
+      setStoredValue(detail.value);
+    };
+    const hydrate = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId: string; keys: string[] }>).detail;
+      if (
+        detail?.userId !== getActiveProfileId() ||
+        !detail.keys?.includes(key)
+      )
+        return;
+      setStoredValue(readProfileItem(key));
+    };
     window.addEventListener("linguaplay-profile-reconciled", reconcile);
-    return () => window.removeEventListener("linguaplay-profile-reconciled", reconcile);
+    window.addEventListener("linguaplay-profile-hydrated", hydrate);
+    return () => {
+      window.removeEventListener("linguaplay-profile-reconciled", reconcile);
+      window.removeEventListener("linguaplay-profile-hydrated", hydrate);
+    };
   }, [key, initial]);
   return [value, setValue];
 }
@@ -273,16 +304,16 @@ function energySnapshot(state: EnergyState, now = Date.now()): EnergyState {
     0,
     Math.min(ENERGY_CAP, Number.isFinite(state.energy) ? state.energy : ENERGY_CAP),
   );
-  if (energy >= ENERGY_CAP) return { energy: ENERGY_CAP, nextAt: 0, version: 2 };
+  if (energy >= ENERGY_CAP) return { energy: ENERGY_CAP, nextAt: 0, version: 3 };
   const nextAt = Number.isFinite(state.nextAt) ? state.nextAt : 0;
-  if (!nextAt) return { energy, nextAt: now + ENERGY_REFILL_MS, version: 2 };
-  if (now < nextAt) return { energy, nextAt, version: 2 };
+  if (!nextAt) return { energy, nextAt: now + ENERGY_REFILL_MS, version: 3 };
+  if (now < nextAt) return { energy, nextAt, version: 3 };
   const restored = Math.min(ENERGY_CAP - energy, 1 + Math.floor((now - nextAt) / ENERGY_REFILL_MS));
   const remaining = energy + restored;
   return {
     energy: remaining,
     nextAt: remaining >= ENERGY_CAP ? 0 : nextAt + restored * ENERGY_REFILL_MS,
-    version: 2,
+    version: 3,
   };
 }
 
@@ -331,7 +362,9 @@ function WorkspaceApp({
   onOpenAuth: () => void;
   onUserUpdated?: (update: Partial<AccountUser>) => void;
 }) {
-  const [screen, setScreen] = useState<Screen>(screenFromHash);
+  const [screen, setScreen] = useState<Screen>(() =>
+    guestMode && !window.location.hash ? "path" : screenFromHash(),
+  );
   const [uiLanguage, setUiLanguage] = useStored<"ru" | "en">("clickling-ui-language", "ru");
   useEffect(() => {
     document.documentElement.lang = uiLanguage;
@@ -424,6 +457,12 @@ function WorkspaceApp({
   const [vacation, setVacation] = useStored<boolean>("linguaplay-vacation", false);
   const activityRound = useRef(0);
   const currentGameRunId = useRef("");
+  const energyAnswerQueue = useRef<Promise<void>>(Promise.resolve());
+  const guestEnergyStreak = useRef<{ sessionId: string; streak: number; awarded: number[] }>({
+    sessionId: "",
+    streak: 0,
+    awarded: [],
+  });
   const lastLearnerInteraction = useRef(Date.now());
   const lastStudyTick = useRef(Date.now());
   const [session, setSession] = useState<{
@@ -453,6 +492,7 @@ function WorkspaceApp({
   const [serverEnergyUserId, setServerEnergyUserId] = useState<string | null>(null);
   const [serverEnergyCap, setServerEnergyCap] = useState(ENERGY_CAP);
   const [serverEnergyRefillMs, setServerEnergyRefillMs] = useState(ENERGY_REFILL_MS);
+  const [serverUnlimitedEnergy, setServerUnlimitedEnergy] = useState(false);
   const currentUserId = user?.id ?? null;
   const [serverIsPro, setServerIsPro] = useState(false);
   const activityStartPending = useRef<{ activityId: string; idempotencyKey: string } | null>(null);
@@ -510,7 +550,7 @@ function WorkspaceApp({
 
   useEffect(() => {
     setEnergy((current) => {
-      if (current.version === 2) return current;
+      if (current.version === 3) return current;
       const oldEnergy = Math.max(
         0,
         Math.min(5, Number.isFinite(current.energy) ? current.energy : 5),
@@ -518,7 +558,7 @@ function WorkspaceApp({
       return {
         energy: Math.round((oldEnergy / 5) * ENERGY_CAP),
         nextAt: current.nextAt || 0,
-        version: 2,
+        version: 3,
       };
     });
   }, [setEnergy]);
@@ -536,6 +576,7 @@ function WorkspaceApp({
         now?: string;
         serverNow?: string;
         isPro?: boolean;
+        unlimitedEnergy?: boolean;
         cap?: number;
         refillMs?: number;
         error?: string;
@@ -547,9 +588,10 @@ function WorkspaceApp({
       setEnergy({
         energy: result.energy,
         nextAt: localEnergyDeadline(result.nextAt, result.now ?? result.serverNow),
-        version: 2,
+        version: 3,
       });
       setServerIsPro(Boolean(result.isPro));
+      setServerUnlimitedEnergy(Boolean(result.unlimitedEnergy));
       if (typeof result.cap === "number") setServerEnergyCap(result.cap);
       if (typeof result.refillMs === "number") setServerEnergyRefillMs(result.refillMs);
       setServerEnergyUserId(currentUserId);
@@ -564,6 +606,7 @@ function WorkspaceApp({
     if (!currentUserId) {
       setServerEnergyUserId(null);
       setServerIsPro(false);
+      setServerUnlimitedEnergy(false);
       return;
     }
     let alive = true;
@@ -575,6 +618,7 @@ function WorkspaceApp({
           now?: string;
           serverNow?: string;
           isPro?: boolean;
+          unlimitedEnergy?: boolean;
           cap?: number;
           refillMs?: number;
           error?: string;
@@ -587,9 +631,10 @@ function WorkspaceApp({
         setEnergy({
           energy: result.energy,
           nextAt: localEnergyDeadline(result.nextAt, result.now ?? result.serverNow),
-          version: 2,
+          version: 3,
         });
         setServerIsPro(Boolean(result.isPro));
+        setServerUnlimitedEnergy(Boolean(result.unlimitedEnergy));
         if (typeof result.cap === "number") setServerEnergyCap(result.cap);
         if (typeof result.refillMs === "number") setServerEnergyRefillMs(result.refillMs);
         setServerEnergyUserId(currentUserId);
@@ -664,18 +709,18 @@ function WorkspaceApp({
   }, [user?.id]);
 
   useEffect(() => {
-    if (!user || cookieConsent !== "all") return;
+    if ((!user && !guestMode) || cookieConsent !== "all") return;
     void fetch("/api/events", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "page-view", route: screen }),
+      body: JSON.stringify({ type: "page-view", route: screen, analyticsConsent: true }),
       keepalive: true,
     }).catch(() => undefined);
-  }, [screen, user?.id, cookieConsent]);
+  }, [screen, user?.id, guestMode, cookieConsent]);
 
   useEffect(() => {
-    if (!user || cookieConsent !== "all") return;
+    if ((!user && !guestMode) || cookieConsent !== "all") return;
     const trackClick = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -711,13 +756,18 @@ function WorkspaceApp({
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "target-action", route: screenFromHash(), action }),
+        body: JSON.stringify({
+          type: "target-action",
+          route: screenFromHash(),
+          action,
+          analyticsConsent: true,
+        }),
         keepalive: true,
       }).catch(() => undefined);
     };
     document.addEventListener("click", trackClick);
     return () => document.removeEventListener("click", trackClick);
-  }, [user?.id, cookieConsent]);
+  }, [user?.id, guestMode, cookieConsent]);
 
   useEffect(() => {
     if (screen !== "materials") return;
@@ -812,8 +862,9 @@ function WorkspaceApp({
   const serverEnergyReady = !user || serverEnergyUserId === user.id;
   const energyStats = user && serverEnergyReady ? energy : energySnapshot(energy, energyClock);
   const isPro = user ? serverEnergyReady && serverIsPro : false;
+  const unlimitedEnergy = user ? serverEnergyReady && serverUnlimitedEnergy : false;
   const energyCap = user && serverEnergyReady ? serverEnergyCap : ENERGY_CAP;
-  const startActivityCharge = async (activityId: string) => {
+  const startActivityCharge = async (activityId: string): Promise<string | null> => {
     if (!user) {
       const snapshot = energySnapshot(energy);
       if (snapshot.energy <= 0) {
@@ -822,7 +873,7 @@ function WorkspaceApp({
         setToast(
           `Энергия восстановится через ${clockLabel(snapshot.nextAt - Date.now())}. Карточки и уроки доступны без ограничений.`,
         );
-        return false;
+        return null;
       }
       const remaining = snapshot.energy - 1;
       setEnergy({
@@ -833,15 +884,15 @@ function WorkspaceApp({
             : snapshot.energy >= ENERGY_CAP
               ? Date.now() + ENERGY_REFILL_MS
               : snapshot.nextAt,
-        version: 2,
+        version: 3,
       });
-      return true;
+      return `guest-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
     }
-    if (activityStartInFlight.current) return false;
+    if (activityStartInFlight.current) return null;
     activityStartInFlight.current = true;
     if (!serverEnergyReady && !(await refreshServerEnergy())) {
       activityStartInFlight.current = false;
-      return false;
+      return null;
     }
     const pending =
       activityStartPending.current?.activityId === activityId
@@ -864,6 +915,8 @@ function WorkspaceApp({
         now?: string;
         serverNow?: string;
         isPro?: boolean;
+        unlimitedEnergy?: boolean;
+        sessionId?: string;
         cap?: number;
         refillMs?: number;
         error?: string;
@@ -873,9 +926,10 @@ function WorkspaceApp({
         setEnergy({
           energy: result.energy,
           nextAt: localEnergyDeadline(result.nextAt, result.now ?? result.serverNow),
-          version: 2,
+          version: 3,
         });
         setServerIsPro(Boolean(result.isPro));
+        setServerUnlimitedEnergy(Boolean(result.unlimitedEnergy));
         if (typeof result.cap === "number") setServerEnergyCap(result.cap);
         if (typeof result.refillMs === "number") setServerEnergyRefillMs(result.refillMs);
         setServerEnergyUserId(user.id);
@@ -888,16 +942,83 @@ function WorkspaceApp({
             `Энергия восстановится через ${clockLabel((result.nextAt ? new Date(result.nextAt).getTime() : Date.now() + ENERGY_REFILL_MS) - Date.now())}. Карточки и уроки доступны без ограничений.`,
           );
         } else setToast("Не удалось запустить игру. Проверьте соединение и попробуйте ещё раз.");
-        return false;
+        return null;
       }
       activityStartPending.current = null;
-      return true;
+      if (!result.sessionId) {
+        setToast("Сервер не вернул идентификатор игры. Запустите игру ещё раз.");
+        return null;
+      }
+      return result.sessionId;
     } catch {
       setToast("Не удалось связаться с сервером энергии. Повторите запуск игры.");
-      return false;
+      return null;
     } finally {
       activityStartInFlight.current = false;
     }
+  };
+  const recordGameEnergyAnswer = (activityId: string, eventId: string, correct: boolean) => {
+    const sessionId = currentGameRunId.current;
+    if (!sessionId) return;
+    if (!user) {
+      const streak =
+        guestEnergyStreak.current.sessionId === sessionId
+          ? guestEnergyStreak.current
+          : { sessionId, streak: 0, awarded: [] as number[] };
+      streak.streak = correct ? streak.streak + 1 : 0;
+      let reward = 0;
+      for (const milestone of [3, 5, 10]) {
+        if (streak.streak >= milestone && !streak.awarded.includes(milestone)) {
+          streak.awarded.push(milestone);
+          reward += 1;
+        }
+      }
+      guestEnergyStreak.current = streak;
+      if (reward > 0) {
+        const snapshot = energySnapshot(energy);
+        const nextEnergy = Math.min(ENERGY_CAP, snapshot.energy + reward);
+        setEnergy({
+          energy: nextEnergy,
+          nextAt: nextEnergy >= ENERGY_CAP ? 0 : snapshot.nextAt,
+          version: 3,
+        });
+        setToast(`Серия ${streak.streak}! +${nextEnergy - snapshot.energy} энергии`);
+      }
+      return;
+    }
+    energyAnswerQueue.current = energyAnswerQueue.current.then(async () => {
+      try {
+        const response = await fetch("/api/activities/answer", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, activityId, eventId, correct }),
+        });
+        const result = (await response.json().catch(() => ({}))) as {
+          energy?: number;
+          nextAt?: string | null;
+          now?: string;
+          streak?: number;
+          bonus?: number;
+          isPro?: boolean;
+          unlimitedEnergy?: boolean;
+          cap?: number;
+        };
+        if (!response.ok || typeof result.energy !== "number") return;
+        setEnergy({
+          energy: result.energy,
+          nextAt: localEnergyDeadline(result.nextAt, result.now),
+          version: 3,
+        });
+        setServerIsPro(Boolean(result.isPro));
+        setServerUnlimitedEnergy(Boolean(result.unlimitedEnergy));
+        if (typeof result.cap === "number") setServerEnergyCap(result.cap);
+        setServerEnergyUserId(user.id);
+        if (result.bonus) setToast(`Серия ${result.streak}! +${result.bonus} энергии`);
+      } catch {
+        // Answer progress remains available if the energy reward endpoint is offline.
+      }
+    });
   };
   useEffect(() => {
     if (canManageSpeechProviders || speechSettings.provider !== "azure") return;
@@ -931,14 +1052,32 @@ function WorkspaceApp({
   const sendActivityEvent = (payload: Record<string, unknown>) => {
     if (payload.type === "practice-complete") completePathNode();
     if (payload.type === "practice-complete" && guestMode) setGuestResultReady(true);
-    if (user)
+    if ((user || guestMode) && cookieConsent === "all")
       void fetch("/api/events", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, analyticsConsent: true }),
         keepalive: true,
       }).catch(() => undefined);
+  };
+  const creditCrystals = (amount: 1 | 2 | 5, eventId: string) => {
+    if (!user) return;
+    void fetch("/api/engagement?action=crystal-credit", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount, eventId, initialBalance: stats.crystals }),
+      keepalive: true,
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const result = (await response.json()) as { balance?: number };
+        if (Number.isInteger(result.balance) && Number(result.balance) >= 0)
+          setStats((current) => ({ ...current, crystals: Number(result.balance) }));
+        window.dispatchEvent(new Event("clickling-crystal-wallet-changed"));
+      })
+      .catch(() => undefined);
   };
   const activeStudy = useRef<{
     id: string;
@@ -984,8 +1123,12 @@ function WorkspaceApp({
   };
 
   const startCourseUnit = async (unit: CourseUnit) => {
-    if (guestMode && !(await claimGuestActivity())) {
-      onGuestGate?.();
+    if (guestMode) {
+      if (unit.id !== "a1-01") {
+        onGuestGate?.();
+        return;
+      }
+    } else if (!(await claimGuestActivity())) {
       return;
     }
     setGuestResultReady(false);
@@ -1019,7 +1162,8 @@ function WorkspaceApp({
         crystals: withDay.crystals + 5,
       };
     });
-    if (user)
+    creditCrystals(5, `course:${unitId}:${crypto.randomUUID?.() ?? Date.now()}`);
+    if ((user || guestMode) && cookieConsent === "all")
       void fetch("/api/events", {
         method: "POST",
         credentials: "include",
@@ -1030,6 +1174,7 @@ function WorkspaceApp({
           activity: `Курс немецкого · ${unitId}`,
           roundTotal: 1,
           durationMinutes,
+          analyticsConsent: true,
         }),
         keepalive: true,
       }).catch(() => undefined);
@@ -1128,6 +1273,8 @@ function WorkspaceApp({
       : undefined;
     activityRound.current += 1;
     const study = activeStudy.current;
+    const answerEventId = crypto.randomUUID?.() ?? `${Date.now()}-${activityRound.current}`;
+    if (game) recordGameEnergyAnswer(game.gameId, answerEventId, correct);
     sendActivityEvent({
       type: game ? "game-answer" : "practice-answer",
       activity: game
@@ -1140,7 +1287,7 @@ function WorkspaceApp({
         study?.moduleTitle,
       activityId: game?.gameId ?? study?.id,
       sessionId: game ? currentGameRunId.current : study?.id,
-      eventKey: crypto.randomUUID?.() ?? `${Date.now()}-${activityRound.current}`,
+      eventKey: answerEventId,
       itemId: card.id,
       variantId: telemetry?.variantId ?? game?.gameId ?? session?.mode ?? "cards",
       skill: game
@@ -1172,6 +1319,7 @@ function WorkspaceApp({
       correctAnswer: `${german(card)} — ${card.translation}`,
       correct,
     });
+    if (correct) creditCrystals(2, `answer:${answerEventId}`);
     if (telemetry?.recordProgress !== false)
       setProgress((current) => {
         const previous = current[card.id] ?? {
@@ -1258,6 +1406,10 @@ function WorkspaceApp({
         correctStreak: correct ? (withDay.correctStreak ?? 0) + 1 : 0,
       };
     });
+    if (correct) {
+      const eventId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      creditCrystals(1, `practice:${eventId}`);
+    }
   };
 
   const startSession = (
@@ -1331,14 +1483,17 @@ function WorkspaceApp({
       return;
     }
     if (guestMode && !(await claimGuestActivity())) {
+      window.history.replaceState(window.history.state, "", "#/games");
       onGuestGate?.();
       return;
     }
     beginEnergyExercise();
     setGuestResultReady(false);
-    if (!(await startActivityCharge(gameId))) return;
+    const gameSessionId = await startActivityCharge(gameId);
+    if (!gameSessionId) return;
     activeStudy.current = null;
-    currentGameRunId.current = `game-${crypto.randomUUID?.() ?? Date.now()}`;
+    currentGameRunId.current = gameSessionId;
+    guestEnergyStreak.current = { sessionId: gameSessionId, streak: 0, awarded: [] };
     activePathRun.current = pathNodeId ? { nodeId: pathNodeId, correct: 0, attempts: 0 } : null;
     activityRound.current = 0;
     sendActivityEvent({
@@ -1353,30 +1508,23 @@ function WorkspaceApp({
       roundTotal: roundsForGame(gameId, module),
     });
     const hash = `#/${route.replace(/^#\/?/, "")}`;
-    const fromDirectRoute = window.location.hash === hash;
-    if (fromDirectRoute) {
-      const currentState =
-        window.history.state && typeof window.history.state === "object"
-          ? window.history.state
-          : {};
-      const state = {
-        ...currentState,
-        linguaPlayGame: true,
-        linguaPlayDirectRoute: true,
-        linguaPlayReturnHash: currentState.linguaPlayReturnHash || "#/games",
-        linguaPlayGameId: `${gameId}-${Date.now()}`,
-      };
-      window.history.replaceState(state, "", "#/games");
-    } else {
-      const state = {
-        ...(window.history.state && typeof window.history.state === "object"
-          ? window.history.state
-          : {}),
-        linguaPlayGame: true,
-        linguaPlayReturnHash: window.location.hash || "#/games",
-        linguaPlayGameId: `${gameId}-${Date.now()}`,
-      };
+    const state = {
+      ...(window.history.state && typeof window.history.state === "object"
+        ? window.history.state
+        : {}),
+      linguaPlayGame: true,
+      linguaPlayReturnHash:
+        window.location.hash &&
+        !window.location.hash.includes("template=") &&
+        !window.location.hash.includes("activity=")
+          ? window.location.hash
+          : "#/games",
+      linguaPlayGameId: `${gameId}-${Date.now()}`,
+    };
+    if (window.location.hash !== hash) {
       window.history.pushState(state, "", hash);
+    } else {
+      window.history.replaceState(state, "", hash);
     }
     setGuestResultReady(false);
     setActiveGame({ gameId, module });
@@ -1384,18 +1532,14 @@ function WorkspaceApp({
   const exitGame = () => {
     setActiveGame(null);
     setGuestResultReady(false);
-    if (window.history.state?.linguaPlayGame && window.history.state?.linguaPlayDirectRoute) {
-      const returnHash =
-        typeof window.history.state.linguaPlayReturnHash === "string"
-          ? window.history.state.linguaPlayReturnHash
-          : "#/games";
-      window.history.replaceState(null, "", returnHash);
-      setScreen(screenFromHash());
-    } else if (window.history.state?.linguaPlayGame) window.history.back();
-    else {
-      window.history.replaceState(null, "", "#/games");
-      setScreen("games");
-    }
+    const returnHash =
+      typeof window.history.state?.linguaPlayReturnHash === "string" &&
+      !window.history.state.linguaPlayReturnHash.includes("template=") &&
+      !window.history.state.linguaPlayReturnHash.includes("activity=")
+        ? window.history.state.linguaPlayReturnHash
+        : "#/games";
+    window.history.replaceState(null, "", returnHash);
+    setScreen(screenFromHash());
   };
 
   useEffect(() => {
@@ -1614,7 +1758,8 @@ function WorkspaceApp({
             const started = await startActivityCharge(activeGame.gameId);
             if (started) {
               activityRound.current = 0;
-              currentGameRunId.current = `game-${crypto.randomUUID?.() ?? Date.now()}`;
+              currentGameRunId.current = started;
+              guestEnergyStreak.current = { sessionId: started, streak: 0, awarded: [] };
               sendActivityEvent({
                 type: "game-start",
                 activityId: activeGame.gameId,
@@ -1630,7 +1775,7 @@ function WorkspaceApp({
               });
               setGuestResultReady(false);
             }
-            return started;
+            return Boolean(started);
           }}
           onComplete={(totalRounds) => {
             completePathNode();
@@ -1652,11 +1797,13 @@ function WorkspaceApp({
           }
           onSkip={(card) => {
             activityRound.current += 1;
+            const skipEventId = crypto.randomUUID?.() ?? `${Date.now()}-${activityRound.current}`;
+            recordGameEnergyAnswer(activeGame.gameId, skipEventId, false);
             sendActivityEvent({
               type: "game-skip",
               activityId: activeGame.gameId,
               sessionId: currentGameRunId.current,
-              eventKey: crypto.randomUUID?.() ?? `${Date.now()}-${activityRound.current}`,
+              eventKey: skipEventId,
               itemId: card.id,
               variantId: activeGame.gameId,
               skill: skillForGame(activeGame.gameId),
@@ -1777,12 +1924,14 @@ function WorkspaceApp({
             </span>
           </button>
           <button
-            className={`stat-pill energy-pill ${serverEnergyReady && energyStats.energy === 0 && !isPro ? "energy-empty" : ""}`}
+            className={`stat-pill energy-pill ${serverEnergyReady && energyStats.energy === 0 && !isPro && !unlimitedEnergy ? "energy-empty" : ""}`}
             title={
               !serverEnergyReady
                 ? "Проверяем серверный баланс энергии"
                 : isPro
                   ? "PRO · энергия не ограничена"
+                : unlimitedEnergy
+                  ? "Администратор · энергия не расходуется"
                   : `Энергия ${energyStats.energy} из ${energyCap}${energyStats.nextAt ? ` · +1 через ${clockLabel(energyStats.nextAt - energyClock)}` : ""}`
             }
             data-track="energy-open"
@@ -1795,7 +1944,13 @@ function WorkspaceApp({
               ⚡
             </span>
             <strong>
-              {!serverEnergyReady ? "…" : isPro ? "PRO" : `${energyStats.energy}/${energyCap}`}
+              {!serverEnergyReady
+                ? "…"
+                : isPro
+                  ? "PRO"
+                  : unlimitedEnergy
+                    ? "∞"
+                    : `${energyStats.energy}/${energyCap}`}
             </strong>
             <span className="stat-pill-plus" aria-hidden="true">
               +
@@ -1995,6 +2150,8 @@ function WorkspaceApp({
                 focus={learningPlan?.focus ?? []}
                 onChooseLevel={selectCourseLevel}
                 onStart={(unit) => void startCourseUnit(unit)}
+                previewOnly={guestMode}
+                onUpgrade={() => onGuestGate?.()}
               />
             </Suspense>
           ) : (
@@ -2166,7 +2323,7 @@ function WorkspaceApp({
                 setEnergy({
                   energy: value,
                   nextAt: value >= cap ? 0 : energyStats.nextAt,
-                  version: 2,
+                  version: 3,
                 });
               }}
             />
@@ -2200,7 +2357,7 @@ function WorkspaceApp({
           </button>
         </div>
       )}
-      {!learningPlan && (
+      {!learningPlan && !guestMode && (
         <Suspense fallback={null}>
           <CourseOnboarding
             onComplete={(plan) => {
@@ -2327,6 +2484,7 @@ function WorkspaceApp({
           nextAt={energyStats.nextAt}
           now={energyClock}
           isPro={isPro}
+          unlimitedEnergy={unlimitedEnergy}
           ready={serverEnergyReady}
           onRefresh={() => void refreshServerEnergy()}
           onClose={() => setEnergyOpen(false)}
@@ -2345,6 +2503,17 @@ function WorkspaceApp({
         />
       )}
       {legalOpen && <LegalCenter onClose={() => setLegalOpen(false)} />}
+      {user && (
+        <Companion
+          crystals={stats.crystals}
+          onCrystalBalanceChange={(crystals) =>
+            setStats((current) =>
+              current.crystals === crystals ? current : { ...current, crystals },
+            )
+          }
+          onOpenAccount={() => setAccountOpen(true)}
+        />
+      )}
       {!cookieConsent && (
         <CookieBanner
           onNecessary={() => {
@@ -2424,25 +2593,137 @@ function WorkspaceApp({
   );
 }
 
+const sessionBootstrapCacheKey = "clickling-session-bootstrap-v1";
+const sessionBootstrapCacheTtlMs = 12 * 60 * 60 * 1000;
+type SessionBootstrapCache =
+  | { kind: "guest"; savedAt: number; guestPrompt: boolean }
+  | { kind: "user"; savedAt: number; user: Pick<AccountUser, "id" | "name" | "email" | "image"> };
+
+function readSessionBootstrapCache(): SessionBootstrapCache | null {
+  try {
+    const raw = window.sessionStorage.getItem(sessionBootstrapCacheKey);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as Partial<SessionBootstrapCache>;
+    if (
+      typeof cached.savedAt !== "number" ||
+      cached.savedAt > Date.now() + 60_000 ||
+      Date.now() - cached.savedAt > sessionBootstrapCacheTtlMs
+    ) {
+      window.sessionStorage.removeItem(sessionBootstrapCacheKey);
+      return null;
+    }
+    if (cached.kind === "guest")
+      return {
+        kind: "guest",
+        savedAt: cached.savedAt,
+        guestPrompt: cached.guestPrompt === true,
+      };
+    if (
+      cached.kind === "user" &&
+      cached.user &&
+      typeof cached.user.id === "string" &&
+      typeof cached.user.name === "string" &&
+      typeof cached.user.email === "string"
+    )
+      return cached as SessionBootstrapCache;
+  } catch {
+    /* Session storage is an optional startup cache, never an auth source. */
+  }
+  return null;
+}
+
+function saveSessionBootstrapCache(
+  cache:
+    | { kind: "guest"; guestPrompt: boolean }
+    | { kind: "user"; user: Pick<AccountUser, "id" | "name" | "email" | "image"> },
+) {
+  try {
+    window.sessionStorage.setItem(
+      sessionBootstrapCacheKey,
+      JSON.stringify({ ...cache, savedAt: Date.now() }),
+    );
+  } catch {
+    /* The server session remains authoritative when storage is unavailable. */
+  }
+}
+
+function clearSessionBootstrapCache() {
+  try {
+    window.sessionStorage.removeItem(sessionBootstrapCacheKey);
+  } catch {}
+}
+
+function reportBootstrapSyncError(error: unknown) {
+  window.dispatchEvent(
+    new CustomEvent("linguaplay-sync-status", {
+      detail: {
+        state: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Не удалось обновить данные профиля. Работаем с сохранённой копией.",
+      },
+    }),
+  );
+}
+
 function AppContent() {
+  const [initialBootstrap] = useState(() => {
+    const cached = readSessionBootstrapCache();
+    if (cached?.kind === "user") primeProfileStorage(cached.user.id);
+    return cached;
+  });
   const [authOpen, setAuthOpen] = useState(false);
-  const [mode, setMode] = useState<"checking" | "local" | "login" | "active" | "error">("checking");
-  const [user, setUser] = useState<AccountUser | null>(null);
-  const [guestPrompt, setGuestPrompt] = useState(false);
+  const [mode, setMode] = useState<"checking" | "local" | "login" | "active" | "error">(
+    initialBootstrap?.kind === "user"
+      ? "active"
+      : initialBootstrap?.kind === "guest"
+        ? "login"
+        : "checking",
+  );
+  const [user, setUser] = useState<AccountUser | null>(
+    initialBootstrap?.kind === "user" ? initialBootstrap.user : null,
+  );
+  const [guestPrompt, setGuestPrompt] = useState(
+    initialBootstrap?.kind === "guest" ? initialBootstrap.guestPrompt : false,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
+    const referral = new URLSearchParams(window.location.search).get("ref");
+    if (!referral || !/^[a-f0-9]{32}$/.test(referral)) return;
+    try {
+      window.localStorage.setItem("clickling-referral", referral);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     let alive = true;
-    setMode("checking");
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 12_000);
+    if (!initialBootstrap) setMode("checking");
     setError("");
-    void fetch("/api/auth/get-session", { credentials: "include", cache: "no-store" })
+    void fetch("/api/auth/get-session", {
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then(async (response) => {
         const contentType = response.headers.get("content-type") ?? "";
         if (response.status === 404 || !contentType.includes("application/json")) {
           if (import.meta.env.DEV) {
-            if (alive) setMode("local");
+            clearSessionBootstrapCache();
+            deactivateProfileStorage();
+            if (alive) {
+              setUser(null);
+              setMode("local");
+            }
             return;
           }
           throw new Error("Служба аккаунтов недоступна. Обновите страницу или попробуйте позже.");
@@ -2453,24 +2734,46 @@ function AppContent() {
           );
         const result = (await response.json()) as { user?: AccountUser } | null;
         if (result?.user) {
+          const sessionUser = result.user;
+          primeProfileStorage(sessionUser.id);
+          saveSessionBootstrapCache({
+            kind: "user",
+            user: {
+              id: sessionUser.id,
+              name: sessionUser.name,
+              email: sessionUser.email,
+              image: sessionUser.image,
+            },
+          });
           const profilePromise = fetch("/api/profile", {
             credentials: "include",
             cache: "no-store",
           });
-          await activateProfileStorage(result.user.id);
-          void migrateLocalMediaToProfile(result.user.id).catch(() => undefined);
-          const profileResponse = await profilePromise;
-          const profile = profileResponse.ok
-            ? ((await profileResponse.json()) as Pick<
-                AccountUser,
-                "role" | "permissions" | "isPro" | "proStartsAt" | "proEndsAt"
-              >)
-            : {};
           if (alive) {
-            setUser({ ...result.user, ...profile });
+            setUser(sessionUser);
             setMode("active");
           }
+          void activateProfileStorage(sessionUser.id)
+            .then(() => migrateLocalMediaToProfile(sessionUser.id))
+            .catch(reportBootstrapSyncError);
+          void profilePromise
+            .then(async (profileResponse) => {
+              if (!profileResponse.ok) return;
+              const profile = (await profileResponse.json()) as Pick<
+                AccountUser,
+                "role" | "permissions" | "isPro" | "proStartsAt" | "proEndsAt"
+              >;
+              if (alive)
+                setUser((current) =>
+                  current?.id === sessionUser.id ? { ...current, ...profile } : current,
+                );
+            })
+            .catch(reportBootstrapSyncError);
         } else if (alive) {
+          deactivateProfileStorage();
+          setUser(null);
+          setGuestPrompt(false);
+          setMode("login");
           const trialResponse = await fetch("/api/guest-trial", {
             credentials: "include",
             cache: "no-store",
@@ -2480,23 +2783,32 @@ function AppContent() {
           const trial = (await trialResponse.json()) as { eligible?: unknown };
           if (typeof trial.eligible !== "boolean")
             throw new Error("Служба пробного доступа вернула неверный ответ.");
-          const eligible = trial.eligible;
-          if (alive) {
-            setGuestPrompt(!eligible);
-            setMode("login");
-          }
+          const showGuestPrompt = !trial.eligible;
+          saveSessionBootstrapCache({ kind: "guest", guestPrompt: showGuestPrompt });
+          if (alive) setGuestPrompt(showGuestPrompt);
         }
       })
       .catch((cause: unknown) => {
-        if (alive) {
-          setError(cause instanceof Error ? cause.message : "Не удалось загрузить кабинет.");
-          setMode("error");
+        if (!alive) return;
+        if (initialBootstrap) {
+          if (initialBootstrap.kind === "user") resumeCachedProfileStorage();
+          return;
         }
+        setError(
+          timedOut
+            ? "Проверка аккаунта заняла слишком много времени. Проверьте соединение и попробуйте ещё раз."
+            : cause instanceof Error
+              ? cause.message
+              : "Не удалось загрузить кабинет.",
+        );
+        setMode("error");
       });
     return () => {
       alive = false;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
-  }, [retry]);
+  }, [retry, initialBootstrap]);
 
   const authenticate = async (credentials: Credentials) => {
     if (mode === "local") {
@@ -2580,6 +2892,7 @@ function AppContent() {
   };
   const signOut = async () => {
     await authClient.signOut();
+    clearSessionBootstrapCache();
     deactivateProfileStorage();
     setUser(null);
     setMode("login");
@@ -2632,8 +2945,17 @@ function AppContent() {
   return (
     <AuthScreen
       onBack={
-        !guestPrompt && (mode === "local" || mode === "login")
-          ? () => setAuthOpen(false)
+        mode === "local" || mode === "login"
+          ? () => {
+              if (
+                window.location.hash.includes("template=") ||
+                window.location.hash.includes("activity=")
+              ) {
+                window.history.replaceState(null, "", "#/games");
+              }
+              setGuestPrompt(false);
+              setAuthOpen(false);
+            }
           : undefined
       }
       key={guestPrompt ? "guest-prompt" : "auth"}
@@ -2672,6 +2994,7 @@ function EnergyDialog({
   nextAt,
   now,
   isPro,
+  unlimitedEnergy,
   ready,
   onRefresh,
   onClose,
@@ -2682,6 +3005,7 @@ function EnergyDialog({
   nextAt: number;
   now: number;
   isPro: boolean;
+  unlimitedEnergy: boolean;
   ready: boolean;
   onRefresh: () => void;
   onClose: () => void;
@@ -2710,7 +3034,11 @@ function EnergyDialog({
         <span className="energy-dialog-mark">⚡</span>
         <p className="eyebrow">ЭНЕРГИЯ</p>
         <h2 id="energy-title">
-          {!ready ? "Проверяем баланс…" : isPro ? "Играй без ограничений" : `${energy}/${cap}`}
+          {!ready
+            ? "Проверяем баланс…"
+            : isPro || unlimitedEnergy
+              ? "Играй без ограничений"
+              : `${energy}/${cap}`}
         </h2>
         {!ready ? (
           <>
@@ -2719,8 +3047,8 @@ function EnergyDialog({
               Проверить ещё раз
             </button>
           </>
-        ) : isPro ? (
-          <p>PRO · энергия не расходуется.</p>
+        ) : isPro || unlimitedEnergy ? (
+          <p>{isPro ? "PRO · энергия не расходуется." : "Администратор · энергия не расходуется."}</p>
         ) : (
           <>
             <div className="energy-capacity-meter" aria-label={`${energy} из ${cap} энергии`}>
@@ -2749,7 +3077,6 @@ function CrystalDialog({
   onClose: () => void;
   onOpenAccount: () => void;
 }) {
-  const packages = [{ amount: 120 }, { amount: 350 }, { amount: 800 }];
   return (
     <div
       className="modal-backdrop"
@@ -2772,16 +3099,10 @@ function CrystalDialog({
         </span>
         <p className="eyebrow">КРИСТАЛЛЫ</p>
         <h2 id="crystal-title">{crystals} в кошельке</h2>
-        <p>Кристаллы сейчас служат только игровой статистикой. Покупка и обмен отключены.</p>
-        <div className="crystal-packages">
-          {packages.map((item) => (
-            <article key={item.amount}>
-              <Icon name="gem" size={20} />
-              <strong>{item.amount}</strong>
-              <span>игровая награда</span>
-            </article>
-          ))}
-        </div>
+        <p>
+          Правильные ответы в упражнениях пополняют баланс. 10 кристаллов можно потратить на один
+          вопрос AI-наставнику. Покупка кристаллов пока не подключена.
+        </p>
         <button className="primary-button" onClick={onOpenAccount}>
           Тариф и оплата
         </button>
@@ -2805,7 +3126,8 @@ function CookieBanner({
         <strong>Ваш выбор Cookie</strong>
         <p>
           Необходимые Cookie поддерживают вход и безопасность. Аналитика включается только после
-          согласия.
+          согласия: сохраняются действия и сведения об устройстве, аккаунте или псевдонимном ID
+          гостя, а также примерный регион и хэш IP.
         </p>
       </div>
       <button className="text-button" onClick={onDetails}>
@@ -2854,7 +3176,13 @@ function LegalCenter({ onClose }: { onClose: () => void }) {
             <h3>Cookie</h3>
             <p>
               Необходимые Cookie используются для сессии и защиты входа. События аналитики
-              отправляются только после выбора «Принять все». Настройку можно изменить в футере.
+              отправляются только после выбора «Принять все». Они включают посещения, действия,
+              учебные метрики, язык и тип устройства; аккаунтные события связаны с профилем, а
+              события гостя — со случайным ID. Сохраняются примерный регион и защищённый хэш IP,
+              исходный IP не записывается; ID гостя хранится в Cookie до 10 лет, в зависимости от браузера. Аналитические
+              события и дневные снимки сохраняются без автоматического срока удаления для
+              исторической аналитики. Изменение Cookie-настройки останавливает новые события, но не
+              удаляет уже сохранённую историю.
             </p>
           </article>
           <article>
@@ -2901,7 +3229,7 @@ export default function App() {
   return (
     <>
       <AppContent />
-      <Companion />
+      <FeedbackSurvey />
     </>
   );
 }
@@ -3562,7 +3890,7 @@ function Library({
   return (
     <div className="page library-page" ref={libraryTop}>
       <div className="library-heading">
-        <img className="library-mascot" src="/mascots/mascot-2.png" alt="" aria-hidden="true" />
+        <img className="library-mascot" src="/mascots/2.webp" alt="" aria-hidden="true" />
         <div>
           <p className="eyebrow">ВАШИ МАТЕРИАЛЫ</p>
           <h1>Библиотека</h1>
@@ -4107,7 +4435,7 @@ function PathScreen({
       <div className="page-heading">
         <img
           className="builder-heading-mascot"
-          src="/mascots/mascot-6.png"
+          src="/mascots/6.webp"
           alt=""
           aria-hidden="true"
         />

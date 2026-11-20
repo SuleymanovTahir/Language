@@ -1,5 +1,7 @@
 const legacyClaimKey = "linguaplay-legacy-owner";
 let activeUserId: string | null = null;
+let profileReady = false;
+let profileActivationGeneration = 0;
 let syncTimer: number | undefined;
 let syncing = false;
 let syncAgain = false;
@@ -71,7 +73,7 @@ function collectProfileData(userId: string) {
 }
 
 async function sendProfileData(userId: string) {
-  if (activeUserId !== userId) return;
+  if (activeUserId !== userId || !profileReady) return;
   if (syncing) {
     syncAgain = true;
     return;
@@ -196,7 +198,7 @@ async function migrateEmbeddedAudio(userId: string) {
 }
 
 function scheduleProfileSync() {
-  if (!activeUserId) return;
+  if (!activeUserId || !profileReady) return;
   window.clearTimeout(syncTimer);
   const userId = activeUserId;
   syncTimer = window.setTimeout(() => void sendProfileData(userId), 850);
@@ -222,73 +224,118 @@ export function getActiveProfileId() {
   return activeUserId;
 }
 
-export async function activateProfileStorage(userId: string) {
-  const response = await fetch("/api/sync", { credentials: "include", cache: "no-store" });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || "Не удалось загрузить данные личного кабинета.");
+/** Selects a user's local profile before the remote profile refresh completes. */
+export function primeProfileStorage(userId: string) {
+  window.clearTimeout(syncTimer);
+  syncTimer = undefined;
+  if (activeUserId !== userId) {
+    activeUserId = userId;
+    profileVersions = {};
+    pendingProfileKeys = new Set();
   }
-  const remote = (await response.json()) as {
-    data?: Record<string, unknown>;
-    versions?: Record<string, number>;
-  };
-  const prefix = profilePrefix(userId);
-  let hasLocalProfile = false;
-  for (let index = 0; index < localStorage.length; index += 1) {
-    if (localStorage.key(index)?.startsWith(prefix)) {
-      hasLocalProfile = true;
-      break;
-    }
-  }
+  profileReady = false;
+  profileActivationGeneration += 1;
+  return profileActivationGeneration;
+}
 
-  if (!hasLocalProfile && !localStorage.getItem(legacyClaimKey)) {
-    const legacyItems: Array<[string, string]> = [];
+export function resumeCachedProfileStorage() {
+  if (!activeUserId) return;
+  profileReady = true;
+  if (pendingProfileKeys.size) scheduleProfileSync();
+}
+
+export async function activateProfileStorage(userId: string) {
+  const generation = primeProfileStorage(userId);
+  try {
+    const response = await fetch("/api/sync", { credentials: "include", cache: "no-store" });
+    if (activeUserId !== userId || generation !== profileActivationGeneration) return;
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || "Не удалось загрузить данные личного кабинета.");
+    }
+    const remote = (await response.json()) as {
+      data?: Record<string, unknown>;
+      versions?: Record<string, number>;
+    };
+    if (activeUserId !== userId || generation !== profileActivationGeneration) return;
+    const prefix = profilePrefix(userId);
+    let hasLocalProfile = false;
     for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (
-        key?.startsWith("linguaplay-") &&
-        key !== legacyClaimKey &&
-        !key.startsWith("linguaplay-user-data:")
-      ) {
-        legacyItems.push([key, localStorage.getItem(key) ?? ""]);
+      if (localStorage.key(index)?.startsWith(prefix)) {
+        hasLocalProfile = true;
+        break;
       }
     }
-    legacyItems.forEach(([key, value]) => localStorage.setItem(`${prefix}${key}`, value));
-    localStorage.setItem(legacyClaimKey, userId);
-  }
 
-  const remoteData = remote.data && typeof remote.data === "object" ? remote.data : {};
-  profileVersions = remote.versions ?? {};
-  pendingProfileKeys = new Set();
-  const remoteEntries = Object.entries(remoteData).filter(
-    (entry): entry is [string, string] => typeof entry[1] === "string",
-  );
-  const remoteKeys = new Set(remoteEntries.map(([key]) => key));
-  remoteEntries.forEach(([key, value]) => {
-    if (key.startsWith("linguaplay-") && !serverManagedKeys.has(key))
-      localStorage.setItem(
-        `${prefix}${key}`,
-        displayOnlyStatsKeys.has(key) ? withoutDisplayOnlyStats(value) : value,
-      );
-  });
-  activeUserId = userId;
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const localKey = localStorage.key(index);
-    if (localKey?.startsWith(prefix)) {
-      const profileKey = localKey.slice(prefix.length);
-      if (!serverManagedKeys.has(profileKey) && !remoteKeys.has(profileKey))
-        pendingProfileKeys.add(profileKey);
+    if (!hasLocalProfile && !localStorage.getItem(legacyClaimKey)) {
+      const legacyItems: Array<[string, string]> = [];
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (
+          key?.startsWith("linguaplay-") &&
+          key !== legacyClaimKey &&
+          !key.startsWith("linguaplay-user-data:")
+        ) {
+          legacyItems.push([key, localStorage.getItem(key) ?? ""]);
+        }
+      }
+      legacyItems.forEach(([key, value]) => localStorage.setItem(`${prefix}${key}`, value));
+      localStorage.setItem(legacyClaimKey, userId);
     }
+
+    const remoteData = remote.data && typeof remote.data === "object" ? remote.data : {};
+    profileVersions = remote.versions ?? {};
+    const remoteEntries = Object.entries(remoteData).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    );
+    const remoteKeys = new Set(remoteEntries.map(([key]) => key));
+    const hydratedKeys: string[] = [];
+    remoteEntries.forEach(([key, value]) => {
+      if (
+        key.startsWith("linguaplay-") &&
+        !serverManagedKeys.has(key) &&
+        !pendingProfileKeys.has(key)
+      ) {
+        localStorage.setItem(
+          `${prefix}${key}`,
+          displayOnlyStatsKeys.has(key) ? withoutDisplayOnlyStats(value) : value,
+        );
+        hydratedKeys.push(key);
+      }
+    });
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const localKey = localStorage.key(index);
+      if (localKey?.startsWith(prefix)) {
+        const profileKey = localKey.slice(prefix.length);
+        if (!serverManagedKeys.has(profileKey) && !remoteKeys.has(profileKey))
+          pendingProfileKeys.add(profileKey);
+      }
+    }
+    profileReady = true;
+    if (hydratedKeys.length)
+      window.dispatchEvent(
+        new CustomEvent("linguaplay-profile-hydrated", {
+          detail: { userId, keys: hydratedKeys },
+        }),
+      );
+    if (pendingProfileKeys.size) scheduleProfileSync();
+    // Media migration and initial write-back must not delay the visible cabinet.
+    void migrateEmbeddedAudio(userId).finally(() => sendProfileData(userId));
+  } catch (error) {
+    if (activeUserId === userId && generation === profileActivationGeneration) {
+      profileReady = true;
+      if (pendingProfileKeys.size) scheduleProfileSync();
+    }
+    throw error;
   }
-  // The remote profile is now readable by the app. Media migration and the
-  // initial write-back can continue in the background so they do not hold the
-  // cabinet behind extra requests or large audio uploads.
-  void migrateEmbeddedAudio(userId).finally(() => sendProfileData(userId));
 }
 
 export function deactivateProfileStorage() {
   window.clearTimeout(syncTimer);
+  syncTimer = undefined;
+  profileActivationGeneration += 1;
   activeUserId = null;
+  profileReady = false;
   profileVersions = {};
   pendingProfileKeys = new Set();
 }

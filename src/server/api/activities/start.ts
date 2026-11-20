@@ -1,10 +1,9 @@
-import { auth, pool } from "../../../lib/auth.ts";
+import { auth, ensureInitialAppRole, pool } from "../../../lib/auth.ts";
 import { readLimitedRequestBody } from "../../../lib/readLimitedRequestBody.ts";
 import type { PoolClient } from "pg";
 
-const configuredCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 5);
 const configuredRefillMinutes = Number(process.env.LINGUAPLAY_ENERGY_REFILL_MINUTES ?? 30);
-const ENERGY_CAP = Number.isInteger(configuredCap) ? Math.max(1, Math.min(22, configuredCap)) : 5;
+export const ENERGY_CAP = 22;
 const REFILL_MS = Number.isInteger(configuredRefillMinutes)
   ? Math.max(1, Math.min(1440, configuredRefillMinutes)) * 60 * 1000
   : 30 * 60 * 1000;
@@ -12,12 +11,13 @@ const json = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
 let tablesReady: Promise<void> | null = null;
-function ensureTables() {
+export function ensureEnergyTables() {
   tablesReady ??= pool
     .query(`
     CREATE TABLE IF NOT EXISTS linguaplay_energy_accounts (
       user_id text PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
-      energy integer NOT NULL DEFAULT 5 CHECK (energy BETWEEN 0 AND 22),
+      energy integer NOT NULL DEFAULT 22 CHECK (energy BETWEEN 0 AND 22),
+      energy_cap_version integer NOT NULL DEFAULT 2,
       next_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -37,7 +37,33 @@ function ensureTables() {
     CREATE INDEX IF NOT EXISTS linguaplay_energy_ledger_user_time_idx ON linguaplay_energy_ledger(user_id,created_at DESC);
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS next_at_after timestamptz;
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS is_pro boolean NOT NULL DEFAULT false;
-    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 5;
+    ALTER TABLE linguaplay_energy_accounts ADD COLUMN IF NOT EXISTS energy_cap_version integer NOT NULL DEFAULT 1;
+    UPDATE linguaplay_energy_accounts
+      SET energy=LEAST(22,GREATEST(0,round(energy::numeric * 22 / 5)::integer)),
+          next_at=CASE WHEN energy >= 5 THEN NULL ELSE next_at END,
+          energy_cap_version=2,updated_at=now()
+      WHERE energy_cap_version < 2;
+    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 22;
+    CREATE TABLE IF NOT EXISTS linguaplay_energy_game_streaks (
+      user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      session_id text NOT NULL,
+      activity_id text NOT NULL,
+      streak integer NOT NULL DEFAULT 0,
+      awarded jsonb NOT NULL DEFAULT '[]'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY(user_id,session_id)
+    );
+    CREATE TABLE IF NOT EXISTS linguaplay_energy_answer_events (
+      user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      event_id text NOT NULL,
+      session_id text NOT NULL,
+      correct boolean NOT NULL,
+      bonus integer NOT NULL DEFAULT 0,
+      balance_after integer NOT NULL,
+      streak integer NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY(user_id,event_id)
+    );
   `)
     .then(() => undefined)
     .catch((error) => {
@@ -49,7 +75,7 @@ function ensureTables() {
 
 type EnergySnapshot = { energy: number; nextAt: string | null; now: Date };
 
-async function loadEnergy(client: PoolClient, userId: string): Promise<EnergySnapshot> {
+export async function loadEnergy(client: PoolClient, userId: string): Promise<EnergySnapshot> {
   let result = await client.query(
     `SELECT energy,next_at,now() AS db_now FROM linguaplay_energy_accounts WHERE user_id=$1 FOR UPDATE`,
     [userId],
@@ -126,7 +152,7 @@ async function loadEnergy(client: PoolClient, userId: string): Promise<EnergySna
   return { energy, nextAt: nextAt?.toISOString() ?? null, now };
 }
 
-async function hasPro(client: PoolClient, userId: string) {
+export async function hasPro(client: PoolClient, userId: string) {
   const result = await client.query(
     `
     SELECT EXISTS(
@@ -145,8 +171,16 @@ async function hasPro(client: PoolClient, userId: string) {
   return Boolean(result.rows[0]?.active);
 }
 
-async function runWithAccount<T>(userId: string, operation: (client: PoolClient) => Promise<T>) {
-  await ensureTables();
+export async function hasUnlimitedEnergy(client: PoolClient, userId: string) {
+  const result = await client.query(
+    "SELECT role FROM linguaplay_user_roles WHERE user_id=$1",
+    [userId],
+  );
+  return ["owner", "admin"].includes(String(result.rows[0]?.role ?? ""));
+}
+
+export async function runWithAccount<T>(userId: string, operation: (client: PoolClient) => Promise<T>) {
+  await ensureEnergyTables();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -167,12 +201,14 @@ async function runWithAccount<T>(userId: string, operation: (client: PoolClient)
 export async function GET(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user?.id) return json({ error: "Sign in is required." }, 401);
+  await ensureInitialAppRole(session.user.id);
   try {
     const result = await runWithAccount(session.user.id, async (client) => {
       const energy = await loadEnergy(client, session.user.id);
       return {
         ...energy,
         isPro: await hasPro(client, session.user.id),
+        unlimitedEnergy: await hasUnlimitedEnergy(client, session.user.id),
         cap: ENERGY_CAP,
         refillMs: REFILL_MS,
       };
@@ -186,6 +222,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user?.id) return json({ error: "Sign in is required." }, 401);
+  await ensureInitialAppRole(session.user.id);
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > 2_000) return json({ error: "Invalid activity request." }, 413);
   let body: Record<string, unknown>;
@@ -214,16 +251,25 @@ export async function POST(request: Request) {
       `,
         [session.user.id, idempotencyKey],
       );
-      if (previous.rowCount)
-        return { ...previous.rows[0], cap: ENERGY_CAP, refillMs: REFILL_MS, idempotent: true };
+      if (previous.rowCount) {
+        const unlimitedEnergy = await hasUnlimitedEnergy(client, session.user.id);
+        return {
+          ...previous.rows[0],
+          unlimitedEnergy,
+          cap: ENERGY_CAP,
+          refillMs: REFILL_MS,
+          idempotent: true,
+        };
+      }
 
       const snapshot = await loadEnergy(client, session.user.id);
       const isPro = await hasPro(client, session.user.id);
-      if (!isPro && snapshot.energy <= 0)
-        return { ...snapshot, isPro, cap: ENERGY_CAP, refillMs: REFILL_MS, exhausted: true };
-      const energy = isPro ? snapshot.energy : snapshot.energy - 1;
+      const unlimitedEnergy = await hasUnlimitedEnergy(client, session.user.id);
+      if (!isPro && !unlimitedEnergy && snapshot.energy <= 0)
+        return { ...snapshot, isPro, unlimitedEnergy, cap: ENERGY_CAP, refillMs: REFILL_MS, exhausted: true };
+      const energy = isPro || unlimitedEnergy ? snapshot.energy : snapshot.energy - 1;
       const nextAt =
-        !isPro && energy < ENERGY_CAP
+        !isPro && !unlimitedEnergy && energy < ENERGY_CAP
           ? (snapshot.nextAt ?? new Date(snapshot.now.getTime() + REFILL_MS).toISOString())
           : energy >= ENERGY_CAP
             ? null
@@ -240,10 +286,10 @@ export async function POST(request: Request) {
       `,
         [
           session.user.id,
-          isPro ? 0 : -1,
+          isPro || unlimitedEnergy ? 0 : -1,
           energy,
           nextAt,
-          isPro ? "PRO activity" : "Activity start",
+          isPro ? "PRO activity" : unlimitedEnergy ? "Admin activity" : "Activity start",
           activityId,
           idempotencyKey,
           isPro,
@@ -255,6 +301,7 @@ export async function POST(request: Request) {
         nextAt,
         now: snapshot.now,
         isPro,
+        unlimitedEnergy,
         cap: ENERGY_CAP,
         refillMs: REFILL_MS,
         idempotent: false,

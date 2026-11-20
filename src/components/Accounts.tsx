@@ -183,7 +183,7 @@ export function AuthScreen({
               </li>
             </ul>
           </div>
-          <img src="/mascots/mascot-5.png" alt="" aria-hidden="true" />
+          <img src="/mascots/5.webp" alt="" aria-hidden="true" />
           <span className="account-showcase-orbit orbit-one">der</span>
           <span className="account-showcase-orbit orbit-two">Hallo!</span>
         </section>
@@ -534,7 +534,7 @@ export function AccountPanel({
         </button>
         <img
           className="account-profile-mascot"
-          src="/mascots/mascot-8.png"
+          src="/mascots/8.webp"
           alt=""
           aria-hidden="true"
         />
@@ -709,6 +709,24 @@ function BillingStatus() {
   const [data, setData] = useState<{
     plans?: Plan[];
     entitlement?: { active: boolean; endsAt: string | null };
+    currentSubscription?: {
+      status: string;
+      periodStart: string;
+      periodEnd: string;
+      cancelAtPeriodEnd: boolean;
+      planName: string;
+      amountMinor: number;
+      currency: string;
+      interval: string;
+    } | null;
+    payments?: Array<{
+      id: string;
+      amountMinor: number;
+      currency: string;
+      status: string;
+      createdAt: string;
+      planName?: string | null;
+    }>;
     checkoutEnabled?: boolean;
     message?: string;
   } | null>(null);
@@ -733,6 +751,12 @@ function BillingStatus() {
         new Date(data.entitlement.endsAt),
       )
     : "";
+  const formatDate = (value: string) =>
+    new Intl.DateTimeFormat("ru-RU", { dateStyle: "long" }).format(new Date(value));
+  const paymentStatus = (status: string) =>
+    ({ succeeded: "Оплачен", paid: "Оплачен", failed: "Ошибка", refunded: "Возврат" })[
+      status.toLowerCase()
+    ] ?? status;
   return (
     <section className="account-billing">
       <div className="account-billing-heading">
@@ -743,8 +767,10 @@ function BillingStatus() {
           </strong>
           <small>
             {data?.entitlement?.active && date
-              ? `Доступ открыт до ${date}`
-              : "Начните бесплатно и подключите PRO, когда будете готовы."}
+              ? data.currentSubscription?.cancelAtPeriodEnd
+                ? `Доступ сохранится до ${date}; автопродление выключено.`
+                : `Доступ открыт до ${date}.`
+              : "Бесплатный план уже доступен. PRO добавляет безлимитную энергию."}
           </small>
         </div>
         <span className={`billing-status ${data?.entitlement?.active ? "active" : ""}`}>
@@ -756,6 +782,24 @@ function BillingStatus() {
       ) : (
         data && (
           <>
+            <div className="billing-free-summary">
+              <strong>FREE · бесплатно</strong>
+              <span>Карточки, учебный путь, прогресс и ежедневная энергия до 22.</span>
+            </div>
+            {data.currentSubscription && (
+              <div className="billing-subscription-summary">
+                <strong>{data.currentSubscription.planName}</strong>
+                <span>
+                  {formatMinorCurrency(data.currentSubscription.amountMinor, data.currentSubscription.currency)}
+                  {" · период "}
+                  {formatDate(data.currentSubscription.periodStart)} — {formatDate(data.currentSubscription.periodEnd)}
+                </span>
+                <small>
+                  Статус: {paymentStatus(data.currentSubscription.status)}
+                  {data.currentSubscription.cancelAtPeriodEnd ? " · не продлевается" : " · продление включено"}
+                </small>
+              </div>
+            )}
             <div className="account-plan-list">
               {(data.plans ?? []).map((plan) => (
                 <article key={plan.code}>
@@ -781,7 +825,7 @@ function BillingStatus() {
                     </ul>
                   )}
                   <button className="primary-button compact" disabled={!data.checkoutEnabled}>
-                    Выбрать план
+                    {data.checkoutEnabled ? "Выбрать план" : "Оплата скоро"}
                   </button>
                 </article>
               ))}
@@ -790,8 +834,23 @@ function BillingStatus() {
               <small className="billing-message">
                 <Icon name="info" size={14} />
                 {data.message || "Оплата временно недоступна."}
+                {" Цены пока ознакомительные."}
               </small>
             )}
+            <div className="billing-payment-history">
+              <strong>История платежей</strong>
+              {data.payments?.length ? (
+                data.payments.map((payment) => (
+                  <div key={payment.id}>
+                    <span>{payment.planName || "ClickLing PRO"} · {formatDate(payment.createdAt)}</span>
+                    <b>{formatMinorCurrency(payment.amountMinor, payment.currency)}</b>
+                    <small>{paymentStatus(payment.status)}</small>
+                  </div>
+                ))
+              ) : (
+                <small>Платежей пока нет. Здесь появятся сумма, дата и статус после подключения оплаты.</small>
+              )}
+            </div>
           </>
         )
       )}

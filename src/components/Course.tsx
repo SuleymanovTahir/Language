@@ -52,6 +52,8 @@ export function CoursePath({
   focus = [],
   onChooseLevel,
   onStart,
+  previewOnly = false,
+  onUpgrade,
 }: {
   level: string;
   progress: CourseProgress;
@@ -60,12 +62,15 @@ export function CoursePath({
   focus?: string[];
   onChooseLevel: (level: CourseLevel) => void;
   onStart: (unit: CourseUnit) => void;
+  previewOnly?: boolean;
+  onUpgrade?: () => void;
 }) {
   const normalizedLevel = level === "A1–A2" ? "A1" : level;
   const selectedLevel = levels.includes(normalizedLevel as CourseLevel)
     ? (normalizedLevel as CourseLevel)
     : "C1";
   const units = courseUnitsForLevel(selectedLevel);
+  const demoUnit = GERMAN_COURSE.find((item) => item.id === "a1-01") ?? GERMAN_COURSE[0];
   const goalRecommendations: Record<string, string[]> = {
     "Повседневная жизнь": ["a1-04", "a1-05", "a1-06", "a2-02", "a2-03", "a2-07"],
     Переезд: ["a1-02", "a1-06", "a1-07", "a2-02", "b1-03", "b1-07"],
@@ -79,6 +84,7 @@ export function CoursePath({
   const recommendedIds = new Set(goals.flatMap((goal) => goalRecommendations[goal] ?? []));
   const completed = units.filter((item) => progress[item.id]?.completedAt).length;
   const next = units.find((item) => !progress[item.id]?.completedAt) ?? units.at(-1);
+  const nextUnitIndex = Math.max(0, units.findIndex((item) => item.id === next?.id));
   const reviewSuggestion = units
     .map((item) => {
       const saved = progress[item.id];
@@ -103,8 +109,12 @@ export function CoursePath({
       <div className="page-heading">
         <div>
           <p className="eyebrow">ПОСЛЕДОВАТЕЛЬНЫЙ КУРС · НЕМЕЦКИЙ</p>
-          <h1>Мой учебный путь</h1>
-          <p>{levelCopy[selectedLevel] ?? levelCopy.A1}</p>
+          <h1>{previewOnly ? "Попробуйте курс до регистрации" : "Мой учебный путь"}</h1>
+          <p>
+            {previewOnly
+              ? "Откройте первый интерактивный урок немецкого бесплатно. Аккаунт понадобится, чтобы сохранить прогресс и продолжить весь курс."
+              : (levelCopy[selectedLevel] ?? levelCopy.A1)}
+          </p>
         </div>
         <div className="course-level-picker" aria-label="Уровень курса">
           {levels.map((item) => (
@@ -166,7 +176,7 @@ export function CoursePath({
       <section className="course-overview-card">
         <img
           className="course-overview-mascot"
-          src="/mascots/mascot-4.png"
+          src="/mascots/4.webp"
           alt=""
           aria-hidden="true"
         />
@@ -196,13 +206,29 @@ export function CoursePath({
             </span>
           </div>
         </div>
-        {next && (
-          <button className="primary-button" onClick={() => onStart(next)}>
-            {progress[next.id]?.completedAt ? "Повторить юнит" : "Начать занятие"}
+        {(previewOnly || next) && (
+          <button className="primary-button" onClick={() => onStart(previewOnly ? demoUnit : next!)}>
+            {previewOnly
+              ? "Открыть демо-урок"
+              : progress[next!.id]?.completedAt
+                ? "Повторить юнит"
+                : "Начать занятие"}
             <Icon name="arrow" />
           </button>
         )}
       </section>
+      {previewOnly && (
+        <section className="course-review-card">
+          <div>
+            <span className="eyebrow">БЕСПЛАТНАЯ ДЕМОНСТРАЦИЯ</span>
+            <strong>Один полноценный урок до регистрации</strong>
+            <p>Посмотрите, как устроены задания, объяснения и практика навыков.</p>
+          </div>
+          <button className="secondary-button" onClick={onUpgrade}>
+            Сохранить прогресс и продолжить
+          </button>
+        </section>
+      )}
       {reviewSuggestion && (
         <section className="course-review-card">
           <div>
@@ -228,8 +254,12 @@ export function CoursePath({
         <LearningTrail className="course-unit-list">
           {GERMAN_COURSE.map((item, index) => {
             const saved = progress[item.id];
-            const unlocked = true;
-            const isNext = !saved?.completedAt && unlocked;
+            const levelIndex = units.findIndex((unit) => unit.id === item.id);
+            const unlocked = previewOnly
+              ? item.id === demoUnit.id
+              : item.level === selectedLevel && levelIndex >= 0 &&
+                (Boolean(saved?.completedAt) || levelIndex <= nextUnitIndex);
+            const isNext = !saved?.completedAt && item.id === next?.id && unlocked;
             const hasSavedMission = Boolean(missions[item.id]);
             return (
               <div className="course-trail-stop" key={item.id}>
@@ -252,7 +282,7 @@ export function CoursePath({
                     <span className="course-unit-number" data-trail-anchor>
                       {saved?.completedAt ? (
                         <Icon name="check" size={24} />
-                      ) : item.id === next?.id ? (
+                      ) : isNext ? (
                         <Icon name="arrow" size={23} />
                       ) : (
                         String(index + 1).padStart(2, "0")
@@ -260,9 +290,13 @@ export function CoursePath({
                     </span>
                     <span className="course-unit-copy">
                       <small className="course-unit-kicker">
-                        {saved?.completedAt
+                        {previewOnly && item.id === "a1-01"
+                          ? "ДЕМО · ОТКРЫТО"
+                          : previewOnly
+                            ? "ПОЛНЫЙ ДОСТУП · АККАУНТ"
+                            : saved?.completedAt
                           ? "ПРОЙДЕНО"
-                          : item.id === next?.id
+                          : isNext
                             ? hasSavedMission
                               ? "ПРОДОЛЖИТЬ"
                               : "СТАРТ"
@@ -279,7 +313,7 @@ export function CoursePath({
           })}
         </LearningTrail>
       </section>
-      <CourseSkillsSummary progress={progress} />
+        {!previewOnly && <CourseSkillsSummary progress={progress} />}
     </div>
   );
 }

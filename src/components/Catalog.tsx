@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./Icon";
 import { copyAppLink } from "../lib/shareLink";
+import { modules, scenarioModules } from "../lib/vocab";
+import { GERMAN_COURSE } from "../data/germanCourse";
+import { LearningTrail } from "./LearningTrail";
 
 export type CatalogItem = {
   id: string;
@@ -12,6 +15,7 @@ export type CatalogItem = {
   body: Record<string, unknown>;
   status: "draft" | "published" | "archived";
   updatedAt?: string;
+  readOnly?: boolean;
 };
 export type CatalogSeed = {
   kind: string;
@@ -49,6 +53,89 @@ const blank = (languageCode: string, level: string): CatalogItem => ({
   body: { description: "", objectives: [], estimated_seconds: 300, skills: [], steps: [] },
   status: "draft",
 });
+const friendlyModuleTitles: Record<number, string> = {
+  1: "Знакомство и личные местоимения",
+  2: "Желания, возможности и обязанности",
+  3: "Простые вопросы и ответы",
+  4: "Мнения и объяснения",
+  5: "Числа и количество",
+  6: "Дни недели и части суток",
+  7: "Даты и как часто",
+  8: "Месяцы и времена года",
+  9: "Семья и родственники",
+  10: "Друзья, соседи и характер",
+  11: "Эмоции и самочувствие",
+  12: "Как добраться и куда идти",
+  13: "Покупки и оплата",
+  14: "В кафе: еда и напитки",
+  15: "Продукты и покупки",
+  16: "Овощи и фрукты",
+  17: "Городские места и адреса",
+  18: "Транспорт и поездки",
+  19: "Дом и комнаты",
+  20: "Расположение вещей",
+  21: "Кухня и посуда",
+  22: "Ванная, сон и уборка",
+  23: "Аренда и коммунальные платежи",
+  24: "Досуг и свободное время",
+  25: "Здоровье и визит к врачу",
+  26: "Части тела",
+  27: "Профессии и работа",
+  28: "Офис и рабочие задачи",
+  29: "Поиск работы и договоры",
+  30: "Учёба и занятия",
+  31: "Банк и документы",
+  32: "Одежда и цвета",
+  33: "Погода",
+  34: "Природа и животные",
+  35: "Программирование",
+  36: "IT-системы",
+  37: "Базы данных и таблицы",
+  38: "Статистика и отчёты",
+  39: "Бизнес-анализ и требования",
+};
+const moduleIdByTitle = new Map(
+  [...modules, ...scenarioModules].map((module) => [module.title, module.id]),
+);
+const catalogGroups = [
+  "Первые разговоры",
+  "Время и планы",
+  "Люди вокруг",
+  "Городская жизнь",
+  "Дом и быт",
+  "Дела и работа",
+  "Учёба и мир вокруг",
+  "Немецкий для работы и IT",
+  "Путешествия и профессии",
+  "Мои наборы",
+];
+function catalogModuleGroup(id: number) {
+  if (id >= 1000) return "Мои наборы";
+  if (id >= 200) return "Путешествия и профессии";
+  if (id <= 4) return "Первые разговоры";
+  if (id <= 8) return "Время и планы";
+  if (id <= 11) return "Люди вокруг";
+  if (id <= 18) return "Городская жизнь";
+  if (id <= 23) return "Дом и быт";
+  if (id <= 29) return "Дела и работа";
+  if (id <= 34) return "Учёба и мир вокруг";
+  return "Немецкий для работы и IT";
+}
+function catalogSection(item: CatalogItem) {
+  if (item.kind === "module") {
+    const fromId = item.id.match(/^builtin:module:(\d+)$/)?.[1];
+    const moduleId = fromId ? Number(fromId) : moduleIdByTitle.get(item.title);
+    return catalogModuleGroup(moduleId ?? 1000);
+  }
+  if (item.kind === "lesson") return `Учебный путь · ${item.level}`;
+  return kindNames[item.kind] ?? "Другие материалы";
+}
+function catalogTitle(item: CatalogItem) {
+  if (item.kind !== "module") return item.title;
+  const fromId = item.id.match(/^builtin:module:(\d+)$/)?.[1];
+  const moduleId = fromId ? Number(fromId) : moduleIdByTitle.get(item.title);
+  return (moduleId && friendlyModuleTitles[moduleId]) || item.title;
+}
 
 export function CatalogScreen({
   languageCode,
@@ -72,6 +159,86 @@ export function CatalogScreen({
   const [shareLoading, setShareLoading] = useState(false);
   const [shares, setShares] = useState<CatalogShare[]>([]);
   const [sharesLoading, setSharesLoading] = useState(false);
+  const builtInItems = useMemo<CatalogItem[]>(() => {
+    const vocab = [...modules, ...scenarioModules].map((module) => ({
+      id: `builtin:module:${module.id}`,
+      kind: "module",
+      languageCode: module.languageCode,
+      level: module.level,
+      topic: "Лексика",
+      title: module.title,
+      body: {
+        description: `Словарь немецкого языка · ${module.cards.length} слов.`,
+        objectives: ["Запомнить слова и перевод", "Повторять произношение и род существительных"],
+        estimated_seconds: Math.max(300, module.cards.length * 45),
+        cards: module.cards.map((card) => ({
+          word: card.word,
+          article: card.article,
+          translation: card.translation,
+          transcription: card.transcription,
+        })),
+      },
+      status: "published" as const,
+      readOnly: true,
+    }));
+    const course = GERMAN_COURSE.map((unit) => ({
+      id: `builtin:lesson:${unit.id}`,
+      kind: "lesson",
+      languageCode: "de",
+      level: unit.level,
+      topic: unit.grammarTitle,
+      title: unit.title,
+      body: {
+        description: unit.outcome,
+        objectives: [unit.grammarTitle, ...unit.vocabulary.slice(0, 3)],
+        estimated_seconds: 1200,
+        steps: [unit.theory, unit.dialogue, unit.reading, unit.speakingPrompt, unit.writingPrompt],
+      },
+      status: "published" as const,
+      readOnly: true,
+    }));
+    return [...vocab, ...course];
+  }, []);
+  const fallbackItems = useMemo(() => {
+    const normalizedLevel = level.replace("–", "-");
+    return builtInItems.filter((item) => {
+      if (item.languageCode !== languageCode) return false;
+      const itemLevel = item.level.replace("–", "-");
+      if (normalizedLevel === "A1-A2") return ["A1-A2", "A1", "A2"].includes(itemLevel);
+      if (languageCode === "de" && ["A1", "A2"].includes(normalizedLevel))
+        return itemLevel === normalizedLevel || itemLevel === "A1-A2";
+      return itemLevel === normalizedLevel;
+    });
+  }, [builtInItems, languageCode, level]);
+  const sections = useMemo(() => {
+    const grouped = new Map<string, CatalogItem[]>();
+    for (const item of items) {
+      const title = catalogSection(item);
+      const rows = grouped.get(title) ?? [];
+      rows.push(item);
+      grouped.set(title, rows);
+    }
+    return [...grouped.entries()]
+      .map(([title, rows]) => ({
+        title,
+        items: rows.sort((a, b) => {
+          const aModule = a.id.match(/^builtin:module:(\d+)$/)?.[1];
+          const bModule = b.id.match(/^builtin:module:(\d+)$/)?.[1];
+          if (aModule && bModule) return Number(aModule) - Number(bModule);
+          const aLesson = GERMAN_COURSE.findIndex((unit) => a.id === `builtin:lesson:${unit.id}`);
+          const bLesson = GERMAN_COURSE.findIndex((unit) => b.id === `builtin:lesson:${unit.id}`);
+          if (aLesson >= 0 && bLesson >= 0) return aLesson - bLesson;
+          return a.title.localeCompare(b.title, "ru");
+        }),
+      }))
+      .sort((a, b) => {
+        const aGroup = catalogGroups.indexOf(a.title);
+        const bGroup = catalogGroups.indexOf(b.title);
+        if (aGroup >= 0 || bGroup >= 0)
+          return (aGroup < 0 ? catalogGroups.length : aGroup) - (bGroup < 0 ? catalogGroups.length : bGroup);
+        return a.title.localeCompare(b.title, "ru");
+      });
+  }, [items]);
   const hashQuery =
     typeof window === "undefined" ? "" : window.location.hash.split("?").slice(1).join("?");
   const shareToken = useMemo(() => new URLSearchParams(hashQuery).get("share") ?? "", [hashQuery]);
@@ -88,22 +255,36 @@ export function CatalogScreen({
       const contentType = response.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) {
         if (import.meta.env.DEV) {
-          setItems(
-            legacyItems.map((item, index) => ({
+          setItems([
+            ...legacyItems.map((item, index) => ({
               ...item,
               id: `local-${index}`,
               topic: item.topic ?? "",
               status: "published" as const,
             })),
-          );
+            ...fallbackItems,
+          ]);
           return;
         }
         throw new Error("Каталог временно недоступен.");
       }
       const data = (await response.json()) as { items?: CatalogItem[]; error?: string };
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить каталог.");
-      setItems(data.items ?? []);
+      const published = data.items ?? [];
+      const existing = new Set(
+        published.map((item) => `${item.kind}:${item.languageCode}:${item.level}:${item.title.toLocaleLowerCase()}`),
+      );
+      setItems([
+        ...published,
+        ...fallbackItems.filter(
+          (item) =>
+            !existing.has(
+              `${item.kind}:${item.languageCode}:${item.level}:${item.title.toLocaleLowerCase()}`,
+            ),
+        ),
+      ]);
     } catch (cause) {
+      setItems(fallbackItems);
       setError(cause instanceof Error ? cause.message : "Не удалось загрузить каталог.");
     } finally {
       setLoading(false);
@@ -111,7 +292,7 @@ export function CatalogScreen({
   };
   useEffect(() => {
     void load();
-  }, [languageCode, level, canManageContent]);
+  }, [languageCode, level, canManageContent, fallbackItems]);
   const loadShares = async () => {
     if (!canManageContent) return;
     setSharesLoading(true);
@@ -293,52 +474,70 @@ export function CatalogScreen({
       setWorking(false);
     }
   };
-  const view = (item: CatalogItem) => (
-    <article className="catalog-card" key={item.id}>
-      <div className="catalog-card-meta">
-        <span>{kindNames[item.kind] ?? item.kind}</span>
-        <span>
-          {item.languageCode.toUpperCase()} · {item.level}
+  const view = (item: CatalogItem, index = 1) => (
+    <article
+      className={`catalog-card ${shareToken ? "shared-catalog-card" : ""}`}
+      key={item.id}
+    >
+      {!shareToken && (
+        <span className="catalog-route-marker" data-trail-anchor aria-hidden="true">
+          {String(index).padStart(2, "0")}
         </span>
-        {canManageContent && (
-          <span className={`catalog-status ${item.status}`}>
-            {item.status === "published" ? "Опубликовано" : "Черновик"}
+      )}
+      <div className="catalog-card-main">
+        <div className="catalog-card-meta">
+          <span>{kindNames[item.kind] ?? item.kind}</span>
+          <span>
+            {item.languageCode.toUpperCase()} · {item.level}
           </span>
+          {canManageContent && !item.readOnly && (
+            <span className={`catalog-status ${item.status}`}>
+              {item.status === "published" ? "Опубликовано" : "Черновик"}
+            </span>
+          )}
+        </div>
+        <h2>{catalogTitle(item)}</h2>
+        {item.topic && item.kind !== "module" && <p className="catalog-topic">{item.topic}</p>}
+        {item.kind === "module" ? (
+          <ModuleSummary body={item.body} />
+        ) : (
+          <ContentSummary body={item.body} />
+        )}
+        {canManageContent && !item.readOnly && (
+          <div className="catalog-actions">
+            <button className="secondary-button compact" onClick={() => startEdit(item)}>
+              Изменить
+            </button>
+            {item.status === "draft" && (
+              <button
+                className="primary-button compact"
+                disabled={working}
+                onClick={() => {
+                  void save(item, "published");
+                }}
+              >
+                Опубликовать
+              </button>
+            )}
+            {item.status === "published" && (
+              <button
+                className="secondary-button compact"
+                disabled={working}
+                onClick={() => void createShare(item)}
+              >
+                Ссылка на 7 дней · 3 просмотра
+              </button>
+            )}
+            <button
+              className="text-danger"
+              disabled={working}
+              onClick={() => void archive(item)}
+            >
+              Архивировать
+            </button>
+          </div>
         )}
       </div>
-      <h2>{item.title}</h2>
-      {item.topic && <p className="catalog-topic">{item.topic}</p>}
-      <ContentSummary body={item.body} />
-      {canManageContent && (
-        <div className="catalog-actions">
-          <button className="secondary-button compact" onClick={() => startEdit(item)}>
-            Изменить
-          </button>
-          {item.status === "draft" && (
-            <button
-              className="primary-button compact"
-              disabled={working}
-              onClick={() => {
-                void save(item, "published");
-              }}
-            >
-              Опубликовать
-            </button>
-          )}
-          {item.status === "published" && (
-            <button
-              className="secondary-button compact"
-              disabled={working}
-              onClick={() => void createShare(item)}
-            >
-              Ссылка на 7 дней · 3 просмотра
-            </button>
-          )}
-          <button className="text-danger" disabled={working} onClick={() => void archive(item)}>
-            Архивировать
-          </button>
-        </div>
-      )}
     </article>
   );
   if (shareToken)
@@ -376,7 +575,7 @@ export function CatalogScreen({
       <div className="page-heading">
         <img
           className="catalog-heading-mascot"
-          src="/mascots/mascot-5.png"
+          src="/mascots/5.webp"
           alt=""
           aria-hidden="true"
         />
@@ -577,15 +776,40 @@ export function CatalogScreen({
       )}
       {loading ? (
         <p className="empty-inline">Загружаем каталог…</p>
-      ) : items.length ? (
-        <div className="catalog-grid">{items.map(view)}</div>
+      ) : sections.length ? (
+        <div className="catalog-path-sections">
+          {sections.map((section, sectionIndex) => (
+            <details
+              className="catalog-path-section"
+              key={section.title}
+              open={sectionIndex === 0}
+            >
+              <summary className="catalog-path-heading">
+                <span className="catalog-section-number">
+                  {String(sectionIndex + 1).padStart(2, "0")}
+                </span>
+                <span className="catalog-section-copy">
+                  <strong>{section.title}</strong>
+                  <small>
+                    {section.items.length} {section.items.length === 1 ? "материал" : "материала"}
+                  </small>
+                </span>
+                <span className="catalog-section-toggle" aria-hidden="true">⌄</span>
+              </summary>
+              <LearningTrail className="catalog-route-list">
+                {section.items.map((item, index) => (
+                  <div className="catalog-route-step" key={item.id}>
+                    {view(item, index + 1)}
+                  </div>
+                ))}
+              </LearningTrail>
+            </details>
+          ))}
+        </div>
       ) : (
         <div className="empty-state">
           <h2>Пока нет материалов для этого языка и уровня</h2>
-          <p>
-            Здесь появятся публикации администратора. Ваши карточки и курс продолжают работать
-            отдельно.
-          </p>
+          <p>Здесь появятся общие публикации для выбранного языка.</p>
         </div>
       )}
     </div>
@@ -601,9 +825,24 @@ function ContentSummary({ body }: { body: Record<string, unknown> }) {
         : "";
   const estimated = Number(body.estimated_seconds);
   const steps = Array.isArray(body.steps) ? body.steps : [];
+  const cards = Array.isArray(body.cards) ? body.cards : [];
   return (
     <div className="catalog-summary">
       {description && <p>{description}</p>}
+      {cards.length > 0 && (
+        <div className="catalog-word-preview">
+          <strong>{cards.length} слов</strong>
+          {cards.slice(0, 4).map((value, index) => {
+            const card = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+            return (
+              <span key={`${String(card.word ?? "word")}-${index}`}>
+                {card.article ? `${String(card.article)} ` : ""}{String(card.word ?? "")}
+                {card.translation ? ` · ${String(card.translation)}` : ""}
+              </span>
+            );
+          })}
+        </div>
+      )}
       {Array.isArray(body.objectives) && (
         <ul>
           {body.objectives.slice(0, 5).map((item, index) => (
@@ -614,6 +853,33 @@ function ContentSummary({ body }: { body: Record<string, unknown> }) {
       {steps.length > 0 && <p>{steps.length} шагов</p>}
       {Number.isFinite(estimated) && estimated > 0 && (
         <small>Около {Math.max(1, Math.round(estimated / 60))} мин</small>
+      )}
+    </div>
+  );
+}
+
+function ModuleSummary({ body }: { body: Record<string, unknown> }) {
+  const cards = Array.isArray(body.cards) ? body.cards : [];
+  const examples = cards.slice(0, 3).map((value) =>
+    value && typeof value === "object" ? (value as Record<string, unknown>) : {},
+  );
+  const estimated = Number(body.estimated_seconds);
+  return (
+    <div className="catalog-module-summary">
+      <div className="catalog-module-summary-heading">
+        <strong>{cards.length} слов</strong>
+        <span>Лексика · немецкий → русский</span>
+      </div>
+      <div className="catalog-module-examples">
+        {examples.map((card, index) => (
+          <span key={`${String(card.word ?? "word")}-${index}`}>
+            <b>{card.article ? `${String(card.article)} ` : ""}{String(card.word ?? "")}</b>
+            <i>{String(card.translation ?? "")}</i>
+          </span>
+        ))}
+      </div>
+      {Number.isFinite(estimated) && estimated > 0 && (
+        <small>Запоминание и произношение · около {Math.max(1, Math.round(estimated / 60))} мин</small>
       )}
     </div>
   );

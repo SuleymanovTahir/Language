@@ -1,5 +1,6 @@
 import { auth } from "../src/lib/auth.ts";
 import * as activities from "../src/server/api/activities/start.ts";
+import * as activityAnswers from "../src/server/api/activities/answer.ts";
 
 async function requestAtPath(request: Request, path: string) {
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
@@ -30,6 +31,13 @@ async function dispatch(request: Request) {
   if (path === "activities/start") {
     if (request.method === "GET") return activities.GET(forwarded);
     if (request.method === "POST") return activities.POST(forwarded);
+    return Response.json(
+      { error: "Method not allowed." },
+      { status: 405, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  if (path === "activities/answer") {
+    if (request.method === "POST") return activityAnswers.POST(forwarded);
     return Response.json(
       { error: "Method not allowed." },
       { status: 405, headers: { "Cache-Control": "no-store" } },

@@ -237,9 +237,6 @@ export async function POST(request: Request) {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('linguaplay-gemini-user:' || $1))", [
       userId,
     ]);
-    await client.query(
-      "UPDATE linguaplay_ai_assessments SET result=NULL WHERE created_at < now() - interval '24 hours' AND result IS NOT NULL",
-    );
     const previous = await client.query(
       "SELECT id,request_hash,status,result FROM linguaplay_ai_assessments WHERE user_id=$1 AND operation=$2 AND idempotency_key=$3",
       [userId, operation, idempotencyKey],

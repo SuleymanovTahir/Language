@@ -30,6 +30,20 @@ type AdminUser = AccountUser & {
 };
 type UserResponse = {
   users: AdminUser[];
+  subscriptions: Array<{
+    id: string;
+    account_id: string;
+    name: string;
+    email: string;
+    plan_name: string;
+    status: string;
+    amount_minor: number;
+    currency: string;
+    period_start: string;
+    period_end: string;
+    cancel_at_period_end: boolean;
+    provider: string;
+  }>;
   active: Array<{
     user_id: string;
     activity_title: string;
@@ -57,9 +71,17 @@ async function adminRequest(body: Record<string, unknown>, method = "PATCH", suf
     body: JSON.stringify(body),
     cache: "no-store",
   });
-  const result = (await response.json()) as { error?: string };
+  const result = await readAdminJson<{ error?: string }>(response);
   if (!response.ok) throw new Error(result.error || "Не удалось сохранить изменения.");
   return result;
+}
+async function readAdminJson<T extends { error?: string }>(response: Response): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    if (!response.ok) throw new Error(`Сервер админки недоступен (HTTP ${response.status}).`);
+    throw new Error("Сервер админки вернул некорректный ответ.");
+  }
 }
 function fmtDate(value: string | null | undefined) {
   return value
@@ -95,7 +117,7 @@ export function AdminUsersScreen({
     setError("");
     void fetch("/api/admin", { credentials: "include", cache: "no-store" })
       .then(async (response) => {
-        const result = (await response.json()) as UserResponse;
+        const result = await readAdminJson<UserResponse>(response);
         if (!response.ok) throw new Error(result.error || "Не удалось загрузить пользователей.");
         if (alive) setData(result);
       })
@@ -262,6 +284,28 @@ export function AdminUsersScreen({
           </div>
         ) : (
           <small>Активных занятий нет.</small>
+        )}
+      </section>
+      <section className="admin-live-summary admin-subscriptions-summary">
+        <div>
+          <h2>Подписки и продления</h2>
+          <p>Кому выдан PRO, сколько стоит и за какой период.</p>
+        </div>
+        {data?.subscriptions.length ? (
+          <div className="admin-active-cards">
+            {data.subscriptions.map((item) => (
+              <article key={item.id}>
+                <strong>{item.name || item.email}</strong>
+                <span>{item.email} · {item.plan_name} · {item.amount_minor / 100} {item.currency}</span>
+                <small>
+                  {fmtDate(item.period_start)} — {fmtDate(item.period_end)} · {item.status}
+                  {item.cancel_at_period_end ? " · продление отключено" : " · продление включено"}
+                </small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <small>Подписок пока нет. Новые периоды появятся здесь после подключения оплаты.</small>
         )}
       </section>
     </div>
@@ -768,10 +812,113 @@ type AnalyticsData = {
     dormant_users: number;
     active_users_7d: number;
     total_users: number;
+    dau: number;
+    wau: number;
+    mau: number;
+    guests_30d: number;
+    active_users_previous_30d: number;
+    retained_users_30d: number;
+    churned_users_30d: number;
+    user_churn_rate_30d: number;
+    returning_guests_30d: number;
+    churned_guests_30d: number;
+    guest_churn_rate_30d: number;
+    stickiness: number;
+    feedback_count: number;
+    feedback_average: number | null;
   };
   actions: Array<{ action: string; route: string; clicks: number }>;
   pages: Array<{ route: string; views: number; users: number }>;
-  recent: Array<{ id: number; name: string; route: string; action: string; created_at: string }>;
+  recent: Array<{
+    id: number;
+    name: string;
+    email?: string | null;
+    route: string;
+    action: string;
+    created_at: string;
+    country?: string | null;
+    region?: string | null;
+    device_type?: string | null;
+  }>;
+  feedback: Array<{
+    id: number;
+    rating: number;
+    choice: string | null;
+    text: string | null;
+    created_at: string;
+    country: string | null;
+    region: string | null;
+    ip_hash: string | null;
+    visitor_id: string | null;
+    email: string | null;
+    author: string;
+    metadata: { deviceType?: string; browser?: string; os?: string; locale?: string };
+  }>;
+  actors: Array<{
+    id: number;
+    user_id: string | null;
+    name: string | null;
+    email: string | null;
+    visitor_id: string | null;
+    event_type: string;
+    route: string | null;
+    action: string | null;
+    activity: string | null;
+    country: string | null;
+    region: string | null;
+    ip_hash: string | null;
+    device_type: string | null;
+    browser: string | null;
+    os: string | null;
+    locale: string | null;
+    referrer_host: string | null;
+    payload: Record<string, unknown>;
+    created_at: string;
+    author: string;
+  }>;
+  devices: Array<{
+    device_type: string | null;
+    browser: string | null;
+    os: string | null;
+    events: number;
+    people: number;
+  }>;
+  locations: Array<{
+    country: string | null;
+    region: string | null;
+    events: number;
+    people: number;
+  }>;
+  retention: Array<{
+    cohort_week: string;
+    cohort_size: number;
+    activation_eligible: number;
+    activated_7d: number;
+    d1_eligible: number;
+    d1_retained: number;
+    d7_eligible: number;
+    d7_retained: number;
+    d30_eligible: number;
+    d30_retained: number;
+  }>;
+  commerce: {
+    by_currency: Array<{
+      currency: string;
+      gross_minor: number | string;
+      gross_30d_minor: number | string | null;
+      successful_payments: number;
+      paying_customers: number;
+      ltv_minor: number | string | null;
+    }>;
+    mrr_by_currency: Array<{ currency: string; mrr_minor: number | string }>;
+    active_subscriptions: number;
+    cancellations_30d: number;
+    past_due_subscriptions: number;
+    paying_accounts: number;
+    failed_payments_30d: number;
+    total_accounts: number;
+  };
+  snapshots: Array<{ snapshot_day: string; metrics: Record<string, unknown> }>;
   learning: Array<{
     language_code: string;
     level: string;
@@ -806,7 +953,7 @@ export function AdminAnalyticsScreen() {
     setError("");
     void fetch("/api/admin?view=analytics", { credentials: "include", cache: "no-store" })
       .then(async (response) => {
-        const result = (await response.json()) as AnalyticsData;
+        const result = await readAdminJson<AnalyticsData>(response);
         if (!response.ok) throw new Error(result.error || "Не удалось загрузить аналитику.");
         if (alive) setData(result);
       })
@@ -878,6 +1025,56 @@ export function AdminAnalyticsScreen() {
                 <span>Неактивны 14+ дней</span>
                 <strong>{data.summary?.dormant_users ?? 0}</strong>
                 <small>нуждаются во внимании</small>
+              </article>
+              <article>
+                <span>DAU</span>
+                <strong>{data.summary?.dau ?? 0}</strong>
+                <small>уникальных сегодня · UTC</small>
+              </article>
+              <article className="pro">
+                <span>MAU</span>
+                <strong>{data.summary?.mau ?? 0}</strong>
+                <small>за последние 30 дней</small>
+              </article>
+              <article>
+                <span>WAU</span>
+                <strong>{data.summary?.wau ?? 0}</strong>
+                <small>за последние 7 дней</small>
+              </article>
+              <article className="pro">
+                <span>Липкость DAU/MAU</span>
+                <strong>{data.summary?.stickiness ?? 0}%</strong>
+                <small>доля дневной аудитории</small>
+              </article>
+              <article className="muted">
+                <span>Отток аккаунтов</span>
+                <strong>{data.summary?.user_churn_rate_30d ?? 0}%</strong>
+                <small>{data.summary?.churned_users_30d ?? 0} из активных месяц назад</small>
+              </article>
+              <article>
+                <span>Возвращаются гости</span>
+                <strong>{data.summary?.returning_guests_30d ?? 0}</strong>
+                <small>за последние 30 дней</small>
+              </article>
+              <article className="muted">
+                <span>Отток гостей</span>
+                <strong>{data.summary?.guest_churn_rate_30d ?? 0}%</strong>
+                <small>{data.summary?.churned_guests_30d ?? 0} гостей</small>
+              </article>
+              <article>
+                <span>Гости</span>
+                <strong>{data.summary?.guests_30d ?? 0}</strong>
+                <small>уникальных за 30 дней</small>
+              </article>
+              <article>
+                <span>Активные подписки</span>
+                <strong>{data.commerce?.active_subscriptions ?? 0}</strong>
+                <small>тарифы с доступом на сегодня</small>
+              </article>
+              <article className="muted">
+                <span>Отзывы</span>
+                <strong>{data.summary?.feedback_count ?? 0}</strong>
+                <small>средняя оценка {data.summary?.feedback_average ?? "—"} / 5</small>
               </article>
             </div>
             <section className="analytics-panel">
@@ -1065,6 +1262,130 @@ export function AdminAnalyticsScreen() {
                 )}
               </section>
             </div>
+            <div className="analytics-two-column">
+              <section className="analytics-panel">
+                <div className="analytics-panel-heading">
+                  <div>
+                    <h2>Устройства</h2>
+                    <p>Сегменты посетителей за последние 30 дней.</p>
+                  </div>
+                </div>
+                {data.devices.length ? (
+                  <div className="analytics-row-list">
+                    {data.devices.map((item, index) => (
+                      <article key={`${item.device_type}-${item.browser}-${item.os}-${index}`}>
+                        <strong>{item.device_type ?? "Неизвестное устройство"}</strong>
+                        <span>{item.people} посетителей</span>
+                        <small>{item.browser ?? "браузер неизвестен"} · {item.os ?? "OS неизвестна"} · {item.events} событий</small>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="admin-analytics-empty">Данные появятся после согласия на аналитику.</p>
+                )}
+              </section>
+              <section className="analytics-panel">
+                <div className="analytics-panel-heading">
+                  <div>
+                    <h2>Локации</h2>
+                    <p>Приблизительное местоположение по заголовкам платформы.</p>
+                  </div>
+                </div>
+                {data.locations.length ? (
+                  <div className="analytics-row-list">
+                    {data.locations.map((item, index) => (
+                      <article key={`${item.country}-${item.region}-${index}`}>
+                        <strong>{[item.region, item.country].filter(Boolean).join(", ") || "Не определена"}</strong>
+                        <span>{item.people} посетителей</span>
+                        <small>{item.events} событий</small>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="admin-analytics-empty">Пока нет данных о регионах.</p>
+                )}
+              </section>
+            </div>
+            <div className="analytics-two-column">
+              <section className="analytics-panel">
+                <div className="analytics-panel-heading">
+                  <div>
+                    <h2>Когортное удержание</h2>
+                    <p>Возврат в точный день после регистрации; только созревшие когорты.</p>
+                  </div>
+                  <span>вся история</span>
+                </div>
+                {data.retention.length ? (
+                  <div className="analytics-row-list">
+                    {data.retention.map((item) => (
+                      <article key={item.cohort_week}>
+                        <strong>
+                          Неделя с {new Date(item.cohort_week).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                        </strong>
+                        <span>{item.cohort_size} регистраций</span>
+                        <small>
+                          Активация 7д {retentionRate(item.activated_7d, item.activation_eligible)} · D1 {retentionRate(item.d1_retained, item.d1_eligible)} · D7 {retentionRate(item.d7_retained, item.d7_eligible)} · D30 {retentionRate(item.d30_retained, item.d30_eligible)}
+                        </small>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="admin-analytics-empty">Когорты появятся после регистрации и согласованных событий активности.</p>
+                )}
+              </section>
+              <section className="analytics-panel">
+                <div className="analytics-panel-heading">
+                  <div>
+                    <h2>Выручка и LTV</h2>
+                    <p>LTV — фактическая выручка на платящего клиента, отдельно по валютам.</p>
+                  </div>
+                </div>
+                <div className="analytics-row-list">
+                  <article><strong>Платящие аккаунты</strong><span>{data.commerce.paying_accounts}</span><small>конверсия от регистраций {percentage(data.commerce.paying_accounts, data.commerce.total_accounts)}</small></article>
+                  <article><strong>Активные подписки</strong><span>{data.commerce.active_subscriptions}</span><small>{data.commerce.cancellations_30d} отмен за 30 дней · {data.commerce.past_due_subscriptions} просрочены</small></article>
+                  <article><strong>Неуспешные платежи</strong><span>{data.commerce.failed_payments_30d}</span><small>за последние 30 дней</small></article>
+                  {data.commerce.by_currency.map((item) => (
+                    <article key={item.currency}>
+                      <strong>{item.currency} · {formatMinorMoney(item.gross_minor, item.currency)} всего</strong>
+                      <span>LTV {formatMinorMoney(item.ltv_minor, item.currency)}</span>
+                      <small>{item.paying_customers} клиентов · {item.successful_payments} платежей · {formatMinorMoney(item.gross_30d_minor, item.currency)} за 30 дней</small>
+                    </article>
+                  ))}
+                  {data.commerce.mrr_by_currency.map((item) => (
+                    <article key={`mrr-${item.currency}`}>
+                      <strong>MRR · {item.currency}</strong>
+                      <span>{formatMinorMoney(item.mrr_minor, item.currency)}</span>
+                      <small>месячный эквивалент действующих подписок</small>
+                    </article>
+                  ))}
+                </div>
+                {!data.commerce.by_currency.length && (
+                  <p className="admin-analytics-empty">Подтверждённых платежей пока нет. Checkout сейчас отключён, поэтому фактический LTV появится после подключения оплаты.</p>
+                )}
+              </section>
+            </div>
+            <section className="analytics-panel">
+              <div className="analytics-panel-heading">
+                <div>
+                  <h2>История метрик по дням</h2>
+                  <p>Ежедневные снимки DAU, WAU, MAU, оттока, подписок и выручки сохраняются без срока удаления.</p>
+                </div>
+                <span>{data.snapshots.length} дней</span>
+              </div>
+              {data.snapshots.length ? (
+                <div className="analytics-row-list">
+                  {data.snapshots.map((item) => (
+                    <article key={item.snapshot_day}>
+                      <strong>{new Date(item.snapshot_day).toLocaleDateString("ru-RU", { dateStyle: "medium" })}</strong>
+                      <span>DAU {metricNumber(item.metrics, "dau")} · WAU {metricNumber(item.metrics, "wau")} · MAU {metricNumber(item.metrics, "mau")}</span>
+                      <small>Отток {metricNumber(item.metrics, "user_churn_rate_30d")}% ({metricNumber(item.metrics, "churned_users_30d")} аккаунтов) · подписки: {metricNumber(item.metrics, "active_subscriptions")} · MRR: {snapshotMrr(item.metrics)} · платящие: {snapshotRevenueCustomers(item.metrics)} · выручка 30д: {snapshotMoney(item.metrics, "gross_30d_minor")} · LTV: {snapshotMoney(item.metrics, "ltv_minor")}</small>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="admin-analytics-empty">Первый полный дневной снимок появится после ночного запуска расписания.</p>
+              )}
+            </section>
             <section className="analytics-panel">
               <div className="analytics-panel-heading">
                 <div>
@@ -1097,6 +1418,94 @@ export function AdminAnalyticsScreen() {
                 <p className="admin-analytics-empty">
                   Показатели появятся после нескольких игровых сессий.
                 </p>
+              )}
+            </section>
+            <section className="analytics-panel">
+              <div className="analytics-panel-heading">
+                <div>
+                  <h2>Отзывы</h2>
+                  <p>Автор, оценка, текст, дата, устройство и примерная локация.</p>
+                </div>
+                <span>{data.feedback.length} последних</span>
+              </div>
+              {data.feedback.length ? (
+                <div className="analytics-row-list analytics-feedback-list">
+                  {data.feedback.map((item) => (
+                    <article key={item.id}>
+                      <strong>{item.author}</strong>
+                      <span aria-label={`${item.rating} из 5`}>
+                        {"★".repeat(item.rating)}{"☆".repeat(5 - item.rating)}
+                      </span>
+                      <small>
+                        {item.email ||
+                          (item.visitor_id
+                            ? `ID гостя ${item.visitor_id.slice(0, 12)}`
+                            : "Аккаунт")}
+                        {item.country || item.region
+                          ? ` · ${[item.region, item.country].filter(Boolean).join(", ")}`
+                          : " · регион недоступен"}
+                        {item.metadata?.deviceType
+                          ? ` · ${item.metadata.deviceType}, ${item.metadata.browser ?? "браузер"}, ${item.metadata.os ?? "OS"}`
+                          : ""}
+                        {item.ip_hash ? ` · IP-хэш ${item.ip_hash.slice(0, 12)}` : ""}
+                        {` · ${fmtDate(item.created_at)}`}
+                      </small>
+                      {item.choice && <em>{item.choice}</em>}
+                      {item.text && <p>{item.text}</p>}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="admin-analytics-empty">Отзывов пока нет.</p>
+              )}
+            </section>
+            <section className="analytics-panel">
+              <div className="analytics-panel-heading">
+                <div>
+                  <h2>Посетители и события</h2>
+                  <p>Последние события с автором, временем, устройством и локацией.</p>
+                </div>
+                <span>{data.actors.length} последних</span>
+              </div>
+              {data.actors.length ? (
+                <div className="analytics-row-list analytics-feedback-list">
+                  {data.actors.map((item) => (
+                    <article key={`${item.id}-${item.created_at}`}>
+                      <strong>{item.author}</strong>
+                      <span>{analyticsEventName(item.event_type)}</span>
+                      <small>
+                        {item.email ||
+                          (item.visitor_id ? `ID гостя ${item.visitor_id}` : "")}
+                        {item.country || item.region
+                          ? ` · ${[item.region, item.country].filter(Boolean).join(", ")}`
+                          : " · регион недоступен"}
+                        {item.ip_hash ? ` · IP-хэш ${item.ip_hash}` : ""}
+                        {item.device_type
+                          ? ` · ${item.device_type}, ${item.browser ?? "браузер"}, ${item.os ?? "OS"}`
+                          : ""}
+                        {item.locale ? ` · ${item.locale}` : ""}
+                        {item.referrer_host ? ` · источник ${item.referrer_host}` : ""}
+                        {` · ${fmtDate(item.created_at)}`}
+                      </small>
+                      <p>
+                        {item.action
+                          ? `${actionName(item.action)} · `
+                          : item.activity
+                            ? `${item.activity} · `
+                            : ""}
+                        {routeName(item.route)}
+                        {item.payload?.skill ? ` · ${String(item.payload.skill)}` : ""}
+                        {typeof item.payload?.correct === "boolean"
+                          ? item.payload.correct
+                            ? " · верно"
+                            : " · ошибка"
+                          : ""}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="admin-analytics-empty">События появятся после согласия на аналитику.</p>
               )}
             </section>
             <div className="analytics-two-column">
@@ -1136,7 +1545,12 @@ export function AdminAnalyticsScreen() {
                         <strong>{item.name}</strong>
                         <span>{actionName(item.action)}</span>
                         <small>
+                          {item.email ? `${item.email} · ` : ""}
                           {routeName(item.route)} · {fmtDate(item.created_at)}
+                          {(item.country || item.region)
+                            ? ` · ${[item.region, item.country].filter(Boolean).join(", ")}`
+                            : ""}
+                          {item.device_type ? ` · ${item.device_type}` : ""}
                         </small>
                       </article>
                     ))}
@@ -1169,6 +1583,92 @@ function routeName(route: string | null) {
     )[route ?? ""] ?? "Раздел"
   );
 }
+
+function analyticsEventName(type: string) {
+  return (
+    ({
+      "page-view": "Просмотр",
+      "target-action": "Клик",
+      "game-start": "Начало игры",
+      "game-answer": "Ответ в игре",
+      "game-skip": "Пропуск в игре",
+      "game-progress": "Ход игры",
+      "game-complete": "Игра завершена",
+      "practice-start": "Начало упражнения",
+      "practice-answer": "Ответ в упражнении",
+      "practice-progress": "Ход упражнения",
+      "practice-complete": "Упражнение завершено",
+      "study-answer": "Ответ в обучении",
+    } as Record<string, string>)[type] ?? type
+  );
+}
+
+function retentionRate(retained: number, eligible: number) {
+  if (!eligible) return "—";
+  return `${Math.round((retained / eligible) * 1000) / 10}% (${retained}/${eligible})`;
+}
+
+function percentage(value: number, total: number) {
+  if (!total) return "—";
+  return `${Math.round((value / total) * 1000) / 10}%`;
+}
+
+function formatMinorMoney(value: number | string | null, currency: string) {
+  const minor = Number(value);
+  if (!Number.isFinite(minor)) return "—";
+  try {
+    const currencyFormatter = new Intl.NumberFormat("en", {
+      style: "currency",
+      currency,
+    });
+    const digits = currencyFormatter.resolvedOptions().maximumFractionDigits ?? 2;
+    return new Intl.NumberFormat("ru-RU", { style: "currency", currency }).format(
+      minor / 10 ** digits,
+    );
+  } catch {
+    return `${(minor / 100).toFixed(2)} ${currency}`;
+  }
+}
+
+function metricNumber(metrics: Record<string, unknown>, key: string) {
+  const value = Number(metrics[key]);
+  return Number.isFinite(value) ? value.toLocaleString("ru-RU") : "—";
+}
+
+function snapshotRevenueCustomers(metrics: Record<string, unknown>) {
+  const breakdown = metrics.revenue_by_currency;
+  if (!Array.isArray(breakdown)) return "—";
+  return breakdown.reduce((sum, row) => {
+    if (!row || typeof row !== "object") return sum;
+    const count = Number((row as Record<string, unknown>).paying_customers);
+    return sum + (Number.isFinite(count) ? count : 0);
+  }, 0);
+}
+
+function snapshotMoney(metrics: Record<string, unknown>, key: "gross_30d_minor" | "ltv_minor") {
+  const breakdown = metrics.revenue_by_currency;
+  if (!Array.isArray(breakdown)) return "—";
+  const values = breakdown.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const item = row as Record<string, unknown>;
+    if (typeof item.currency !== "string" || item[key] == null) return [];
+    return [`${item.currency} ${formatMinorMoney(item[key] as number | string, item.currency)}`];
+  });
+  return values.length ? values.join(" · ") : "—";
+}
+
+function snapshotMrr(metrics: Record<string, unknown>) {
+  const breakdown = metrics.mrr_by_currency;
+  if (!Array.isArray(breakdown)) return "—";
+  const values = breakdown.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const item = row as Record<string, unknown>;
+    if (typeof item.currency !== "string" || item.mrr_minor == null) return [];
+    return [`${item.currency} ${formatMinorMoney(item.mrr_minor as number | string, item.currency)}`];
+  });
+  return values.length ? values.join(" · ") : "—";
+}
+
 function actionName(action: string | null) {
   return (
     (

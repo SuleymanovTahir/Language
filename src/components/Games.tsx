@@ -466,7 +466,7 @@ function GameArtwork({ gameId, module }: { gameId: GameId; module: VocabModule }
         : 5;
   return (
     <span className={`game-tile-art art-${gameId}`} aria-hidden="true">
-      <img className="game-art-mascot" src={`/mascots/mascot-${mascotNumber}.png`} alt="" />
+      <img className="game-art-mascot" src={`/mascots/${mascotNumber}.webp`} alt="" />
       <span className="gp-scene">{art}</span>
     </span>
   );
@@ -523,6 +523,15 @@ export function GameHub({
     "all" | "words" | "listening" | "writing" | "grammar"
   >("all");
   const [hashRoute, setHashRoute] = useState(() => window.location.hash);
+  useEffect(() => {
+    const syncHash = () => setHashRoute(window.location.hash);
+    window.addEventListener("hashchange", syncHash);
+    window.addEventListener("popstate", syncHash);
+    return () => {
+      window.removeEventListener("hashchange", syncHash);
+      window.removeEventListener("popstate", syncHash);
+    };
+  }, []);
   const [activities, setActivities] = useState<SavedActivity[]>(() => {
     try {
       const saved = JSON.parse(readProfileItem("linguaplay-saved-activities") || "[]");
@@ -1004,6 +1013,8 @@ export function GameHub({
         setNotice("Сохранённая игра не найдена. Вернитесь в список игр и выберите другую.");
         return;
       }
+      window.history.replaceState(window.history.state, "", "#/games");
+      setHashRoute("#/games");
       runActivity(activity);
     } else if (grammarId) {
       const topic =
@@ -1052,6 +1063,8 @@ export function GameHub({
         return;
       }
       setModuleId(targetModule.id);
+      window.history.replaceState(window.history.state, "", "#/games");
+      setHashRoute("#/games");
       onStart(
         templateId,
         prepared,
@@ -1177,7 +1190,7 @@ export function GameHub({
       <div className="page-heading">
         <img
           className="games-heading-mascot"
-          src="/mascots/mascot-3.png"
+          src="/mascots/3.webp"
           alt=""
           aria-hidden="true"
         />

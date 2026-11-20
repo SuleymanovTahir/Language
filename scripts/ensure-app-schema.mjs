@@ -3,10 +3,7 @@ import pg from "pg";
 const { Pool } = pg;
 if (!process.env.DATABASE_URL)
   throw new Error("DATABASE_URL is required to prepare the application schema.");
-const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 5);
-const energyCap = Number.isInteger(configuredEnergyCap)
-  ? Math.max(1, Math.min(22, configuredEnergyCap))
-  : 5;
+const energyCap = 22;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -107,7 +104,8 @@ try {
     );
     CREATE TABLE IF NOT EXISTS linguaplay_energy_accounts (
       user_id text PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
-      energy integer NOT NULL DEFAULT 5 CHECK (energy BETWEEN 0 AND 22),
+      energy integer NOT NULL DEFAULT 22 CHECK (energy BETWEEN 0 AND 22),
+      energy_cap_version integer NOT NULL DEFAULT 2,
       next_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -270,7 +268,13 @@ try {
     );
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS next_at_after timestamptz;
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS is_pro boolean NOT NULL DEFAULT false;
-    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 5;
+    ALTER TABLE linguaplay_energy_accounts ADD COLUMN IF NOT EXISTS energy_cap_version integer NOT NULL DEFAULT 1;
+    UPDATE linguaplay_energy_accounts
+      SET energy=LEAST(22,GREATEST(0,round(energy::numeric * 22 / 5)::integer)),
+          next_at=CASE WHEN energy >= 5 THEN NULL ELSE next_at END,
+          energy_cap_version=2,updated_at=now()
+      WHERE energy_cap_version < 2;
+    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 22;
     CREATE INDEX IF NOT EXISTS linguaplay_energy_ledger_user_time_idx ON linguaplay_energy_ledger(user_id,created_at DESC);
   `);
 
@@ -281,9 +285,8 @@ try {
   );
   await pool.query(
     `INSERT INTO linguaplay_energy_ledger(user_id,amount,balance_after,next_at_after,reason,idempotency_key)
-      SELECT user_id,$1,$1,NULL,'Initial account energy','initial-account-v1' FROM linguaplay_energy_accounts
+      SELECT user_id,energy,energy,next_at,'Initial account energy','initial-account-v1' FROM linguaplay_energy_accounts
       ON CONFLICT(user_id,idempotency_key) DO NOTHING`,
-    [energyCap],
   );
   await pool.query(
     `UPDATE linguaplay_user_data
@@ -344,7 +347,8 @@ try {
       );
   }
 
-  const primaryOwnerEmail = process.env.LINGUAPLAY_OWNER_EMAIL?.trim();
+  const primaryOwnerEmail =
+    process.env.LINGUAPLAY_OWNER_EMAIL?.trim() || "suleymanov.takhir@gmail.com";
   await pool.query(
     `
     INSERT INTO linguaplay_user_roles (user_id, role)

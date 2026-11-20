@@ -505,8 +505,7 @@
     max-height: 52dvh;
   }
   .tutor-panel textarea,
-  .micro-survey textarea,
-  .micro-survey select {
+  .micro-survey textarea {
     font-size: 16px;
   }
 }

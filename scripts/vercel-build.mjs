@@ -1,5 +1,14 @@
 import { spawnSync } from "node:child_process";
 
+const projectOwnerEmail = "suleymanov.takhir@gmail.com";
+if (
+  process.env.LINGUAPLAY_OWNER_EMAIL &&
+  process.env.LINGUAPLAY_OWNER_EMAIL.trim().toLowerCase() !== projectOwnerEmail
+) {
+  throw new Error(`LINGUAPLAY_OWNER_EMAIL must be ${projectOwnerEmail} for this project.`);
+}
+process.env.LINGUAPLAY_OWNER_EMAIL = projectOwnerEmail;
+
 function run(command, args) {
   const result = spawnSync(command, args, { stdio: "inherit", env: process.env });
   if (result.error) throw result.error;

@@ -10,6 +10,7 @@ const profileKeys = new Set([
   "linguaplay-active-space",
   "linguaplay-audio-quizzes",
   "linguaplay-card-progress",
+  "linguaplay-course-missions",
   "linguaplay-confusion-pairs",
   "linguaplay-confusions-by-space",
   "linguaplay-custom-grammar",

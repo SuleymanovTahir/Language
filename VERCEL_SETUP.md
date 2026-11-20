@@ -24,7 +24,7 @@ npx vercel link --yes --scope suleymanovtahirs-projects --project language
 - `BETTER_AUTH_URL` — `https://language-iota-two.vercel.app`.
 - `BETTER_AUTH_SECRET` — секрет Better Auth длиной не менее 32 символов.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` — отправка подтверждений и сброса пароля. Для Gmail используйте пароль приложения, храните `SMTP_PASSWORD` как Secret.
-- `LINGUAPLAY_OWNER_EMAIL` — адрес главного владельца. Сборка назначает ему роль владельца и сохраняет остальные учётные записи в их собственных ролях.
+- `LINGUAPLAY_OWNER_EMAIL` — `suleymanov.takhir@gmail.com`, адрес владельца этого проекта. Сборка проверяет это значение перед миграциями и назначает аккаунт после подтверждения email.
 
 Не копируйте секреты в Git и не публикуйте `.env.local`. Шаблон локальных переменных находится в `.env.example`.
 

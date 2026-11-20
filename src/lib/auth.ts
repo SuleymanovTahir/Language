@@ -31,12 +31,16 @@ export const pool = new Pool({
 export async function ensureInitialAppRole(userId: string) {
   const client = await pool.connect();
   try {
-    const account = await client.query(`SELECT email FROM "user" WHERE id=$1`, [userId]);
+    const account = await client.query(`SELECT email,"emailVerified" AS verified FROM "user" WHERE id=$1`, [userId]);
     if (!account.rows[0]) return;
     const email =
       typeof account.rows[0].email === "string" ? account.rows[0].email.toLocaleLowerCase() : "";
-    const primaryOwnerEmail = process.env.LINGUAPLAY_OWNER_EMAIL?.trim().toLocaleLowerCase();
-    const isConfiguredOwner = Boolean(primaryOwnerEmail && email === primaryOwnerEmail);
+    // This account was explicitly designated as the product owner. Keep the runtime
+    // bootstrap aligned with the verified account even if a stale deployment variable remains.
+    const primaryOwnerEmail = "suleymanov.takhir@gmail.com";
+    const isConfiguredOwner = Boolean(
+      account.rows[0].verified && email === primaryOwnerEmail,
+    );
     const existing = await client.query(`SELECT role FROM linguaplay_user_roles WHERE user_id=$1`, [
       userId,
     ]);

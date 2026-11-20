@@ -1,29 +1,12 @@
 import { auth, pool } from "../src/lib/auth.ts";
 import { readLimitedRequestBody } from "../src/lib/readLimitedRequestBody.ts";
+import { ensureBillingSchema } from "../src/server/api/billingSchema.ts";
 
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
-let schemaReady: Promise<void> | null = null;
-async function ensureSchema() {
-  schemaReady ??= pool
-    .query(`CREATE TABLE IF NOT EXISTS linguaplay_plans (
-    code text PRIMARY KEY,name text NOT NULL,amount_minor integer NOT NULL CHECK(amount_minor>=0),currency text NOT NULL,
-    interval text NOT NULL CHECK(interval IN ('month','year','once')),features jsonb NOT NULL DEFAULT '{}'::jsonb,version integer NOT NULL DEFAULT 1,
-    active boolean NOT NULL DEFAULT false,provider text,provider_price_id text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
-    CREATE TABLE IF NOT EXISTS linguaplay_payments (id bigserial PRIMARY KEY,provider text NOT NULL,provider_payment_id text NOT NULL,provider_event_id text NOT NULL UNIQUE,account_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,plan_code text REFERENCES linguaplay_plans(code),amount_minor integer NOT NULL,currency text NOT NULL,status text NOT NULL,raw_event jsonb NOT NULL DEFAULT '{}'::jsonb,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),UNIQUE(provider,provider_payment_id));
-    CREATE TABLE IF NOT EXISTS linguaplay_subscriptions (id bigserial PRIMARY KEY,account_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,provider text NOT NULL,provider_subscription_id text NOT NULL UNIQUE,plan_code text NOT NULL REFERENCES linguaplay_plans(code),status text NOT NULL,period_start timestamptz NOT NULL,period_end timestamptz NOT NULL,cancel_at_period_end boolean NOT NULL DEFAULT false,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),CHECK(period_end>period_start));
-    CREATE TABLE IF NOT EXISTS linguaplay_entitlements (id bigserial PRIMARY KEY,account_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,source text NOT NULL CHECK(source IN ('subscription','manual_grant','refund')),feature text NOT NULL,starts_at timestamptz NOT NULL,ends_at timestamptz NOT NULL,status text NOT NULL CHECK(status IN ('active','inactive','revoked')),reference_id text,updated_by text REFERENCES "user"(id) ON DELETE SET NULL,reason text,created_at timestamptz NOT NULL DEFAULT now(),CHECK(ends_at>starts_at));
-    CREATE TABLE IF NOT EXISTS linguaplay_billing_audit (id bigserial PRIMARY KEY,actor_id text REFERENCES "user"(id) ON DELETE SET NULL,target_id text REFERENCES "user"(id) ON DELETE SET NULL,action text NOT NULL,old_value jsonb NOT NULL DEFAULT '{}'::jsonb,new_value jsonb NOT NULL DEFAULT '{}'::jsonb,reason text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());`)
-    .then(() => undefined)
-    .catch((error) => {
-      schemaReady = null;
-      throw error;
-    });
-  await schemaReady;
-}
 async function actor(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user?.id) return null;
@@ -48,8 +31,8 @@ function safePlan(row: Record<string, unknown>) {
 export async function GET(request: Request) {
   const user = await actor(request);
   if (!user) return json({ error: "Войдите, чтобы посмотреть тариф." }, 401);
-  await ensureSchema();
-  const [plans, manual, purchased] = await Promise.all([
+  await ensureBillingSchema();
+  const [plans, manual, purchased, subscription, payments] = await Promise.all([
     pool.query(
       `SELECT code,name,amount_minor,currency,interval,features,version,active FROM linguaplay_plans WHERE active=true OR $1::boolean ORDER BY amount_minor ASC`,
       [user.role === "owner"],
@@ -60,6 +43,18 @@ export async function GET(request: Request) {
     ),
     pool.query(
       `SELECT feature,source,starts_at,ends_at,status FROM linguaplay_entitlements WHERE account_id=$1 AND feature='pro' AND status='active' AND starts_at<=now() AND ends_at>now() ORDER BY ends_at DESC LIMIT 1`,
+      [user.id],
+    ),
+    pool.query(
+      `SELECT s.status,s.period_start,s.period_end,s.cancel_at_period_end,s.provider,p.name AS plan_name,p.amount_minor,p.currency,p.interval
+       FROM linguaplay_subscriptions s JOIN linguaplay_plans p ON p.code=s.plan_code
+       WHERE s.account_id=$1 ORDER BY s.period_end DESC LIMIT 1`,
+      [user.id],
+    ),
+    pool.query(
+      `SELECT p.id::text,p.amount_minor,p.currency,p.status,p.created_at,p.provider,p.plan_code,pl.name AS plan_name
+       FROM linguaplay_payments p LEFT JOIN linguaplay_plans pl ON pl.code=p.plan_code
+       WHERE p.account_id=$1 ORDER BY p.created_at DESC LIMIT 10`,
       [user.id],
     ),
   ]);
@@ -81,8 +76,31 @@ export async function GET(request: Request) {
       endsAt,
       source: newGrant?.source ?? (active ? "manual_grant" : null),
     },
+    currentSubscription: subscription.rows[0]
+      ? {
+          status: subscription.rows[0].status,
+          periodStart: subscription.rows[0].period_start,
+          periodEnd: subscription.rows[0].period_end,
+          cancelAtPeriodEnd: subscription.rows[0].cancel_at_period_end,
+          provider: subscription.rows[0].provider,
+          planName: subscription.rows[0].plan_name,
+          amountMinor: subscription.rows[0].amount_minor,
+          currency: subscription.rows[0].currency,
+          interval: subscription.rows[0].interval,
+        }
+      : null,
+    payments: payments.rows.map((row) => ({
+      id: row.id,
+      amountMinor: row.amount_minor,
+      currency: row.currency,
+      status: row.status,
+      createdAt: row.created_at,
+      provider: row.provider,
+      planCode: row.plan_code,
+      planName: row.plan_name,
+    })),
     checkoutEnabled: false,
-    message: "Оплата появится после выбора и подключения платёжного провайдера.",
+    message: "Тарифы уже показаны. Покупка откроется после подключения платёжного провайдера.",
   });
 }
 
@@ -121,7 +139,7 @@ export async function POST(request: Request) {
   } catch {
     return json({ error: "Укажите поддерживаемую валюту в формате ISO 4217." }, 400);
   }
-  await ensureSchema();
+  await ensureBillingSchema();
   const features =
     body.features && typeof body.features === "object" && !Array.isArray(body.features)
       ? JSON.stringify(body.features)
