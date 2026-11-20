@@ -38,6 +38,8 @@ import {
 } from "./lib/profileStorage";
 import { authClient } from "./lib/auth-client";
 import { PandaNote } from "./components/PandaNote";
+import { Trophy } from "./components/Trophy";
+import { Companion, NotFound } from "./components/Companion";
 import { LearningTrail, Pagination } from "./components/LearningTrail";
 import {
   AccountPanel,
@@ -118,7 +120,8 @@ type Screen =
   | "games"
   | "stats"
   | "admin"
-  | "analytics";
+  | "analytics"
+  | "404";
 const screenNames: Screen[] = [
   "today",
   "library",
@@ -136,7 +139,7 @@ function screenFromHash(): Screen {
   const route = hash.split(/[?&]/)[0] as Screen;
   if (route === "path" && new URLSearchParams(hash.split("?").slice(1).join("?")).has("lesson"))
     return "materials";
-  return screenNames.includes(route) ? route : "today";
+  return !route ? "today" : screenNames.includes(route) ? route : "404";
 }
 type PathActivity = {
   id: string;
@@ -1803,6 +1806,7 @@ function WorkspaceApp({
             <span className="account-button-label">{user ? "Кабинет" : "Профиль"}</span>
           </button>
         </header>
+        {screen === "404" && <NotFound />}
         {screen === "today" && (
           <Today
             modules={visibleModules}
@@ -2414,7 +2418,7 @@ function WorkspaceApp({
   );
 }
 
-export default function App() {
+function AppContent() {
   const [authOpen, setAuthOpen] = useState(false);
   const [mode, setMode] = useState<"checking" | "local" | "login" | "active" | "error">("checking");
   const [user, setUser] = useState<AccountUser | null>(null);
@@ -2884,6 +2888,15 @@ function LegalCenter({ onClose }: { onClose: () => void }) {
         </p>
       </section>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <>
+      <AppContent />
+      <Companion />
+    </>
   );
 }
 
@@ -4562,9 +4575,7 @@ function StatsScreen({
                 key={item.title}
                 className={`achievement-card ${item.color} ${isUnlocked ? "unlocked" : "locked"}`}
               >
-                <span className="achievement-icon">
-                  <Icon name={item.icon} size={24} />
-                </span>
+                <Trophy kind={item.icon} />
                 <div className="achievement-copy">
                   <div>
                     <strong>{item.title}</strong>
@@ -4578,9 +4589,6 @@ function StatsScreen({
                     {value} / {target}
                   </small>
                 </div>
-                <span className="achievement-cup" aria-hidden="true">
-                  {isUnlocked ? "🏆" : "◇"}
-                </span>
               </article>
             );
           })}

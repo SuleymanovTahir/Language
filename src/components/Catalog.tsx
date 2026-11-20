@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Icon } from "./Icon";
 import { copyAppLink } from "../lib/shareLink";
 
 export type CatalogItem = {
@@ -380,8 +381,8 @@ export function CatalogScreen({
           <p>Материалы для выбранного языка и уровня.</p>
         </div>
         {canManageContent && (
-          <button className="primary-button" onClick={() => startEdit()}>
-            Создать материал
+          <button className="primary-button compact" onClick={() => startEdit()}>
+            <Icon name="plus" size={16} /> Создать материал
           </button>
         )}
       </div>

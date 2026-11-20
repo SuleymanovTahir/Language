@@ -1,3 +1,4 @@
+import { CommunicationSettings } from "./Companion";
 import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth-client";
 import { saveMediaFile } from "../lib/mediaStore";
@@ -557,6 +558,7 @@ export function AccountPanel({
           <Icon name="check" size={16} />
           {syncMessage}
         </p>
+        <CommunicationSettings />
         <div className="account-profile-fields">
           <label className="field-label">
             Имя

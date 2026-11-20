@@ -4363,7 +4363,7 @@ function QuestionGame({
                   .map((_, i) => {
                     const start = i * (360 / wheelEntries.length);
                     const end = (i + 1) * (360 / wheelEntries.length);
-                    return `${["#ff8c42", "#f5c542", "#33b88a", "#3d91ee", "#9270e8", "#ee6290"][i % 6]} ${start}deg ${end}deg`;
+                    return `${["#8d7bc0", "#5e9eb0", "#c18d75", "#677cba", "#72a997", "#bb85a5"][i % 6]} ${start}deg ${end}deg`;
                   })
                   .join(",")})`,
               }}
@@ -4376,7 +4376,7 @@ function QuestionGame({
                     key={entry.id}
                     style={
                       {
-                        transform: `rotate(${angle}deg) translateY(calc(-1 * min(22vw, 112px))) rotate(${-angle - wheelRotation}deg)`,
+                        transform: `rotate(${angle}deg) translateY(calc(-1 * min(25vw, 105px))) rotate(${-angle - wheelRotation}deg)`,
                       } as CSSProperties
                     }
                   >
@@ -4413,7 +4413,7 @@ function QuestionGame({
             <div className="fortune-wheel-result">
               <span>Стрелка выбрала</span>
               <strong>{german(card)}</strong>
-              <small>Перевод: {card.translation}</small>
+              <small>Выберите перевод ниже</small>
             </div>
           )}
         </div>

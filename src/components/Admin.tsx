@@ -1,3 +1,4 @@
+import { CommunicationSettings } from "./Companion";
 import { useEffect, useMemo, useState } from "react";
 import type { AccountUser } from "./Accounts";
 import { Icon } from "./Icon";
@@ -150,6 +151,7 @@ export function AdminUsersScreen({
           <Icon name="refresh" size={15} /> Обновить
         </button>
       </div>
+      <CommunicationSettings admin />
       <div className="admin-overview-cards">
         <article>
           <span>Всего</span>
