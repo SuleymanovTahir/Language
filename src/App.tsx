@@ -1758,19 +1758,6 @@ function WorkspaceApp({
           </div>
           <div className="header-spacer" />
           <button
-            className="ui-language-toggle"
-            type="button"
-            onClick={() => setUiLanguage((current) => (current === "ru" ? "en" : "ru"))}
-            aria-label={
-              uiLanguage === "ru"
-                ? "Switch interface language to English"
-                : "Переключить язык интерфейса на русский"
-            }
-            title={uiLanguage === "ru" ? "English interface" : "Русский интерфейс"}
-          >
-            <span>{uiLanguage === "ru" ? "EN" : "RU"}</span>
-          </button>
-          <button
             className="stat-pill flame-pill"
             title="Серия занятий"
             onClick={() => setStreakOpen(true)}

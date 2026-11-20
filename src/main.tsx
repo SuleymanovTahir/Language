@@ -5,6 +5,7 @@ import "./index.css";
 import "./panda.css";
 import "./mobile.css";
 import "./refinements.css";
+import "./responsive-fixes.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

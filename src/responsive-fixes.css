@@ -1,0 +1,981 @@
+/*
+ * Final responsive contract.
+ * Keep this file imported last: the project contains several generations of
+ * responsive rules and these constraints provide one predictable layout for
+ * desktop, compact desktop/tablet, and mobile viewports.
+ */
+
+:root {
+  --responsive-sidebar: 232px;
+  --responsive-sidebar-compact: 84px;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.app-shell {
+  width: 100%;
+  min-width: 0;
+}
+
+.main-area {
+  width: calc(100% - var(--responsive-sidebar));
+  min-width: 0;
+  margin-left: var(--responsive-sidebar);
+}
+
+.sidebar {
+  width: var(--responsive-sidebar);
+}
+
+.top-header,
+.page,
+.page-heading,
+.library-heading,
+.daily-mission-card,
+.course-today-card,
+.quick-card,
+.memory-card,
+.games-banner,
+.module-card,
+.game-tile,
+.course-chapter,
+.path-module-route {
+  min-width: 0;
+}
+
+.top-header {
+  width: 100%;
+}
+
+.page {
+  width: min(1160px, calc(100% - 48px));
+}
+
+/* Today */
+.today-page > .page-heading {
+  gap: 24px;
+}
+
+.today-page > .page-heading > div:first-child {
+  min-width: 0;
+}
+
+.daily-mission-card {
+  grid-template-columns: minmax(0, 1fr) minmax(250px, auto);
+  gap: 24px;
+}
+
+.daily-mission-actions {
+  min-width: 0;
+}
+
+.course-today-card > div:first-child {
+  min-width: 0;
+}
+
+.quick-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.quick-card {
+  min-width: 0;
+}
+
+.quick-card > span:nth-child(2) {
+  min-width: 0;
+}
+
+.quick-card :is(strong, small) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.memory-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: row;
+  grid-auto-columns: auto;
+  overflow: visible;
+}
+
+.memory-card {
+  height: auto;
+  min-height: 210px;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+}
+
+.memory-card h3,
+.memory-card > p {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.memory-card h3 {
+  line-height: 1.3;
+}
+
+.memory-score {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.memory-score span {
+  min-width: 0;
+  white-space: normal;
+}
+
+.memory-card .refresh-button {
+  width: 100%;
+}
+
+.games-banner {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.games-banner strong,
+.games-banner small {
+  min-width: 0;
+  white-space: normal;
+}
+
+/* Library */
+.library-page .library-heading {
+  min-height: 184px;
+  padding: 26px 220px 26px 28px;
+  background:
+    radial-gradient(circle at 84% 12%, rgb(47 113 233 / 11%), transparent 34%),
+    linear-gradient(125deg, #edf4ff, #fff 72%);
+  border: 1px solid #dce7f7;
+  border-radius: 26px;
+}
+
+.library-page .library-heading :is(h1, p, .eyebrow) {
+  color: var(--click-navy) !important;
+}
+
+.library-page .library-heading .eyebrow {
+  color: var(--click-blue) !important;
+}
+
+.library-page .library-heading-actions {
+  width: min(440px, 100%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.library-page .library-heading-actions button {
+  width: 100%;
+  min-height: 44px;
+  justify-content: center;
+  border-radius: 14px;
+}
+
+.library-page .library-heading-actions .secondary-button {
+  color: #274a7e;
+  background: white;
+  border: 1px solid #cbd9ee;
+  box-shadow: 0 4px 0 #dbe4f1;
+}
+
+.library-page .library-heading-actions .primary-button {
+  color: white;
+  background: linear-gradient(135deg, #174fc4, #2f71e9);
+  border: 1px solid #1748ad;
+  box-shadow: 0 5px 0 #113b91;
+}
+
+.library-tools,
+.library-tools > *,
+.library-sort-control,
+.library-filter-label {
+  min-width: 0;
+}
+
+.library-path-map,
+.library-path-map.module-grid {
+  width: 100%;
+  max-width: none;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-auto-flow: row;
+  align-items: stretch;
+  gap: 18px;
+  margin-inline: 0;
+}
+
+.library-path-map > .learning-trail-line {
+  display: none;
+}
+
+.library-path-map .library-map-item,
+.library-path-map .library-map-item.starts-group {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding-bottom: 0;
+  transform: none;
+}
+
+.library-path-map .library-map-item .module-card-shell,
+.library-path-map .library-map-item.starts-group .module-card-shell,
+.library-path-map .module-card {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  transform: none;
+}
+
+.library-path-map .module-card {
+  height: 100%;
+}
+
+/* Game and exercise cards */
+.games-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.games-grid .game-tile {
+  width: 100%;
+  min-height: 310px;
+  display: grid;
+  grid-template-columns: minmax(0, 48%) minmax(0, 52%);
+  grid-template-rows: minmax(310px, auto);
+}
+
+.games-grid .game-tile-art {
+  width: 100%;
+  height: 100%;
+  min-height: 310px;
+  border-right: 1px solid #e5e9f0;
+  border-bottom: 0;
+}
+
+.games-grid .game-tile-copy {
+  width: 100%;
+  min-width: 0;
+  min-height: 310px;
+  padding: 22px 20px;
+}
+
+.games-grid .game-tile-copy :is(strong, small) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.game-card-footer {
+  align-items: center;
+  flex-direction: row;
+}
+
+/* Main learning path: remove the heavy yellow route marker and outline. */
+.course-home .course-unit-card,
+.course-home .course-unit-card.current,
+.course-home .course-unit-card.complete,
+.course-home .course-unit-card.future {
+  padding: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 22px;
+  box-shadow: none;
+}
+
+.course-home .course-unit-card.current {
+  background: #eef4ff;
+  border: 1px solid #cbdcf9;
+  box-shadow: 0 12px 28px rgb(23 79 196 / 10%);
+  animation: none;
+}
+
+.course-home .course-path-node {
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.course-home .course-unit-card .course-unit-number,
+.course-home .course-unit-card.current .course-unit-number,
+.course-home .course-unit-card.future .course-unit-number {
+  color: white;
+  background: linear-gradient(145deg, #2f71e9, #174fc4);
+  border: 6px solid #e6efff;
+  box-shadow:
+    0 0 0 2px #c7d8f7,
+    0 7px 0 #123d9f,
+    0 12px 22px rgb(23 79 196 / 16%);
+}
+
+.course-home .course-unit-card.complete .course-unit-number {
+  border-color: #dff6ee;
+}
+
+.course-home .course-unit-copy {
+  min-width: 0;
+  background: white;
+  border: 1px solid #e1e8f2;
+  border-radius: 18px;
+  box-shadow: 0 8px 20px rgb(7 27 79 / 6%);
+}
+
+/* Assignment builder: compact modules and readable steps. */
+.course-page {
+  width: min(1360px, calc(100% - 48px));
+  max-width: none;
+}
+
+.course-page .course-chapters {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+.course-page > .page-heading {
+  min-height: 170px;
+  padding: 26px 210px 26px 28px;
+}
+
+.course-page > .panda-note {
+  margin-bottom: 22px;
+}
+
+.course-page .course-chapter {
+  border: 1px solid #dfe7f2;
+  border-radius: 24px;
+  box-shadow: 0 12px 28px rgb(7 27 79 / 6%);
+}
+
+.course-page .course-chapter > header {
+  padding: 24px 28px;
+}
+
+.course-page .chapter-modules {
+  width: 100%;
+  max-width: none;
+  display: block !important;
+  column-count: 2;
+  column-gap: 18px;
+  padding: 24px;
+}
+
+.course-page .course-chapter.collapsed > .chapter-modules {
+  display: none !important;
+}
+
+.course-page .learning-trail-line,
+.course-page .path-step-list::before {
+  display: none;
+}
+
+.course-page .path-module-route {
+  width: 100%;
+  display: inline-block;
+  break-inside: avoid;
+  margin-bottom: 18px;
+  padding: 18px;
+  background: #fff;
+  border: 1px solid #e1e8f2;
+  border-radius: 18px;
+  box-shadow: 0 8px 20px rgb(7 27 79 / 5%);
+}
+
+.course-page .path-module-heading {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.course-page .chapter-module-number {
+  color: #174fc4;
+  background: #eaf2ff;
+  border: 1px solid #ccdcf7;
+}
+
+.course-page .path-step-list {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.course-page .path-step,
+.course-page .path-step:nth-child(n) {
+  width: 100%;
+  min-height: 78px;
+  margin: 0;
+  padding: 10px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  transform: none;
+  background: #f8faff;
+  border: 1px solid #e1e8f2;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.course-page .path-step-mark {
+  width: 42px;
+  height: 42px;
+  color: #174fc4;
+  background: #e9f1ff;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: none;
+  font-size: 15px;
+}
+
+.course-page .path-step:nth-child(3n + 2) .path-step-mark,
+.course-page .path-step:nth-child(3n) .path-step-mark {
+  color: #174fc4;
+  background: #e9f1ff;
+  box-shadow: none;
+}
+
+.course-page .path-step-copy {
+  align-self: center;
+}
+
+.course-page .path-step-copy strong {
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.course-page .path-step-copy small {
+  display: none;
+}
+
+.course-page .path-step > button {
+  grid-column: 2;
+  width: fit-content;
+  min-height: 34px;
+  margin-top: 4px;
+  padding: 6px 10px;
+}
+
+.course-page .path-module-actions {
+  padding-top: 12px;
+  border-top: 1px solid #edf1f6;
+}
+
+/* Onboarding and placement: content-sized dialog, never a full-height blank panel. */
+.onboarding-backdrop {
+  align-items: center;
+  padding: 16px;
+}
+
+.onboarding-card {
+  width: min(860px, calc(100vw - 32px));
+  height: auto;
+  min-height: 0;
+  max-height: min(780px, calc(100dvh - 32px));
+  display: flex;
+  flex-direction: column;
+  align-self: center;
+  overflow: hidden;
+}
+
+.onboarding-content {
+  min-height: 0;
+  flex: 0 1 auto;
+  overflow-y: auto;
+}
+
+.placement-start-content {
+  padding-right: 150px;
+}
+
+.placement-start-actions {
+  position: static;
+  margin: 18px -30px -26px;
+}
+
+/* Compact desktop and tablets: icon rail plus balanced two-column content. */
+@media (min-width: 761px) and (max-width: 1180px) {
+  :root {
+    --responsive-sidebar: var(--responsive-sidebar-compact);
+  }
+
+  .sidebar {
+    width: var(--responsive-sidebar-compact);
+    padding-inline: 10px;
+  }
+
+  .sidebar > .brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .sidebar .brand > span,
+  .sidebar nav a span,
+  .settings-button span,
+  .language-card > span:not(.flag),
+  .language-card > svg {
+    display: none;
+  }
+
+  .sidebar nav a,
+  .sidebar nav a[href="#/catalog"],
+  .sidebar nav a[href="#/library"],
+  .settings-button {
+    justify-content: center;
+    padding-inline: 8px;
+  }
+
+  .sidebar nav a.active {
+    box-shadow: none;
+  }
+
+  .sidebar-bottom {
+    justify-items: stretch;
+  }
+
+  .language-card,
+  .settings-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .main-area {
+    width: calc(100% - var(--responsive-sidebar-compact));
+    margin-left: var(--responsive-sidebar-compact);
+  }
+
+  .page,
+  .course-page,
+  .games-page,
+  .library-page,
+  .catalog-page {
+    width: min(100% - 36px, 1120px);
+  }
+
+  .top-header {
+    padding-inline: 20px;
+  }
+
+  .quick-grid,
+  .memory-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .daily-mission-card {
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 36%);
+  }
+
+  .course-today-card {
+    padding-right: 34%;
+  }
+
+  .library-path-map,
+  .library-path-map.module-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .games-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .games-grid .game-tile {
+    min-height: 260px;
+    grid-template-columns: minmax(0, 52%) minmax(0, 48%);
+    grid-template-rows: minmax(260px, auto);
+  }
+
+  .games-grid .game-tile-art,
+  .games-grid .game-tile-copy {
+    min-height: 260px;
+  }
+
+  .course-page .chapter-modules {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    column-count: 1;
+  }
+
+  .course-page .path-step-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .course-page .path-step,
+  .course-page .path-step:nth-child(n) {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+
+  .course-page .path-step > button {
+    grid-column: 3;
+    align-self: center;
+    margin-top: 0;
+  }
+}
+
+/* Mobile: bottom navigation and single-column cards. */
+@media (max-width: 760px) {
+  :root {
+    --responsive-sidebar: 0px;
+  }
+
+  .main-area {
+    width: 100%;
+    margin: 0 0 calc(68px + env(safe-area-inset-bottom));
+  }
+
+  .sidebar {
+    width: 100%;
+    height: calc(68px + env(safe-area-inset-bottom));
+    inset: auto 0 0;
+    padding: 5px 8px max(5px, env(safe-area-inset-bottom));
+  }
+
+  .sidebar nav {
+    width: 100%;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .sidebar nav a.mobile-primary-nav,
+  .sidebar nav .mobile-settings-nav {
+    width: 100%;
+    min-width: 0;
+    min-height: 54px;
+    flex: 1 1 auto;
+    padding: 5px 2px;
+  }
+
+  .sidebar nav a.mobile-primary-nav span,
+  .sidebar nav .mobile-settings-nav span {
+    width: 100%;
+    font-size: clamp(7px, 2.1vw, 10px);
+  }
+
+  .page,
+  .course-page,
+  .games-page,
+  .library-page,
+  .catalog-page {
+    width: 100%;
+    padding-inline: 14px;
+  }
+
+  .top-header {
+    padding-inline: 12px;
+  }
+
+  .today-page > .page-heading {
+    align-items: flex-start;
+  }
+
+  .today-page > .page-heading h1 {
+    font-size: clamp(25px, 8vw, 34px);
+  }
+
+  .daily-mission-card {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .daily-mission-actions {
+    align-items: stretch;
+  }
+
+  .daily-mission-actions .primary-button {
+    width: 100%;
+  }
+
+  .mission-adjustments {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .mission-adjustments button {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .course-today-card {
+    min-height: 300px;
+    align-items: flex-start;
+    padding: 22px 20px 152px;
+  }
+
+  .course-today-card::before {
+    width: 170px;
+    height: 160px;
+    top: auto;
+    right: 2px;
+    bottom: -6px;
+  }
+
+  .course-today-card::after {
+    display: none;
+  }
+
+  .course-today-card > div:first-child {
+    max-width: 100%;
+  }
+
+  .quick-grid,
+  .memory-grid {
+    grid-template-columns: 1fr;
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+  }
+
+  .memory-card {
+    min-height: 190px;
+  }
+
+  .games-banner {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: 14px;
+  }
+
+  .games-banner small {
+    grid-column: 2;
+  }
+
+  .library-page .library-heading {
+    min-height: 228px;
+    padding: 20px 94px 86px 20px;
+  }
+
+  .library-page .library-heading h1 {
+    font-size: clamp(34px, 11vw, 50px);
+  }
+
+  .library-page .library-heading-actions {
+    width: calc(100% - 32px);
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    gap: 8px;
+  }
+
+  .library-page .library-heading-actions button {
+    min-width: 0;
+    min-height: 42px;
+    padding-inline: 9px;
+  }
+
+  .library-page .library-heading::after {
+    width: 100px;
+    height: 112px;
+    right: 0;
+    bottom: 70px;
+  }
+
+  .library-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .library-path-map,
+  .library-path-map.module-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .games-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .games-grid .game-tile {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 52%) minmax(0, 48%);
+    grid-template-rows: minmax(210px, auto);
+  }
+
+  .games-grid .game-tile-art,
+  .games-grid .game-tile-copy {
+    min-height: 210px;
+  }
+
+  .games-grid .game-tile-copy {
+    padding: 16px 14px;
+  }
+
+  .course-home .course-unit-card,
+  .course-home .course-unit-card:nth-child(odd),
+  .course-home .course-unit-card:nth-child(even) {
+    width: min(86%, 430px);
+  }
+
+  .course-home .course-unit-card:nth-child(even) {
+    margin-left: 14%;
+  }
+
+  .course-page > .page-heading {
+    min-height: 150px;
+    padding: 18px 94px 18px 18px;
+  }
+
+  .course-page > .page-heading h1 {
+    font-size: clamp(27px, 8vw, 36px);
+  }
+
+  .course-page .builder-heading-mascot {
+    width: 96px;
+    height: 112px;
+    right: -4px;
+    bottom: -10px;
+  }
+
+  .course-page > .panda-note {
+    padding: 14px;
+  }
+
+  .course-page > .panda-note img {
+    width: 58px;
+    height: 58px;
+  }
+
+  .course-page .course-chapter > header {
+    padding: 18px;
+  }
+
+  .course-page .chapter-modules {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    column-count: 1;
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .course-page .path-module-route {
+    padding: 14px;
+  }
+
+  .course-page .path-module-heading {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .course-page .path-module-heading > button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .course-page .path-step-list {
+    grid-template-columns: 1fr;
+  }
+
+  .course-page .path-step,
+  .course-page .path-step:nth-child(n) {
+    width: 100%;
+    margin: 0;
+  }
+
+  .onboarding-backdrop {
+    align-items: center;
+    padding: 10px;
+  }
+
+  .onboarding-card {
+    width: min(100%, 620px);
+    max-height: calc(100dvh - 20px);
+    border-radius: 22px;
+  }
+
+  .placement-start-content {
+    padding: 104px 15px 18px;
+  }
+
+  .onboarding-mascot {
+    width: 90px;
+    height: 96px;
+    top: 62px;
+    right: 50%;
+    transform: translateX(50%);
+  }
+
+  .placement-start-actions {
+    grid-template-columns: 1fr;
+    margin: 14px -15px -18px;
+    padding: 12px 15px;
+  }
+}
+
+@media (min-width: 480px) and (max-width: 760px) {
+  .course-page .path-step,
+  .course-page .path-step:nth-child(n) {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+
+  .course-page .path-step > button {
+    grid-column: 3;
+    align-self: center;
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .goal-summary {
+    display: none;
+  }
+
+  .games-grid .game-tile {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .games-grid .game-tile-art {
+    height: 210px;
+    min-height: 210px;
+    border-right: 0;
+    border-bottom: 1px solid #e5e9f0;
+  }
+
+  .games-grid .game-tile-copy {
+    min-height: 150px;
+  }
+
+  .game-card-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .library-page .library-heading {
+    min-height: 238px;
+    padding-right: 76px;
+  }
+
+  .library-page .library-heading h1 {
+    font-size: clamp(32px, 12vw, 44px);
+  }
+
+  .library-page .library-heading-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .library-page .library-heading-actions button {
+    min-height: 38px;
+  }
+
+  .library-page .library-heading::after {
+    bottom: 92px;
+  }
+
+  .course-home .course-unit-card,
+  .course-home .course-unit-card:nth-child(odd),
+  .course-home .course-unit-card:nth-child(even) {
+    width: 92%;
+  }
+
+  .course-home .course-unit-card:nth-child(even) {
+    margin-left: 8%;
+  }
+}
