@@ -2565,6 +2565,7 @@ function Sidebar({
   onSettings: () => void;
   onLanguage: () => void;
 }) {
+  const [moreOpen, setMoreOpen] = useState(false);
   const nav: { id: Screen; label: string; icon: IconName }[] = [
     { id: "today", label: "Сегодня", icon: "home" },
     { id: "library", label: "Библиотека слов", icon: "library" },
@@ -2583,6 +2584,8 @@ function Sidebar({
       { id: "admin", label: "Пользователи", icon: "settings" },
       { id: "analytics", label: "Аналитика", icon: "chart" },
     );
+  const mobilePrimary = new Set<Screen>(["today", "library", "path", "games"]);
+  const mobileSecondary = nav.filter((item) => !mobilePrimary.has(item.id));
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -2595,19 +2598,63 @@ function Sidebar({
             key={item.id}
             href={`#/${item.id}`}
             data-track={`nav-${item.id}`}
-            className={screen === item.id ? "active" : ""}
+            className={`${screen === item.id ? "active" : ""} ${mobilePrimary.has(item.id) ? "mobile-primary-nav" : "mobile-secondary-nav"}`}
             aria-current={screen === item.id ? "page" : undefined}
             title={item.label}
+            onClick={() => setMoreOpen(false)}
           >
             <Icon name={item.icon} />
             <span>{item.label}</span>
           </a>
         ))}
-        <button className="mobile-settings-nav" onClick={onSettings} aria-label="Настройки">
-          <Icon name="settings" />
-          <span>Настройки</span>
+        <button
+          className={`mobile-settings-nav ${moreOpen ? "active" : ""}`}
+          onClick={() => setMoreOpen((open) => !open)}
+          aria-label="Открыть остальные разделы"
+          aria-expanded={moreOpen}
+        >
+          <Icon name="more" />
+          <span>Ещё</span>
         </button>
       </nav>
+      {moreOpen && (
+        <div className="mobile-more-backdrop" onClick={() => setMoreOpen(false)}>
+          <section
+            className="mobile-more-menu"
+            aria-label="Остальные разделы"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mobile-more-heading">
+              <strong>Ещё</strong>
+              <button onClick={() => setMoreOpen(false)} aria-label="Закрыть меню">
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <div className="mobile-more-grid">
+              {mobileSecondary.map((item) => (
+                <a
+                  key={item.id}
+                  href={`#/${item.id}`}
+                  className={screen === item.id ? "active" : ""}
+                  onClick={() => setMoreOpen(false)}
+                >
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
+                </a>
+              ))}
+              <button
+                onClick={() => {
+                  setMoreOpen(false);
+                  onSettings();
+                }}
+              >
+                <Icon name="settings" />
+                <span>Настройки</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       <div className="sidebar-bottom">
         <button
           className="language-card"
@@ -3088,11 +3135,11 @@ function Library({
         </div>
         <div className="library-heading-actions">
           <button className="secondary-button compact" onClick={onFolders}>
-            <Icon name="folder" size={17} /> Папки материалов
+            <Icon name="folder" size={17} /> Папки
           </button>
           {canManageContent && (
             <button className="primary-button compact" onClick={onCreate}>
-              <Icon name="plus" size={18} /> Создать / импортировать
+              <Icon name="plus" size={18} /> Добавить
             </button>
           )}
         </div>
@@ -3107,7 +3154,7 @@ function Library({
           />
         </label>
         <label className="library-filter-label">
-          Показать
+          <span className="library-control-label">Показать</span>
           <select
             aria-label="Фильтр модулей"
             value={filter}
@@ -3121,7 +3168,7 @@ function Library({
         </label>
         <div className="library-sort-control">
           <label className="library-filter-label">
-            Сортировка
+            <span className="library-control-label">Сортировка</span>
             <select
               aria-label="Сортировка модулей"
               value={sortBy}
@@ -3153,10 +3200,7 @@ function Library({
         </div>
       </div>
       {sortBy === "manual" && (
-        <p className="library-sort-hint">
-          Порядок можно менять перетаскиванием карточек модулей или в меню модуля: «Переместить выше
-          / ниже».
-        </p>
+        <p className="library-sort-hint">Зажмите карточку, чтобы изменить порядок.</p>
       )}
       {visible.length === 0 ? (
         <div className="empty-state">
@@ -3590,7 +3634,12 @@ function PathScreen({
   return (
     <div className="page course-page">
       <div className="page-heading">
-        <img className="builder-heading-mascot" src="/mascots/mascot-6.png" alt="" aria-hidden="true" />
+        <img
+          className="builder-heading-mascot"
+          src="/mascots/mascot-6.png"
+          alt=""
+          aria-hidden="true"
+        />
         <div>
           <p className="eyebrow">
             КОНСТРУКТОР · {modules[0]?.languageName ?? "ЯЗЫК"} {modules[0]?.level ?? ""}

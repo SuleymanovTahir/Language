@@ -116,6 +116,19 @@ export function CoursePath({
             </button>
           ))}
         </div>
+        <label className="course-level-select">
+          Уровень
+          <select
+            value={selectedLevel}
+            onChange={(event) => onChooseLevel(event.target.value as CourseLevel)}
+          >
+            {levels.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       {(goals.length > 0 || focus.length > 0) && (
         <div className="course-focus-banner">
@@ -147,13 +160,11 @@ export function CoursePath({
           aria-hidden="true"
         />
         <div>
-          <span className="eyebrow">УРОВЕНЬ {selectedLevel}</span>
+          <span className="eyebrow">
+            {completed === units.length ? "УРОВЕНЬ ПРОЙДЕН" : "СЛЕДУЮЩИЙ ШАГ"} · {selectedLevel}
+          </span>
           <h2>
-            {completed === units.length
-              ? "Уровень пройден"
-              : next
-                ? `Следующий шаг · ${next.title}`
-                : "Курс готовится"}
+            {completed === units.length ? "Уровень пройден" : next ? next.title : "Курс готовится"}
           </h2>
           <p>{next?.outcome ?? "Выберите другой уровень курса."}</p>
           <div className="course-overview-progress">
@@ -239,11 +250,7 @@ export function CoursePath({
                   disabled={!unlocked}
                   onClick={() => onStart(item)}
                 >
-                  {hasSavedMission
-                    ? "Продолжить миссию"
-                    : saved?.completedAt
-                      ? "Повторить"
-                      : "Открыть"}
+                  {hasSavedMission ? "Продолжить" : saved?.completedAt ? "Повторить" : "Старт"}
                 </button>
               </article>
             );

@@ -1440,3 +1440,932 @@
     order: -1;
   }
 }
+
+/* 2026 mobile-first refinement: compact navigation, lighter cards and safe mascot placement. */
+.course-level-select,
+.onboarding-level-select,
+.mobile-more-backdrop {
+  display: none;
+}
+
+.onboarding-mascot,
+.library-mascot,
+.games-heading-mascot,
+.course-overview-mascot,
+.catalog-heading-mascot {
+  pointer-events: none;
+}
+
+.catalog-page .page-heading {
+  position: relative;
+  overflow: hidden;
+  padding: 24px 190px 24px 26px;
+  background: linear-gradient(115deg, #eef5ff, #fff 72%);
+  border: 1px solid #dfe8f6;
+  border-radius: 24px;
+}
+
+.catalog-heading-mascot {
+  width: 166px;
+  height: 142px;
+  position: absolute;
+  right: 18px;
+  bottom: -12px;
+  object-fit: contain;
+  filter: drop-shadow(0 14px 18px rgb(7 27 79 / 12%));
+}
+
+.course-overview-mascot {
+  width: 150px;
+  height: 132px;
+  top: 8px;
+  right: 20px;
+  bottom: auto;
+}
+
+.course-overview-card > .primary-button {
+  margin-right: 152px;
+}
+
+.games-heading-mascot {
+  width: 76px;
+  height: 76px;
+  top: 8px;
+  right: clamp(240px, 30%, 320px);
+}
+
+.language-card .flag {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  font-size: 16px;
+  border-radius: 12px;
+}
+
+@media (min-width: 701px) and (max-width: 900px) {
+  .library-heading {
+    min-height: 190px;
+    position: relative;
+    display: block;
+    overflow: hidden;
+    padding: 24px 150px 72px 24px;
+  }
+
+  .library-mascot {
+    width: 150px !important;
+    height: 160px !important;
+    right: 0 !important;
+    bottom: -8px !important;
+  }
+
+  .library-heading-actions {
+    position: absolute;
+    right: 150px;
+    bottom: 18px;
+    left: 24px;
+    z-index: 4;
+    display: flex;
+    gap: 8px;
+  }
+
+  .library-heading-actions button {
+    min-width: 0;
+    flex: 1;
+    padding-inline: 10px;
+    font-size: 11px;
+  }
+
+  .course-overview-card {
+    display: block;
+    padding-right: 132px;
+  }
+
+  .course-overview-mascot {
+    width: 112px;
+    height: 104px;
+    top: 14px;
+    right: 12px;
+  }
+
+  .course-overview-card .primary-button {
+    margin-right: 0;
+    margin-top: 15px;
+  }
+
+  .games-heading-mascot {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .primary-button,
+  .secondary-button {
+    min-height: 42px;
+    padding: 9px 14px;
+    font-size: 13px;
+  }
+
+  .sidebar nav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .sidebar nav a.mobile-secondary-nav {
+    display: none;
+  }
+
+  .sidebar nav a.mobile-primary-nav,
+  .sidebar nav .mobile-settings-nav {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    min-height: 54px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 2px;
+  }
+
+  .sidebar nav a span,
+  .mobile-settings-nav span {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar nav .mobile-settings-nav.active {
+    color: var(--click-blue);
+    background: #edf3ff;
+  }
+
+  .mobile-more-backdrop {
+    position: fixed;
+    inset: 0 0 calc(66px + env(safe-area-inset-bottom));
+    z-index: 39;
+    display: flex;
+    align-items: flex-end;
+    padding: 12px;
+    background: rgb(7 27 79 / 22%);
+    backdrop-filter: blur(3px);
+  }
+
+  .mobile-more-menu {
+    width: min(100%, 520px);
+    margin-inline: auto;
+    padding: 16px;
+    background: #fff;
+    border: 1px solid #e4e8ef;
+    border-radius: 22px;
+    box-shadow: 0 20px 52px rgb(7 27 79 / 20%);
+  }
+
+  .mobile-more-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    color: var(--click-navy);
+  }
+
+  .mobile-more-heading > button {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    color: #68758a;
+    background: #f3f5f8;
+    border-radius: 11px;
+  }
+
+  .mobile-more-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mobile-more-grid :is(a, button) {
+    min-width: 0;
+    min-height: 76px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 9px 5px;
+    color: #647188;
+    background: #f7f8fb;
+    border: 1px solid #e9ecf2;
+    border-radius: 15px;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  .mobile-more-grid :is(a, button).active {
+    color: var(--click-blue);
+    background: #edf3ff;
+    border-color: #cad9f6;
+  }
+
+  .top-header {
+    gap: 6px;
+  }
+
+  .top-header .stat-pill {
+    min-width: 0;
+    height: 34px;
+    padding-inline: 8px;
+    border-radius: 11px;
+  }
+
+  .top-header .stat-pill:nth-of-type(2) {
+    display: none;
+  }
+
+  .mobile-brand {
+    min-width: 0;
+    margin-right: auto;
+  }
+
+  .mobile-brand > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .page,
+  .narrow-page,
+  .games-page {
+    width: min(100% - 20px, 600px);
+    padding-top: 20px;
+    padding-bottom: 28px;
+  }
+
+  .page-heading,
+  .library-heading {
+    margin-bottom: 16px;
+  }
+
+  .page-heading h1,
+  .library-heading h1 {
+    font-size: clamp(27px, 8vw, 33px);
+  }
+
+  .page-heading p,
+  .library-heading p {
+    max-width: 40ch;
+    line-height: 1.4;
+  }
+
+  .panda-note {
+    gap: 10px;
+    margin: 12px 0 16px;
+    padding: 10px 13px 10px 7px;
+    border-radius: 17px;
+  }
+
+  .panda-note img {
+    width: 58px;
+    height: 58px;
+  }
+
+  .panda-note strong {
+    font-size: 14px;
+  }
+
+  .panda-note p {
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .panda-note-spark {
+    font-size: 18px;
+  }
+
+  .library-heading {
+    min-height: 154px;
+    position: relative;
+    display: block;
+    overflow: hidden;
+    padding: 20px 116px 18px 18px;
+    background: linear-gradient(135deg, var(--click-navy), var(--click-blue));
+    border-radius: 22px;
+  }
+
+  .library-heading h1,
+  .library-heading p,
+  .library-heading .eyebrow {
+    color: white !important;
+  }
+
+  .library-heading p {
+    font-size: 12px;
+  }
+
+  .library-mascot {
+    width: 122px !important;
+    height: 132px !important;
+    right: -2px !important;
+    bottom: -4px !important;
+  }
+
+  .library-heading-actions {
+    position: absolute;
+    right: auto;
+    bottom: 10px;
+    left: 10px;
+    z-index: 4;
+    display: flex;
+    width: calc(100% - 120px);
+    gap: 7px;
+  }
+
+  .library-heading-actions button {
+    width: auto;
+    min-height: 38px;
+    flex: 1;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  .library-tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+    border-radius: 17px;
+  }
+
+  .library-tools > .search-box {
+    grid-column: 1 / -1;
+    min-height: 42px;
+  }
+
+  .library-filter-label,
+  .library-sort-control {
+    min-width: 0;
+    min-height: 40px;
+  }
+
+  .library-control-label {
+    display: none;
+  }
+
+  .library-filter-label {
+    padding: 5px 8px;
+  }
+
+  .library-filter-label select {
+    width: 100%;
+    font-size: 11px;
+  }
+
+  .sort-direction-button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .library-sort-hint {
+    margin: 7px 2px 12px;
+    font-size: 10px;
+  }
+
+  .module-grid {
+    gap: 10px;
+  }
+
+  .module-card {
+    min-height: 112px;
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    grid-template-rows: 112px;
+    border-radius: 18px;
+  }
+
+  .module-cover {
+    width: 84px;
+    min-height: 112px;
+    height: 112px;
+    border-radius: 0;
+  }
+
+  .module-cover svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .module-info {
+    padding: 13px 14px 11px;
+  }
+
+  .module-info h3 {
+    min-height: 0;
+    margin: 5px 0;
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .module-info p {
+    font-size: 10px;
+  }
+
+  .module-menu-trigger {
+    top: 9px;
+    right: 9px;
+    width: 34px;
+    height: 34px;
+  }
+
+  .course-home .page-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 108px;
+    align-items: end;
+    gap: 10px;
+  }
+
+  .course-home .page-heading > div:first-child {
+    min-width: 0;
+  }
+
+  .course-level-picker {
+    display: none;
+  }
+
+  .course-level-select {
+    display: grid;
+    gap: 4px;
+    color: var(--click-muted);
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .course-level-select select {
+    width: 100%;
+    min-height: 42px;
+    padding: 7px 30px 7px 11px;
+    color: var(--click-navy);
+    background: white;
+    border: 1px solid #dfe5ee;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .course-focus-banner {
+    min-height: 0;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 11px 13px;
+    border-radius: 15px;
+  }
+
+  .course-focus-banner > small {
+    display: none;
+  }
+
+  .course-focus-banner small {
+    font-size: 10px;
+  }
+
+  .course-overview-card {
+    min-height: 0;
+    gap: 8px;
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .course-overview-mascot {
+    width: 92px;
+    height: 82px;
+    position: static !important;
+    align-self: flex-end;
+    order: -1;
+    margin: -8px 0 -55px;
+    object-fit: contain;
+  }
+
+  .course-overview-card > div {
+    padding-right: 74px;
+  }
+
+  .course-overview-card h2 {
+    margin-block: 5px;
+    font-size: 24px;
+    line-height: 1.08;
+  }
+
+  .course-overview-card p {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 12px;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .course-progress-metrics {
+    gap: 5px;
+    margin-top: 10px;
+  }
+
+  .course-progress-metrics span {
+    padding: 6px 8px;
+    font-size: 9px;
+  }
+
+  .course-progress-metrics strong {
+    font-size: 13px;
+  }
+
+  .course-overview-card .primary-button {
+    width: auto;
+    align-self: flex-start;
+    margin-right: 0;
+  }
+
+  .course-units-section {
+    margin-top: 24px;
+  }
+
+  .course-units-section > .section-title {
+    margin-bottom: 12px;
+  }
+
+  .course-units-section > .section-title h2 {
+    font-size: 20px;
+  }
+
+  .course-units-section > .section-title p {
+    display: none;
+  }
+
+  .course-unit-list {
+    gap: 10px;
+    padding: 0;
+  }
+
+  .course-unit-list::before {
+    display: none;
+  }
+
+  .course-unit-card,
+  .course-unit-card:nth-child(odd),
+  .course-unit-card:nth-child(even) {
+    width: 100%;
+    min-height: 82px;
+    grid-template-columns: 50px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 11px;
+    transform: none;
+    border-radius: 17px;
+  }
+
+  .course-unit-card .course-unit-number {
+    width: 48px;
+    height: 48px;
+  }
+
+  .course-unit-kicker {
+    font-size: 8px;
+  }
+
+  .course-unit-copy h3 {
+    margin-top: 3px;
+    font-size: 14px;
+    line-height: 1.2;
+  }
+
+  .course-unit-copy p,
+  .course-skill-tags {
+    display: none;
+  }
+
+  .course-unit-card > button {
+    grid-column: 3;
+    width: auto;
+    min-width: 62px;
+    min-height: 38px;
+    padding: 7px 9px;
+    font-size: 10px;
+  }
+
+  .games-page .page-heading {
+    min-height: 174px;
+    position: relative;
+    display: block;
+    overflow: hidden;
+    padding: 18px 126px 16px 17px;
+    border-radius: 20px;
+  }
+
+  .games-page .page-heading > div {
+    position: relative;
+    z-index: 2;
+  }
+
+  .games-heading-mascot {
+    width: 128px !important;
+    height: 144px !important;
+    right: 0 !important;
+    top: 4px !important;
+    object-fit: contain;
+  }
+
+  .games-page .page-heading h1 {
+    font-size: 30px;
+  }
+
+  .games-page .page-heading p {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .module-select-label {
+    width: calc(100% + 109px);
+    min-height: 46px;
+    margin-top: 18px;
+    padding: 5px 9px;
+    font-size: 9px;
+  }
+
+  .module-select-label select {
+    min-height: 34px;
+    font-size: 11px;
+  }
+
+  .practice-tabs {
+    margin-bottom: 10px;
+  }
+
+  .game-filter-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+    overflow: visible;
+    margin: 0 0 14px;
+    padding: 0;
+  }
+
+  .game-filter-row button {
+    min-width: 0;
+    min-height: 34px;
+    padding: 5px 3px;
+    font-size: 9px;
+  }
+
+  .practice-section-title {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .practice-section-title h2 {
+    font-size: 19px;
+  }
+
+  .practice-section-title p {
+    font-size: 10px;
+  }
+
+  .practice-word-bank {
+    margin-bottom: 16px;
+    padding: 10px;
+  }
+
+  .practice-word-bank > div > strong {
+    font-size: 11px;
+  }
+
+  .practice-game-category {
+    margin-bottom: 20px;
+  }
+
+  .practice-game-category > h4 {
+    margin-bottom: 9px;
+    font-size: 15px;
+  }
+
+  .games-grid .game-tile {
+    min-height: 132px;
+    grid-template-columns: 108px minmax(0, 1fr);
+    border-radius: 17px;
+  }
+
+  .games-grid .game-tile-art {
+    min-height: 132px;
+    padding: 7px;
+  }
+
+  .game-tile-copy {
+    min-height: 132px;
+    gap: 4px;
+    padding: 11px;
+  }
+
+  .game-tile-copy strong {
+    font-size: 15px;
+  }
+
+  .game-tile-copy small {
+    min-height: 0;
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 10px;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .game-card-footer {
+    padding-top: 6px;
+  }
+
+  .game-card-footer b {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+
+  .catalog-page .page-heading {
+    min-height: 148px;
+    display: block;
+    padding: 18px 138px 18px 17px;
+    border-radius: 20px;
+  }
+
+  .catalog-heading-mascot {
+    width: 116px;
+    height: 122px;
+    right: -3px;
+    bottom: -4px;
+  }
+
+  .catalog-page .page-heading .primary-button {
+    min-height: 38px;
+    margin-top: 10px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  .catalog-page .form-error {
+    padding: 10px 12px;
+    font-size: 11px;
+  }
+
+  .onboarding-backdrop {
+    padding: 10px;
+  }
+
+  .onboarding-card {
+    width: min(100%, 520px);
+    max-height: calc(100dvh - 20px);
+    border-radius: 24px;
+  }
+
+  .onboarding-brand {
+    min-height: 54px;
+    padding: 10px 14px;
+  }
+
+  .onboarding-brand .logo-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .onboarding-content {
+    padding: 17px;
+  }
+
+  .onboarding-content h2 {
+    margin: 5px 0;
+    font-size: 24px;
+  }
+
+  .onboarding-content > p:not(.eyebrow) {
+    margin-bottom: 12px;
+  }
+
+  .onboarding-mascot {
+    width: 92px;
+    height: 92px;
+    top: 68px;
+    right: 7px;
+  }
+
+  .placement-start-content > h2,
+  .placement-start-content > p {
+    max-width: calc(100% - 86px);
+  }
+
+  .onboarding-level-select {
+    display: grid;
+    gap: 5px;
+    color: var(--click-muted);
+    font-size: 10px;
+    font-weight: 750;
+  }
+
+  .onboarding-level-select select {
+    width: 100%;
+    min-height: 46px;
+    padding: 8px 34px 8px 11px;
+    color: var(--click-navy);
+    background: #f8faff;
+    border: 2px solid #dce4f1;
+    border-radius: 13px;
+    font-size: 14px;
+    font-weight: 750;
+  }
+
+  .self-level-grid {
+    display: none;
+  }
+
+  .placement-self-skills,
+  .placement-ai-note {
+    margin-top: 10px;
+  }
+
+  .placement-ai-note {
+    font-size: 9px;
+  }
+
+  .onboarding-content .dialog-actions {
+    bottom: -17px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 10px 0 4px;
+  }
+
+  .onboarding-content .dialog-actions > button {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 390px) {
+  .mobile-brand > span:last-child {
+    display: none;
+  }
+
+  .top-header {
+    padding-inline: 9px;
+  }
+
+  .course-home .page-heading {
+    grid-template-columns: minmax(0, 1fr) 92px;
+  }
+
+  .course-overview-card > div {
+    padding-right: 58px;
+  }
+
+  .course-unit-card {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    gap: 7px;
+    padding: 9px;
+  }
+
+  .course-unit-card .course-unit-number {
+    width: 42px;
+    height: 42px;
+  }
+
+  .course-unit-card > button {
+    min-width: 56px;
+    padding-inline: 7px;
+  }
+
+  .games-page .page-heading {
+    padding-right: 106px;
+  }
+
+  .games-heading-mascot {
+    width: 110px !important;
+    right: 0 !important;
+  }
+
+  .module-select-label {
+    width: calc(100% + 89px);
+  }
+
+  .games-grid .game-tile {
+    grid-template-columns: 94px minmax(0, 1fr);
+  }
+
+  .game-card-footer > span {
+    display: none;
+  }
+}

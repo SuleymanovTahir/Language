@@ -1041,7 +1041,12 @@ export function GameHub({
   return (
     <div className="page games-page">
       <div className="page-heading">
-        <img className="games-heading-mascot" src="/mascots/mascot-3.png" alt="" aria-hidden="true" />
+        <img
+          className="games-heading-mascot"
+          src="/mascots/mascot-3.png"
+          alt=""
+          aria-hidden="true"
+        />
         <div>
           <p className="eyebrow">
             {selectedModule?.languageName ?? "УЧЕБНЫЙ КАБИНЕТ"} · {selectedModule?.level ?? ""}
@@ -1049,7 +1054,7 @@ export function GameHub({
           <h1>Поиграем?</h1>
           <p>
             {selectedModule
-              ? `Выберите навык и тренируйтесь на словах из модуля «${selectedModule.title}».`
+              ? `Играйте со словами из «${selectedModule.title}».`
               : "Добавьте материалы в текущий языковой кабинет."}
           </p>
         </div>
@@ -1072,9 +1077,7 @@ export function GameHub({
           </label>
         )}
       </div>
-      <PandaNote title="Одна игра — маленькая победа">
-        Посмотрите на пример, выберите игру и попробуйте на своих словах.
-      </PandaNote>
+      <PandaNote title="Одна игра — маленькая победа">Выберите карточку и начните.</PandaNote>
       <div className="practice-tabs">
         <button
           className={activeTab === "games" ? "active" : ""}
@@ -1125,9 +1128,10 @@ export function GameHub({
         <>
           <div className="practice-section-title">
             <div>
-              <h2>
-                Игры по вашим словам · {selectedCards.length} {wordCountLabel(selectedCards.length)}
-              </h2>
+              <h2>Выберите игру</h2>
+              <p>
+                {selectedCards.length} {wordCountLabel(selectedCards.length)}
+              </p>
             </div>
             {canManageContent && (
               <button className="primary-button compact" onClick={openNewActivity}>

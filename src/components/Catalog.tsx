@@ -72,6 +72,21 @@ export function CatalogScreen({
         credentials: "include",
         cache: "no-store",
       });
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        if (import.meta.env.DEV) {
+          setItems(
+            legacyItems.map((item, index) => ({
+              ...item,
+              id: `local-${index}`,
+              topic: item.topic ?? "",
+              status: "published" as const,
+            })),
+          );
+          return;
+        }
+        throw new Error("Каталог временно недоступен.");
+      }
       const data = (await response.json()) as { items?: CatalogItem[]; error?: string };
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить каталог.");
       setItems(data.items ?? []);
@@ -293,10 +308,16 @@ export function CatalogScreen({
   return (
     <div className="page catalog-page">
       <div className="page-heading">
+        <img
+          className="catalog-heading-mascot"
+          src="/mascots/mascot-5.png"
+          alt=""
+          aria-hidden="true"
+        />
         <div>
           <p className="eyebrow">ОБЩИЕ УЧЕБНЫЕ МАТЕРИАЛЫ</p>
           <h1>Каталог</h1>
-          <p>Опубликованные материалы видны ученикам выбранного языка и уровня.</p>
+          <p>Материалы для выбранного языка и уровня.</p>
         </div>
         {canManageContent && (
           <button className="primary-button" onClick={() => startEdit()}>

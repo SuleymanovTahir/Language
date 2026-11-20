@@ -72,7 +72,7 @@ export function CourseOnboarding({
   onSkip: () => void;
 }) {
   const [step, setStep] = useState(0);
-  const [selfLevel, setSelfLevel] = useState<SelfLevel | null>(null);
+  const [selfLevel, setSelfLevel] = useState<SelfLevel | null>("zero");
   const [selfSkills, setSelfSkills] = useState<SelfSkillRatings>({});
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
   const [placementOpen, setPlacementOpen] = useState(false);
@@ -140,17 +140,28 @@ export function CourseOnboarding({
         <div className="onboarding-progress" aria-label={`Шаг ${step + 1} из 3`}>
           <i style={{ width: `${(step + 1) * 33.333}%` }} />
         </div>
-        <img
-          className="onboarding-mascot"
-          src="/mascots/mascot-1.png"
-          alt=""
-          aria-hidden="true"
-        />
+        <img className="onboarding-mascot" src="/mascots/mascot-1.png" alt="" aria-hidden="true" />
         {step === 0 && (
           <div className="onboarding-content placement-start-content">
             <p className="eyebrow">ПЕРСОНАЛЬНЫЙ МАРШРУТ · 1/3</p>
             <h2 id="onboarding-title">С чего начнём?</h2>
-            <p>Выберите свой немецкий. Панда поможет с остальным.</p>
+            <p>Выберите уровень — остальное настроим вместе.</p>
+            <label className="onboarding-level-select">
+              Ваш уровень
+              <select
+                value={selfLevel ?? "zero"}
+                onChange={(event) => {
+                  setSelfLevel(event.target.value as SelfLevel);
+                  setPlacementReport(null);
+                }}
+              >
+                {levels.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label} · {item.note}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div
               className="start-choice-grid self-level-grid"
               role="radiogroup"
