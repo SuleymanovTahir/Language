@@ -3,9 +3,33 @@ let activeUserId: string | null = null;
 let syncTimer: number | undefined;
 let syncing = false;
 let syncAgain = false;
+let profileVersions: Record<string, number> = {};
+let pendingProfileKeys = new Set<string>();
 
 const profilePrefix = (userId: string) => `linguaplay-user-data:${encodeURIComponent(userId)}:`;
 const storageKey = (key: string) => activeUserId ? `${profilePrefix(activeUserId)}${key}` : key;
+const serverManagedKeys = new Set(["linguaplay-energy", "linguaplay-energy-reward-progress"]);
+const displayOnlyStatsKeys = new Set(["linguaplay-stats-by-space", "linguaplay-user-stats"]);
+
+function withoutDisplayOnlyStats(raw: string) {
+  try {
+    const strip = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(strip);
+      if (typeof value === "string") {
+        try {
+          const parsed: unknown = JSON.parse(value);
+          if (parsed && typeof parsed === "object") return JSON.stringify(strip(parsed));
+        } catch { /* Keep plain text values unchanged. */ }
+        return value;
+      }
+      if (!value || typeof value !== "object") return value;
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => !["crystals", "freezeCount", "energy", "entitlement", "isPro", "is_pro", "role"].includes(key))
+        .map(([key, item]) => [key, strip(item)]));
+    };
+    return JSON.stringify(strip(JSON.parse(raw)));
+  } catch { return raw; }
+}
 
 function reportSync(state: "saved" | "error", message = "") {
   window.dispatchEvent(new CustomEvent("linguaplay-sync-status", { detail: { state, message } }));
@@ -16,7 +40,13 @@ function collectProfileData(userId: string) {
   const data: Record<string, string> = {};
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (key?.startsWith(prefix)) data[key.slice(prefix.length)] = localStorage.getItem(key) ?? "";
+    if (key?.startsWith(prefix)) {
+      const profileKey = key.slice(prefix.length);
+      if (!serverManagedKeys.has(profileKey)) {
+        const value = localStorage.getItem(key) ?? "";
+        data[profileKey] = displayOnlyStatsKeys.has(profileKey) ? withoutDisplayOnlyStats(value) : value;
+      }
+    }
   }
   return data;
 }
@@ -24,20 +54,45 @@ function collectProfileData(userId: string) {
 async function sendProfileData(userId: string) {
   if (activeUserId !== userId) return;
   if (syncing) { syncAgain = true; return; }
+  if (!pendingProfileKeys.size) return;
   syncing = true;
   try {
     if (activeUserId !== userId) return;
+    const keys = [...pendingProfileKeys];
+    const patch: Record<string, string | null> = {};
+    const sentValues: Record<string, string | null> = {};
+    for (const key of keys) {
+      const value = localStorage.getItem(`${profilePrefix(userId)}${key}`);
+      const safeValue = value === null ? null : displayOnlyStatsKeys.has(key) ? withoutDisplayOnlyStats(value) : value;
+      patch[key] = safeValue;
+      sentValues[key] = safeValue;
+    }
     const response = await fetch("/api/sync", {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: collectProfileData(userId) }),
+      body: JSON.stringify({ patch, versions: Object.fromEntries(keys.map((key) => [key, profileVersions[key] ?? 0])) }),
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { error?: string };
       throw new Error(body.error || "Не удалось сохранить прогресс на сервере.");
     }
-    reportSync("saved");
+    const result = await response.json() as { data?: Record<string,string>; versions?: Record<string,number>; conflicts?: string[] };
+    if (result.versions) profileVersions = { ...profileVersions, ...result.versions };
+    const conflicts = new Set(result.conflicts ?? []);
+    for (const key of keys) {
+      const current = localStorage.getItem(`${profilePrefix(userId)}${key}`);
+      const safeCurrent = current === null ? null : displayOnlyStatsKeys.has(key) ? withoutDisplayOnlyStats(current) : current;
+      if (safeCurrent === sentValues[key]) pendingProfileKeys.delete(key);
+      if (conflicts.has(key)) {
+        const merged = result.data?.[key];
+        if (typeof merged === "string") localStorage.setItem(`${profilePrefix(userId)}${key}`, merged);
+        else localStorage.removeItem(`${profilePrefix(userId)}${key}`);
+        pendingProfileKeys.delete(key);
+        window.dispatchEvent(new CustomEvent("linguaplay-profile-reconciled", { detail: { key, value: merged ?? null } }));
+      }
+    }
+    reportSync(conflicts.size ? "error" : "saved", conflicts.size ? "Изменения на разных устройствах объединены. Проверьте актуальные данные в приложении." : "");
   } catch (error) {
     reportSync("error", error instanceof Error ? error.message : "Синхронизация не удалась.");
   } finally {
@@ -92,11 +147,13 @@ export function readProfileItem(key: string) {
 
 export function writeProfileItem(key: string, value: string) {
   localStorage.setItem(storageKey(key), value);
+  if (activeUserId && !serverManagedKeys.has(key)) pendingProfileKeys.add(key);
   scheduleProfileSync();
 }
 
 export function removeProfileItem(key: string) {
   localStorage.removeItem(storageKey(key));
+  if (activeUserId && !serverManagedKeys.has(key)) pendingProfileKeys.add(key);
   scheduleProfileSync();
 }
 
@@ -108,7 +165,7 @@ export async function activateProfileStorage(userId: string) {
     const body = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error || "Не удалось загрузить данные личного кабинета.");
   }
-  const remote = await response.json() as { data?: Record<string, unknown> };
+  const remote = await response.json() as { data?: Record<string, unknown>; versions?: Record<string,number> };
   const prefix = profilePrefix(userId);
   let hasLocalProfile = false;
   for (let index = 0; index < localStorage.length; index += 1) {
@@ -128,16 +185,30 @@ export async function activateProfileStorage(userId: string) {
   }
 
   const remoteData = remote.data && typeof remote.data === "object" ? remote.data : {};
+  profileVersions = remote.versions ?? {};
+  pendingProfileKeys = new Set();
   const remoteEntries = Object.entries(remoteData).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  const remoteKeys = new Set(remoteEntries.map(([key]) => key));
   remoteEntries.forEach(([key, value]) => {
-    if (key.startsWith("linguaplay-")) localStorage.setItem(`${prefix}${key}`, value);
+    if (key.startsWith("linguaplay-") && !serverManagedKeys.has(key)) localStorage.setItem(`${prefix}${key}`, displayOnlyStatsKeys.has(key) ? withoutDisplayOnlyStats(value) : value);
   });
   activeUserId = userId;
-  await migrateEmbeddedAudio(userId);
-  await sendProfileData(userId);
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const localKey = localStorage.key(index);
+    if (localKey?.startsWith(prefix)) {
+      const profileKey = localKey.slice(prefix.length);
+      if (!serverManagedKeys.has(profileKey) && !remoteKeys.has(profileKey)) pendingProfileKeys.add(profileKey);
+    }
+  }
+  // The remote profile is now readable by the app. Media migration and the
+  // initial write-back can continue in the background so they do not hold the
+  // cabinet behind extra requests or large audio uploads.
+  void migrateEmbeddedAudio(userId).finally(() => sendProfileData(userId));
 }
 
 export function deactivateProfileStorage() {
   window.clearTimeout(syncTimer);
   activeUserId = null;
+  profileVersions = {};
+  pendingProfileKeys = new Set();
 }

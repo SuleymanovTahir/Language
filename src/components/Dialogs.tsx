@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { parseVocabulary, type VocabCard, type VocabModule } from "../lib/vocab";
 import { Icon } from "./Icon";
 import { loadMediaFile, saveMediaFile } from "../lib/mediaStore";
+import { HelpHint } from "./HelpHint";
+import { speakText } from "./StudySession";
+import { defaultVoiceFor, type SpeechProvider, type SpeechSettings } from "../lib/speech";
 
 export type LearningSpace = { id: string; languageCode: string; languageName: string; flag: string; level: string; nativeLanguageCode: string };
 
@@ -81,26 +84,156 @@ function CardImagePreview({ imageId, name }: { imageId: string; name: string }) 
 
 export type Preferences = { autoSpeak: boolean; highContrast: boolean; name: string; dailyGoal: number };
 
-export function SettingsDialog({ value, onSave, onClose, onReset }: { value: Preferences; onSave: (next: Preferences) => void; onClose: () => void; onReset: () => void }) {
+const speechLanguages: Record<string, string> = { de: "Немецкий", en: "Английский", fr: "Французский", es: "Испанский", it: "Итальянский", tr: "Турецкий", ru: "Русский" };
+const configuredVoices: Record<Exclude<SpeechProvider, "device">, Record<string, [string, string][]>> = {
+  edge: {
+    de: [["de-DE-TanjaNeural", "Tanja · женский"], ["de-DE-ChristophNeural", "Christoph · мужской"]],
+    en: [["en-US-EmmaMultilingualNeural", "Emma · женский"], ["en-US-AndrewMultilingualNeural", "Andrew · мужской"]],
+    fr: [["fr-FR-VivienneMultilingualNeural", "Vivienne · женский"], ["fr-FR-RemyMultilingualNeural", "Remy · мужской"]],
+  },
+  kokoro: {
+    en: [["af_heart", "Heart · женский"], ["af_bella", "Bella · женский"], ["am_fenrir", "Fenrir · мужской"]],
+    fr: [["ff_siwis", "Siwis · женский"]],
+  },
+  elevenlabs: {},
+  azure: {
+    de: [["de-DE-SeraphinaMultilingualNeural", "Seraphina · женский"], ["de-DE-FlorianMultilingualNeural", "Florian · мужской"], ["de-DE-KatjaNeural", "Katja · женский"], ["de-DE-ConradNeural", "Conrad · мужской"]],
+    en: [["en-US-EmmaMultilingualNeural", "Emma · женский"], ["en-US-AndrewMultilingualNeural", "Andrew · мужской"], ["en-US-AvaMultilingualNeural", "Ava · женский"], ["en-US-BrianMultilingualNeural", "Brian · мужской"]],
+    fr: [["fr-FR-VivienneMultilingualNeural", "Vivienne · женский"], ["fr-FR-RemyMultilingualNeural", "Remy · мужской"]],
+  },
+};
+const samples: Record<string, string> = { de: "Guten Morgen. Wie geht es dir?", en: "Good morning. How are you?", fr: "Bonjour. Comment ça va?", es: "Buenos días. ¿Cómo estás?", it: "Buongiorno. Come stai?", tr: "Günaydın. Nasılsın?", ru: "Доброе утро. Как дела?" };
+type ElevenLabsVoice = { id: string; name: string; gender?: string; age?: string; accent?: string; languages?: string[] };
+type ElevenLabsGenderFilter = "all" | "female" | "male";
+type ElevenLabsAgeFilter = "all" | "young" | "adult" | "mature";
+
+function voiceGenderLabel(value = "") {
+  const normalized = value.toLocaleLowerCase();
+  return normalized.includes("female") || normalized.includes("woman") ? "женский" : normalized.includes("male") || normalized.includes("man") ? "мужской" : "";
+}
+
+function voiceAgeCategory(value = ""): Exclude<ElevenLabsAgeFilter, "all"> | "" {
+  const normalized = value.toLocaleLowerCase().replace(/[_-]+/g, " ");
+  if (normalized.includes("young")) return "young";
+  if (normalized.includes("old") || normalized.includes("mature")) return "mature";
+  if (normalized.includes("adult") || normalized.includes("middle")) return "adult";
+  return "";
+}
+
+function voiceAgeLabel(value = "") {
+  const category = voiceAgeCategory(value);
+  return category === "young" ? "молодой" : category === "adult" ? "взрослый" : category === "mature" ? "зрелый" : "";
+}
+
+function voiceAccentLabel(value = "") {
+  const normalized = value.trim().toLocaleLowerCase();
+  const known: Record<string, string> = { american: "американский", "american english": "американский", british: "британский", "british english": "британский", australian: "австралийский", canadian: "канадский", german: "немецкий", "standard german": "стандартный немецкий", french: "французский", spanish: "испанский", italian: "итальянский", irish: "ирландский", scottish: "шотландский" };
+  return known[normalized] ?? value.trim();
+}
+
+export function SettingsDialog({ value, speechSettings, languageCode = "de", authenticated = false, canManageSpeechProviders = false, onSave, onClose, onReset }: { value: Preferences; speechSettings: SpeechSettings; languageCode?: string; authenticated?: boolean; canManageSpeechProviders?: boolean; onSave: (next: Preferences, speech: SpeechSettings) => void; onClose: () => void; onReset: () => void }) {
+  const language = languageCode.toLowerCase().split("-")[0];
+  const fallbackProvider: SpeechProvider = configuredVoices.edge[language] ? "edge" : "device";
+  const initialSpeechSettings = !canManageSpeechProviders && speechSettings.provider === "azure"
+    ? { ...speechSettings, provider: fallbackProvider, voice: defaultVoiceFor(fallbackProvider, languageCode) }
+    : speechSettings;
   const [draft, setDraft] = useState(value);
+  const [speechDraft, setSpeechDraft] = useState(initialSpeechSettings);
+  const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [azureAvailable, setAzureAvailable] = useState(false);
+  const [elevenLabsAvailable, setElevenLabsAvailable] = useState(false);
+  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
+  const [elevenLabsLoading, setElevenLabsLoading] = useState(false);
+  const [elevenLabsError, setElevenLabsError] = useState("");
+  const [elevenGender, setElevenGender] = useState<ElevenLabsGenderFilter>("all");
+  const [elevenAge, setElevenAge] = useState<ElevenLabsAgeFilter>("all");
+  const filteredElevenLabsVoices = elevenLabsVoices.filter((voice) => {
+    const gender = (voice.gender ?? "").toLocaleLowerCase();
+    const genderCategory = gender.includes("female") || gender.includes("woman") ? "female" : gender.includes("male") || gender.includes("man") ? "male" : "";
+    const age = voiceAgeCategory(voice.age);
+    return (elevenGender === "all" || genderCategory === elevenGender) && (elevenAge === "all" || age === elevenAge);
+  });
+  const elevenProviderVoices: [string, string][] = filteredElevenLabsVoices.map((voice) => [voice.id, [voice.name, voiceGenderLabel(voice.gender), voiceAgeLabel(voice.age), voiceAccentLabel(voice.accent)].filter(Boolean).join(" · ")]);
+  const providerVoices: [string, string][] = speechDraft.provider === "device" ? [] : speechDraft.provider === "elevenlabs" ? elevenProviderVoices : configuredVoices[speechDraft.provider][language] ?? [];
+  const voiceValue = providerVoices.some(([id]) => id === speechDraft.voice) ? speechDraft.voice : providerVoices[0]?.[0] ?? (speechDraft.provider === "elevenlabs" ? "" : defaultVoiceFor(speechDraft.provider, languageCode));
+  const canUseKokoro = language === "en" || language === "fr";
+  const selectedSpeechSample = samples[language] ?? "Guten Morgen. Wie geht es dir?";
+  useEffect(() => {
+    if (canManageSpeechProviders || speechDraft.provider !== "azure") return;
+    setSpeechDraft((current) => current.provider === "azure"
+      ? { ...current, provider: fallbackProvider, voice: defaultVoiceFor(fallbackProvider, languageCode) }
+      : current);
+  }, [canManageSpeechProviders, fallbackProvider, languageCode, speechDraft.provider]);
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    if ("speechSynthesis" in window) {
+      const refresh = () => setBrowserVoices(window.speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith(language)));
+      refresh();
+      window.speechSynthesis.addEventListener("voiceschanged", refresh);
+      cleanup = () => window.speechSynthesis.removeEventListener("voiceschanged", refresh);
+    }
+    void fetch("/api/tts", { cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<{ azureAvailable?: boolean; elevenLabsAvailable?: boolean }> : null).then(async (result) => {
+      const azure = Boolean(result?.azureAvailable);
+      const elevenLabs = Boolean(result?.elevenLabsAvailable);
+      setAzureAvailable(azure);
+      setElevenLabsAvailable(elevenLabs);
+      if (elevenLabs && authenticated && /^[a-z]{2,3}$/.test(language)) {
+        setElevenLabsVoices([]); setElevenLabsError(""); setElevenLabsLoading(true);
+        try {
+          const voiceResponse = await fetch(`/api/tts?voices=elevenlabs&language=${language}`, { credentials: "include", cache: "no-store" });
+          const voiceData = await voiceResponse.json() as { voices?: ElevenLabsVoice[]; error?: string };
+          if (!voiceResponse.ok) throw new Error(canManageSpeechProviders
+            ? voiceResponse.status === 401 || voiceResponse.status === 403 ? "ElevenLabs отклонил API-ключ. Проверьте ELEVENLABS_API_KEY в Vercel." : voiceData.error || "Не удалось загрузить голоса ElevenLabs."
+            : "Голоса временно недоступны. Попробуйте позже.");
+          const voices = Array.isArray(voiceData.voices) ? voiceData.voices : [];
+          setElevenLabsVoices(voices);
+          if (!voices.length) setElevenLabsError(`Для языка «${speechLanguages[language] ?? language}» голоса не найдены.`);
+        } catch (error) {
+          setElevenLabsError(error instanceof Error ? error.message : "Не удалось загрузить голоса ElevenLabs.");
+        } finally { setElevenLabsLoading(false); }
+      }
+      setSpeechDraft((current) => {
+        if (current.provider === "azure" && (!azure || !authenticated || !canManageSpeechProviders)) return { ...current, provider: fallbackProvider, voice: defaultVoiceFor(fallbackProvider, languageCode) };
+        if (current.provider === "elevenlabs" && (!elevenLabs || !authenticated)) return { ...current, provider: configuredVoices.edge[language] ? "edge" : "device", voice: defaultVoiceFor(configuredVoices.edge[language] ? "edge" : "device", languageCode) };
+        return current;
+      });
+    }).catch(() => undefined);
+    return cleanup;
+  }, [authenticated, canManageSpeechProviders, fallbackProvider, language, languageCode]);
+  const setProvider = (provider: SpeechProvider) => {
+    if (provider === "azure" && !canManageSpeechProviders) return;
+    setSpeechDraft((current) => ({ ...current, provider, voice: provider === "elevenlabs" ? (filteredElevenLabsVoices[0]?.id ?? "") : defaultVoiceFor(provider, languageCode) }));
+  };
+  const setVoice = (voice: string) => setSpeechDraft((current) => ({ ...current, voice }));
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="dialog-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <button className="dialog-close" onClick={onClose} aria-label="Закрыть"><Icon name="close" /></button><p className="eyebrow">LINGUAPLAY</p><h2 id="settings-title">Настройки</h2>
-    <label className="field-label">Имя<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-    <label className="field-label">Дневная цель<select value={draft.dailyGoal} onChange={(event) => setDraft({ ...draft, dailyGoal: Number(event.target.value) })}><option value={20}>20 XP · спокойно</option><option value={50}>50 XP · стандарт</option><option value={100}>100 XP · интенсивно</option></select><small className="field-help">Прогресс виден на странице «Сегодня». За верный ответ начисляется 8 XP с карточкой или 5 XP в игре. После достижения цели появится уведомление; счётчик обновится в полночь.</small></label>
-    <label className="setting-row"><span><strong>Автоматическая озвучка</strong><small>Озвучивать немецкое слово при открытии карточки</small></span><input type="checkbox" checked={draft.autoSpeak} onChange={(event) => setDraft({ ...draft, autoSpeak: event.target.checked })} /></label>
+    <label className="field-label">Имя · необязательно<input value={draft.name} placeholder="Как к вам обращаться?" onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+    <label className="setting-row"><span><strong>Автоматическая озвучка</strong><small>Слово при открытии карточки</small></span><input type="checkbox" checked={draft.autoSpeak} onChange={(event) => setDraft({ ...draft, autoSpeak: event.target.checked })} /></label>
+    <section className="speech-settings"><h3>Голос · {speechLanguages[language] ?? languageCode}</h3><label className="field-label">Источник<select value={speechDraft.provider} onChange={(event) => setProvider(event.target.value as SpeechProvider)}><option value="device">Голос устройства</option><option value="edge" disabled={!configuredVoices.edge[language]}>Microsoft Edge Neural</option><option value="kokoro" disabled={!canUseKokoro}>Kokoro · {canUseKokoro ? "в браузере" : "только EN/FR"}</option>{(canManageSpeechProviders || (elevenLabsAvailable && authenticated)) && <option value="elevenlabs" disabled={!elevenLabsAvailable || !authenticated}>ElevenLabs{canManageSpeechProviders && !elevenLabsAvailable ? " · нужен ключ" : canManageSpeechProviders && !authenticated ? " · нужен вход" : ""}</option>}{canManageSpeechProviders && <option value="azure" disabled={!azureAvailable || !authenticated}>Azure Speech{!azureAvailable ? " · нужен ключ" : !authenticated ? " · нужен вход" : ""}</option>}</select></label>
+      {speechDraft.provider === "device" ? <label className="field-label">Голос<select value={speechDraft.voice} onChange={(event) => setVoice(event.target.value)}><option value="">Автоматически</option>{browserVoices.map((voice) => <option value={voice.voiceURI} key={`${voice.voiceURI}-${voice.lang}`}>{voice.name} · {voice.lang}</option>)}</select></label> : <>
+        {speechDraft.provider === "elevenlabs" && <div className="elevenlabs-voice-filters"><label className="field-label">Голос<select value={elevenGender} onChange={(event) => setElevenGender(event.target.value as ElevenLabsGenderFilter)}><option value="all">Все</option><option value="female">Женский</option><option value="male">Мужской</option></select></label><label className="field-label">Возраст<select value={elevenAge} onChange={(event) => setElevenAge(event.target.value as ElevenLabsAgeFilter)}><option value="all">Любой</option><option value="young">Молодой</option><option value="adult">Взрослый</option><option value="mature">Зрелый</option></select></label></div>}
+        <label className="field-label">{speechDraft.provider === "elevenlabs" ? "Вариант голоса" : "Голос"}<select value={voiceValue} onChange={(event) => setVoice(event.target.value)}><option value="">{speechDraft.provider === "elevenlabs" ? "Выберите голос" : "Автоматически"}</option>{providerVoices.map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>
+      </>}
+      {speechDraft.provider === "kokoro" && <small className="field-help">Английский и французский · первая загрузка около 100 МБ.</small>}
+      {speechDraft.provider === "edge" && <small className="field-help">Для воспроизведения нужен интернет.</small>}
+      {speechDraft.provider === "elevenlabs" && elevenLabsLoading && <small className="field-help">Загружаю голоса для выбранного языка…</small>}
+      {speechDraft.provider === "elevenlabs" && elevenLabsError && <small className="field-help elevenlabs-voice-error">{canManageSpeechProviders ? elevenLabsError : "Голоса временно недоступны. Попробуйте позже."}</small>}
+      <label className="speech-rate-label">Скорость <span>{speechDraft.rate.toFixed(2)}×</span><input type="range" min="0.55" max="1" step="0.05" value={speechDraft.rate} onChange={(event) => setSpeechDraft({ ...speechDraft, rate: Number(event.target.value) })} /></label>
+      <div className="speech-settings-actions"><button className="secondary-button" disabled={speechDraft.provider === "elevenlabs" && !voiceValue} onClick={() => speakText(selectedSpeechSample, `${language}-${language === "en" ? "US" : language === "fr" ? "FR" : language === "de" ? "DE" : language.toUpperCase()}`, false, { ...speechDraft, voice: voiceValue })}><Icon name="volume" size={15} /> Проверить голос</button>{speechDraft.provider === "kokoro" && <HelpHint>Голос считает браузер ученика на опубликованном сайте. Для первой загрузки модели нужен интернет.</HelpHint>}{speechDraft.provider === "edge" && <HelpHint>Онлайн‑озвучка. Для воспроизведения нужен интернет; доступность голоса может меняться.</HelpHint>}{speechDraft.provider === "elevenlabs" && (canManageSpeechProviders ? <HelpHint>Ключ хранится в Vercel и не попадает в браузер. Для ElevenLabs нужен ELEVENLABS_API_KEY.</HelpHint> : <HelpHint>Онлайн‑озвучка. Для воспроизведения нужен интернет.</HelpHint>)}{speechDraft.provider === "azure" && canManageSpeechProviders && <HelpHint>Ключ хранится в Vercel и не попадает в браузер. Для Azure нужны ключ Speech и регион.</HelpHint>}</div>
+      {speechDraft.provider === "device" && !browserVoices.length && <small className="field-help">Голос {speechLanguages[language] ?? languageCode} не найден на устройстве.</small>}
+    </section>
     <label className="setting-row"><span><strong>Контрастный режим</strong><small>Увеличить контраст для демонстрации на экране</small></span><input type="checkbox" checked={draft.highContrast} onChange={(event) => setDraft({ ...draft, highContrast: event.target.checked })} /></label>
     <button className="text-danger" onClick={() => { if (window.confirm("Удалить сохранённый прогресс? Словарь останется.")) onReset(); }}>Сбросить учебный прогресс</button>
-    <div className="dialog-actions"><button className="secondary-button" onClick={onClose}>Отмена</button><button className="primary-button" onClick={() => onSave(draft)}>Сохранить</button></div>
+    <div className="dialog-actions"><button className="secondary-button" onClick={onClose}>Отмена</button><button className="primary-button" disabled={speechDraft.provider === "elevenlabs" && !voiceValue} onClick={() => onSave(draft, !canManageSpeechProviders && speechDraft.provider === "azure" ? { ...speechDraft, provider: fallbackProvider, voice: defaultVoiceFor(fallbackProvider, languageCode) } : { ...speechDraft, voice: voiceValue })}>Сохранить</button></div>
   </section></div>;
 }
 
-export function StreakDialog({ streak, crystals, freezeCount, vacation, onBuyFreeze, onToggleVacation, onClose }: { streak: number; crystals: number; freezeCount: number; vacation: boolean; onBuyFreeze: () => void; onToggleVacation: () => void; onClose: () => void }) {
+export function StreakDialog({ streak, vacation, onToggleVacation, onClose }: { streak: number; vacation: boolean; onToggleVacation: () => void; onClose: () => void }) {
   const lastTwo = streak % 100;
   const lastOne = streak % 10;
   const dayLabel = lastTwo >= 11 && lastTwo <= 14 ? "дней" : lastOne === 1 ? "день" : lastOne >= 2 && lastOne <= 4 ? "дня" : "дней";
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="dialog-card" role="dialog" aria-modal="true" aria-labelledby="streak-title">
-    <button className="dialog-close" onClick={onClose} aria-label="Закрыть"><Icon name="close" /></button><div className="streak-hero"><span><Icon name="flame" size={26} /></span><strong>{streak} {dayLabel}</strong></div><h2 id="streak-title">Серия занятий</h2><p>Серия продлевается после первого ответа за календарный день. Заморозка защищает её в день без занятий.</p>
-    <div className="streak-actions"><div><strong>{freezeCount} заморозок</strong><small>Стоимость следующей — 200 кристаллов · у вас {crystals}</small></div><button className="secondary-button" disabled={crystals < 200} onClick={onBuyFreeze}>Купить за 200</button></div>
+    <button className="dialog-close" onClick={onClose} aria-label="Закрыть"><Icon name="close" /></button><div className="streak-hero"><span><Icon name="flame" size={26} /></span><strong>{streak} {dayLabel}</strong></div><h2 id="streak-title">Серия занятий</h2><p>Серия продлевается после первого ответа за календарный день. Выполните короткое упражнение, чтобы продолжить серию.</p>
     <label className="setting-row"><span><strong>Режим отпуска</strong><small>Пауза для серии без ежедневных напоминаний</small></span><input type="checkbox" checked={vacation} onChange={onToggleVacation} /></label>
     <div className="dialog-actions"><button className="primary-button" onClick={onClose}>Готово</button></div>
   </section></div>;

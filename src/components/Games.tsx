@@ -1,206 +1,18 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { VocabCard, VocabModule } from "../lib/vocab";
-import { copyAppLink } from "../lib/shareLink";
 import { loadMediaFile, removeMediaFile, saveMediaFile } from "../lib/mediaStore";
-import { playFeedbackSound } from "../lib/feedbackSound";
+import { playFeedbackSound, playPairIntroTone, playWheelSpinSound } from "../lib/feedbackSound";
 import { Icon } from "./Icon";
 import { speakText, speechLocaleForCode } from "./StudySession";
 import { AudioQuizBuilder, AudioQuizSession, type AudioQuiz } from "./AudioQuiz";
 import { getActiveProfileId, readProfileItem, writeProfileItem } from "../lib/profileStorage";
 
-export type GameId = "pairs" | "articles" | "builder" | "blitz" | "hangman" | "wordsearch" | "anagram" | "train" | "moles" | "boxes" | "wheel" | "phonetic" | "finalsound" | "datajoin" | "fillblank" | "picture";
-type GameInfo = { id: GameId; title: string; description: string; mark: string };
+import { GAME_LIST, GRAMMAR_TOPICS, germanOnlyGames, languageForms, prepareGameModule, validateGame, type GameId, type GrammarTopic } from "../lib/gameCatalog";
+export { GAME_LIST, GRAMMAR_TOPICS, prepareGameModule, validateGame } from "../lib/gameCatalog";
+export type { GameId, GrammarTopic, GrammarTopicId } from "../lib/gameCatalog";
 
-export const GAME_LIST: GameInfo[] = [
-  { id: "pairs", title: "Мэтчинг пар", description: "Соедините немецкое слово с переводом", mark: "↔" },
-  { id: "articles", title: "Группировка родов", description: "Перетащите слова в колонки der, die и das · таймер", mark: "●" },
-  { id: "builder", title: "Конструктор фраз", description: "Соберите артикль и существительное", mark: "▤" },
-  { id: "blitz", title: "Блиц-тест", description: "Четыре варианта ответа", mark: "ϟ" },
-  { id: "hangman", title: "Сбор слова", description: "Откройте слово по буквам", mark: "_" },
-  { id: "wordsearch", title: "Напиши слово", description: "Введите слово по переводу", mark: "Aa" },
-  { id: "anagram", title: "Анаграмма", description: "Расставьте буквы в правильном порядке", mark: "Aa" },
-  { id: "train", title: "Поезд слов", description: "Поставьте артикль перед существительным", mark: "🚃" },
-  { id: "moles", title: "Ударь по слову", description: "Выберите правильный вариант из сетки", mark: "●" },
-  { id: "boxes", title: "Коробки-сюрпризы", description: "Откройте коробку с верным переводом", mark: "□" },
-  { id: "wheel", title: "Колесо фортуны", description: "Крутите колесо и отвечайте", mark: "◉" },
-  { id: "phonetic", title: "Фонетический тир", description: "На слух найдите немецкое слово", mark: "♫" },
-  { id: "finalsound", title: "Оглушение согласных", description: "Определите конечный звук b, d или g", mark: "音" },
-  { id: "datajoin", title: "Data JOIN", description: "Соедините термины баз данных", mark: "⋈" },
-  { id: "fillblank", title: "Заполни пропуск", description: "Вставьте слово в предложение по смыслу", mark: "___" },
-  { id: "picture", title: "Угадай по картинке", description: "Посмотрите на изображение и выберите слово", mark: "🖼️" },
-];
-
-export type GrammarTopicId = "nominative" | "accusative" | "dative" | "wohin" | "negation" | "pronouns" | "possessives" | "sein-haben" | "plurals" | "present" | "word-order" | "questions" | "modal-verbs" | "imperative" | "clauses" | "perfekt" | "separable" | "time-prepositions";
-type Question = { prompt: string; options: string[]; answer: string; explanation: string };
-export type GrammarTopic = { id: string; title: string; description: string; explanation: string; examples: string[]; questions: Question[]; group?: "basics" | "sentences"; custom?: boolean; languageCode?: string; level?: string };
-
-export const GRAMMAR_TOPICS: GrammarTopic[] = [
-  { id: "accusative", title: "Артикли в Akkusativ", description: "Прямое дополнение: den, die, das", explanation: "Akkusativ отвечает на вопрос «кого? что?». В мужском роде определённый артикль меняется с der на den; die и das сохраняют форму.", examples: ["Ich sehe den Hund. — Я вижу собаку.", "Sie kauft die Tasche. — Она покупает сумку.", "Wir brauchen das Ticket. — Нам нужен билет."], questions: [
-    { prompt: "Ich sehe ___ Hund.", options: ["den", "der", "dem"], answer: "den", explanation: "Мужской род в Akkusativ: der → den." },
-    { prompt: "Sie kauft ___ Tasche.", options: ["die", "der", "den"], answer: "die", explanation: "Женский род не меняется: die → die." },
-    { prompt: "Wir brauchen ___ Ticket.", options: ["das", "dem", "den"], answer: "das", explanation: "Средний род не меняется: das → das." },
-    { prompt: "Er hat ___ Bruder.", options: ["einen", "ein", "einem"], answer: "einen", explanation: "Неопределённый артикль мужского рода: ein → einen." },
-  ] },
-  { id: "wohin", title: "Wohin или Wo?", description: "Движение — Akkusativ, место — Dativ", explanation: "Предлоги an, auf, in, neben, unter и другие меняют падеж. Если предмет уже находится в месте (Wo?), нужен Dativ. Если он перемещается туда (Wohin?), нужен Akkusativ.", examples: ["Das Buch liegt auf dem Tisch. — Книга лежит на столе.", "Ich lege das Buch auf den Tisch. — Я кладу книгу на стол."], questions: [
-    { prompt: "Das Buch liegt ___ Tisch.", options: ["auf dem", "auf den", "auf der"], answer: "auf dem", explanation: "Где лежит? Wo? Неподвижное место требует Dativ." },
-    { prompt: "Ich lege das Buch ___ Tisch.", options: ["auf den", "auf dem", "auf der"], answer: "auf den", explanation: "Куда кладу? Wohin? Движение требует Akkusativ." },
-    { prompt: "Die Lampe steht ___ Sofa.", options: ["neben dem", "neben das", "neben den"], answer: "neben dem", explanation: "Где стоит? Wo? Sofa — средний род, Dativ: dem." },
-    { prompt: "Wir stellen den Stuhl ___ Fenster.", options: ["vor das", "vor dem", "vor der"], answer: "vor das", explanation: "Куда ставим? Wohin? Fenster — средний род, Akkusativ: das." },
-  ] },
-  { id: "negation", title: "Kein или nicht", description: "Отрицание существительных и действий", explanation: "Kein отрицает существительное, обычно вместо неопределённого артикля. Nicht отрицает глагол, признак или всё предложение.", examples: ["Ich habe keine Zeit. — У меня нет времени.", "Er kommt heute nicht. — Он сегодня не придёт.", "Das ist kein Problem. — Это не проблема."], questions: [
-    { prompt: "Ich habe ___ Zeit.", options: ["keine", "nicht", "kein"], answer: "keine", explanation: "Существительное Zeit отрицается kein; женский род — keine." },
-    { prompt: "Er kommt heute ___.", options: ["nicht", "kein", "keine"], answer: "nicht", explanation: "Отрицается действие kommen, поэтому используем nicht." },
-    { prompt: "Das ist ___ Problem.", options: ["kein", "nicht", "keine"], answer: "kein", explanation: "Problem — существительное среднего рода: kein Problem." },
-    { prompt: "Sie arbeitet heute ___.", options: ["nicht", "keine", "kein"], answer: "nicht", explanation: "Отрицается глагол arbeiten, поэтому nicht." },
-  ] },
-  { id: "clauses", title: "Союзы и порядок слов", description: "Глагол после weil уходит в конец", explanation: "После подчинительных союзов weil, dass и obwohl спрягаемый глагол стоит в конце придаточной части. После denn сохраняется обычный порядок слов.", examples: ["Ich bleibe zu Hause, weil ich krank bin.", "Ich bin müde, denn ich gehe schlafen."], questions: [
-    { prompt: "Ich bleibe zu Hause, weil ich krank ___.", options: ["bin", "sein", "ist"], answer: "bin", explanation: "В придаточном с weil спрягаемый глагол стоит в конце." },
-    { prompt: "Ich bin müde, ___ ich gehe schlafen.", options: ["denn", "weil", "dass"], answer: "denn", explanation: "После denn порядок слов остаётся прямым." },
-    { prompt: "Er sagt, dass er heute nicht ___.", options: ["arbeitet", "arbeiten", "arbeitest"], answer: "arbeitet", explanation: "В придаточном с dass глагол стоит в конце." },
-    { prompt: "___ es regnet, gehen wir spazieren.", options: ["Obwohl", "Weil", "Dass"], answer: "Obwohl", explanation: "Obwohl вводит уступительное придаточное; глагол regnet остаётся в конце придаточной части." },
-  ] },
-  { id: "perfekt", title: "Perfekt: haben или sein", description: "Выберите вспомогательный глагол", explanation: "Большинство глаголов образует Perfekt с haben. Sein обычно используют глаголы перемещения и перехода в другое состояние.", examples: ["Ich habe Kaffee getrunken. — Я выпил кофе.", "Wir sind nach Berlin gefahren. — Мы поехали в Берлин."], questions: [
-    { prompt: "Wir ___ nach Berlin gefahren.", options: ["sind", "haben", "seid"], answer: "sind", explanation: "Перемещение из точки в точку обычно образует Perfekt с sein." },
-    { prompt: "Ich ___ einen Kaffee getrunken.", options: ["habe", "bin", "hat"], answer: "habe", explanation: "Большинство переходных глаголов образует Perfekt с haben." },
-    { prompt: "Sie ___ früh aufgestanden.", options: ["ist", "hat", "sind"], answer: "ist", explanation: "Смена состояния aufstehen образует Perfekt с sein." },
-    { prompt: "Er ___ das Formular geschickt.", options: ["hat", "ist", "haben"], answer: "hat", explanation: "Schicken образует Perfekt с haben." },
-  ] },
-  { id: "separable", title: "Отделяемые приставки", description: "Приставка уходит в конец предложения", explanation: "В Präsens приставка отделяемого глагола уходит в конец предложения. На втором месте остаётся изменённая по лицу часть глагола.", examples: ["Der Zug fährt um zehn Uhr ab. — Поезд отправляется в десять.", "Ich stehe um sieben Uhr auf. — Я встаю в семь."], questions: [
-    { prompt: "Der Zug fährt um zehn Uhr ___. (abfahren)", options: ["ab", "fahren", "abfahren"], answer: "ab", explanation: "В Präsens отделяемая приставка ставится в конец предложения." },
-    { prompt: "Ich ___ um sieben Uhr auf. (aufstehen)", options: ["stehe", "aufstehe", "stehen"], answer: "stehe", explanation: "Спрягаемая часть steht на втором месте, приставка auf — в конце." },
-    { prompt: "Mach bitte die Tür ___. (zumachen)", options: ["zu", "machen", "zumachen"], answer: "zu", explanation: "В повелительном наклонении отделяемая приставка также уходит в конец." },
-    { prompt: "Wann ___ der Film an? (anfangen)", options: ["fängt", "anfängt", "fangen"], answer: "fängt", explanation: "Спрягаемая часть глагола стоит на втором месте, an — в конце." },
-  ] },
-  { id: "nominative", group: "basics", title: "Артикли в Nominativ", description: "Кто? Что? · der, die, das", explanation: "Nominativ — форма подлежащего, то есть того, кто или что выполняет действие. Определённый артикль зависит от рода и числа существительного.", examples: ["Der Mann kommt. — Мужчина приходит.", "Die Frau lernt. — Женщина учится.", "Das Kind spielt. — Ребёнок играет."], questions: [
-    { prompt: "___ Mann kommt heute.", options: ["Der", "Den", "Dem"], answer: "Der", explanation: "Mann — мужской род, подлежащее в Nominativ: der Mann." },
-    { prompt: "___ Frau arbeitet hier.", options: ["Die", "Der", "Den"], answer: "Die", explanation: "Frau — женский род: die Frau." },
-    { prompt: "___ Kind spielt im Garten.", options: ["Das", "Den", "Dem"], answer: "Das", explanation: "Kind — средний род: das Kind." },
-    { prompt: "___ Bücher sind neu.", options: ["Die", "Das", "Der"], answer: "Die", explanation: "Во множественном числе определённый артикль — die." },
-  ] },
-  { id: "dative", group: "basics", title: "Dativ: кому? чему?", description: "dem, der, dem и множественное число", explanation: "Dativ часто отвечает на вопрос «кому? чему?» и используется после ряда предлогов, например mit и aus. Запомните формы определённого артикля: dem, der, dem, den.", examples: ["Ich helfe dem Mann. — Я помогаю мужчине.", "Sie spricht mit der Frau. — Она разговаривает с женщиной.", "Wir fahren mit den Kindern. — Мы едем с детьми."], questions: [
-    { prompt: "Ich helfe ___ Mann.", options: ["dem", "den", "der"], answer: "dem", explanation: "Mann — мужской род; в Dativ: dem Mann." },
-    { prompt: "Er spricht mit ___ Frau.", options: ["der", "die", "dem"], answer: "der", explanation: "После mit нужен Dativ; die Frau → der Frau." },
-    { prompt: "Das Geschenk ist für ___ Kind.", options: ["das", "dem", "den"], answer: "das", explanation: "Здесь für требует Akkusativ, поэтому: das Kind." },
-    { prompt: "Wir spielen mit ___ Kindern.", options: ["den", "die", "dem"], answer: "den", explanation: "Во множественном числе Dativ: den Kindern; к существительному обычно добавляется -n." },
-  ] },
-  { id: "pronouns", group: "basics", title: "Личные местоимения", description: "ich, du, er/sie/es, wir, ihr, sie/Sie", explanation: "Личное местоимение заменяет существительное. В Nominativ его форма показывает, кто выполняет действие. Sie с заглавной буквы — вежливое «Вы».", examples: ["Ich wohne in Berlin. — Я живу в Берлине.", "Er lernt Deutsch. — Он учит немецкий.", "Sie kommen heute. — Они приходят сегодня."], questions: [
-    { prompt: "Anna ist hier. ___ lernt Deutsch.", options: ["Sie", "Er", "Es"], answer: "Sie", explanation: "Anna — женский род, поэтому используем sie: она." },
-    { prompt: "Tom und ich sind Freunde. ___ spielen Fußball.", options: ["Wir", "Ihr", "Sie"], answer: "Wir", explanation: "Tom и я — это wir («мы»)." },
-    { prompt: "Herr Müller, ___ sprechen sehr gut Deutsch.", options: ["Sie", "du", "ihr"], answer: "Sie", explanation: "При вежливом обращении используется Sie с заглавной буквы." },
-    { prompt: "Das Kind ist müde. ___ schläft.", options: ["Es", "Er", "Sie"], answer: "Es", explanation: "Kind — среднего рода, поэтому местоимение es." },
-  ] },
-  { id: "possessives", group: "basics", title: "Притяжательные слова", description: "mein, dein, sein, ihr, unser", explanation: "Притяжательное слово показывает, кому что принадлежит. Его окончание согласуется с существительным: mein Bruder, meine Schwester, mein Kind, meine Freunde.", examples: ["Das ist mein Bruder. — Это мой брат.", "Wo ist deine Tasche? — Где твоя сумка?", "Unser Haus ist klein. — Наш дом маленький."], questions: [
-    { prompt: "Das ist ___ Bruder. (мой)", options: ["mein", "meine", "meinen"], answer: "mein", explanation: "Bruder — мужской род в Nominativ: mein Bruder." },
-    { prompt: "Wo ist ___ Tasche? (твой)", options: ["deine", "dein", "deinen"], answer: "deine", explanation: "Tasche — женский род: deine Tasche." },
-    { prompt: "Er besucht ___ Eltern. (его)", options: ["seine", "sein", "seinen"], answer: "seine", explanation: "Во множественном числе: seine Eltern." },
-    { prompt: "___ Kind spielt hier. (наше)", options: ["Unser", "Unsere", "Unseren"], answer: "Unser", explanation: "Kind — средний род в Nominativ: unser Kind." },
-  ] },
-  { id: "sein-haben", group: "basics", title: "Глаголы sein и haben", description: "Формы «быть» и «иметь»", explanation: "Sein и haben — частотные неправильные глаголы. Их формы нужно запомнить: ich bin/habe, du bist/hast, er ist/hat, wir sind/haben.", examples: ["Ich bin müde. — Я устал.", "Du hast Zeit. — У тебя есть время.", "Wir sind zu Hause. — Мы дома."], questions: [
-    { prompt: "Ich ___ heute zu Hause. (sein)", options: ["bin", "bist", "ist"], answer: "bin", explanation: "Форма sein с ich — bin." },
-    { prompt: "Du ___ einen Bruder. (haben)", options: ["hast", "hat", "haben"], answer: "hast", explanation: "Форма haben с du — hast." },
-    { prompt: "Sie ___ sehr freundlich. (sein)", options: ["ist", "bist", "sind"], answer: "ist", explanation: "Sie здесь означает «она», форма sein — ist." },
-    { prompt: "Wir ___ zwei Kinder. (haben)", options: ["haben", "hat", "hast"], answer: "haben", explanation: "Форма haben с wir — haben." },
-  ] },
-  { id: "plurals", group: "basics", title: "Множественное число", description: "Частые формы существительных", explanation: "В немецком нет одного окончания множественного числа: встречаются -e, -er, -n/-en, -s и нулевое окончание, иногда с умлаутом. Новое существительное лучше учить сразу вместе с формой множественного числа.", examples: ["der Tag → die Tage — день → дни", "das Kind → die Kinder — ребёнок → дети", "die Frau → die Frauen — женщина → женщины", "der Lehrer → die Lehrer — учитель → учителя"], questions: [
-    { prompt: "Ein Kind, zwei ___.", options: ["Kinder", "Kinde", "Kinds"], answer: "Kinder", explanation: "Множественное число Kind — Kinder." },
-    { prompt: "Ein Tag, drei ___.", options: ["Tage", "Tagen", "Tags"], answer: "Tage", explanation: "Множественное число Tag — Tage." },
-    { prompt: "Eine Frau, zwei ___.", options: ["Frauen", "Fraue", "Fraus"], answer: "Frauen", explanation: "Множественное число Frau — Frauen." },
-    { prompt: "Ein Lehrer, zwei ___.", options: ["Lehrer", "Lehreren", "Lehrers"], answer: "Lehrer", explanation: "Lehrer сохраняет форму во множественном числе; меняется артикль: die Lehrer." },
-  ] },
-  { id: "present", group: "sentences", title: "Präsens: настоящее время", description: "Окончания регулярных глаголов", explanation: "У регулярных глаголов убираем -en и добавляем личное окончание: ich -e, du -st, er/sie/es -t, wir -en, ihr -t, sie/Sie -en.", examples: ["ich mach-e — я делаю", "du lern-st — ты учишься", "er wohn-t — он живёт", "wir spiel-en — мы играем"], questions: [
-    { prompt: "Du ___ Deutsch. (lernen)", options: ["lernst", "lernt", "lernen"], answer: "lernst", explanation: "Для du у регулярного глагола окончание -st: lernst." },
-    { prompt: "Er ___ in Berlin. (wohnen)", options: ["wohnt", "wohne", "wohnst"], answer: "wohnt", explanation: "Для er/sie/es добавляем -t: wohnt." },
-    { prompt: "Wir ___ Fußball. (spielen)", options: ["spielen", "spielt", "spiele"], answer: "spielen", explanation: "Для wir используется инфинитивное окончание -en." },
-    { prompt: "Ihr ___ sehr schnell. (arbeiten)", options: ["arbeitet", "arbeiten", "arbeite"], answer: "arbeitet", explanation: "Для ihr окончание -t; у arbeiten появляется дополнительное e для удобства произношения." },
-  ] },
-  { id: "word-order", group: "sentences", title: "Порядок слов: глагол на втором месте", description: "Утверждение и обстоятельство в начале", explanation: "В обычном немецком повествовательном предложении спрягаемый глагол стоит на втором месте. Если на первое место поставить время или место, подлежащее обычно идёт после глагола.", examples: ["Ich lerne heute Deutsch. — Я сегодня учу немецкий.", "Heute lerne ich Deutsch. — Сегодня я учу немецкий.", "Am Abend kocht er. — Вечером он готовит."], questions: [
-    { prompt: "Heute ___ ich Deutsch. (lernen)", options: ["lerne", "ich lerne", "lernst"], answer: "lerne", explanation: "Heute занимает первое место, поэтому глагол lerne стоит на втором." },
-    { prompt: "Am Morgen ___ wir Kaffee. (trinken)", options: ["trinken", "wir trinken", "trinkst"], answer: "trinken", explanation: "После обстоятельства am Morgen на втором месте стоит trinken." },
-    { prompt: "In Berlin ___ meine Schwester. (wohnen)", options: ["wohnt", "meine Schwester wohnt", "wohne"], answer: "wohnt", explanation: "После обстоятельства места глагол стоит перед подлежащим: In Berlin wohnt meine Schwester." },
-    { prompt: "Ich ___ heute zu Hause. (bleiben)", options: ["bleibe", "bleibst", "bleibt"], answer: "bleibe", explanation: "Подлежащее ich стоит первым, спрягаемый глагол bleibe — вторым." },
-  ] },
-  { id: "questions", group: "sentences", title: "Вопросы: Ja/Nein и W-Fragen", description: "Глагол первым или после вопросительного слова", explanation: "В вопросе без вопросительного слова спрягаемый глагол стоит первым. В W-вопросе порядок такой: вопросительное слово, глагол, подлежащее.", examples: ["Kommst du heute? — Ты придёшь сегодня?", "Wo wohnst du? — Где ты живёшь?", "Wann beginnt der Film? — Когда начинается фильм?"], questions: [
-    { prompt: "___ du aus Berlin? — Ja. (kommen)", options: ["Kommst", "Du kommst", "Kommt"], answer: "Kommst", explanation: "В вопросе Ja/Nein глагол стоит перед подлежащим: Kommst du?" },
-    { prompt: "Wo ___ ihr? (wohnen)", options: ["wohnt", "ihr wohnt", "wohnst"], answer: "wohnt", explanation: "W-слово, затем глагол, затем подлежащее: Wo wohnt ihr?" },
-    { prompt: "Wann ___ der Zug? (kommen)", options: ["kommt", "kommen", "kommst"], answer: "kommt", explanation: "Подлежащее der Zug в единственном числе: kommt." },
-    { prompt: "___ Sie einen Moment? (warten)", options: ["Warten", "Wartet", "Wartest"], answer: "Warten", explanation: "При вежливом Sie используется форма, совпадающая с множественным числом: warten." },
-  ] },
-  { id: "modal-verbs", group: "sentences", title: "Модальные глаголы", description: "können, müssen, dürfen и инфинитив", explanation: "Модальный глагол спрягается и занимает второе место; смысловой глагол остаётся в инфинитиве в конце предложения.", examples: ["Ich kann gut schwimmen. — Я умею хорошо плавать.", "Wir müssen heute lernen. — Нам нужно сегодня учиться.", "Darf ich hier sitzen? — Можно мне здесь сесть?"], questions: [
-    { prompt: "Ich ___ heute arbeiten. (müssen)", options: ["muss", "musst", "müssen"], answer: "muss", explanation: "Форма müssen с ich — muss; смысловой глагол arbeiten стоит в конце." },
-    { prompt: "Du ___ sehr gut kochen. (können)", options: ["kannst", "kann", "können"], answer: "kannst", explanation: "Форма können с du — kannst." },
-    { prompt: "Wir dürfen hier ___. (parken)", options: ["parken", "parkt", "geparkt"], answer: "parken", explanation: "После модального dürfen смысловой глагол стоит в инфинитиве в конце." },
-    { prompt: "Er ___ morgen früh aufstehen. (sollen)", options: ["soll", "sollst", "sollen"], answer: "soll", explanation: "Форма sollen с er — soll." },
-  ] },
-  { id: "imperative", group: "sentences", title: "Повелительное наклонение", description: "Просьбы и команды: du, ihr, Sie", explanation: "В повседневной речи есть разные формы повелительного наклонения. Для du обычно убирают местоимение и окончание -st; для ihr используют форму ihr без местоимения; вежливая просьба строится с Sie.", examples: ["Komm bitte! — Приходи, пожалуйста!", "Macht die Tür zu! — Закройте дверь! (вы, мн. ч.)", "Sprechen Sie langsam! — Говорите медленно!"], questions: [
-    { prompt: "___ bitte! (du, kommen)", options: ["Komm", "Kommst", "Kommt"], answer: "Komm", explanation: "Форма для du: основа komm без местоимения и -st." },
-    { prompt: "___ die Aufgabe! (ihr, machen)", options: ["Macht", "Machst", "Machen"], answer: "Macht", explanation: "Для ihr берём форму ihr: ihr macht → Macht!" },
-    { prompt: "___ Sie bitte langsam! (sprechen)", options: ["Sprechen", "Sprich", "Sprecht"], answer: "Sprechen", explanation: "Вежливая форма: инфинитив + Sie." },
-    { prompt: "___ bitte Platz! (du, nehmen)", options: ["Nimm", "Nehmt", "Nehmen"], answer: "Nimm", explanation: "У nehmen форма du имеет изменение гласной: Nimm!" },
-  ] },
-  { id: "time-prepositions", group: "basics", title: "Предлоги времени", description: "um, am, im: время, дни и месяцы", explanation: "Используйте um для конкретного времени на часах, am для дней недели и частей дня, im для месяцев и сезонов.", examples: ["um acht Uhr — в восемь часов", "am Montag — в понедельник", "am Morgen — утром", "im Sommer — летом"], questions: [
-    { prompt: "Der Film beginnt ___ acht Uhr.", options: ["um", "am", "im"], answer: "um", explanation: "Конкретное время на часах вводится предлогом um." },
-    { prompt: "Wir treffen uns ___ Freitag.", options: ["am", "im", "um"], answer: "am", explanation: "Перед днями недели используется am." },
-    { prompt: "Meine Schwester hat ___ Juli Urlaub.", options: ["im", "am", "um"], answer: "im", explanation: "Перед месяцем Juli используется im." },
-    { prompt: "Ich lerne ___ Abend.", options: ["am", "im", "um"], answer: "am", explanation: "Части дня (кроме Nacht) обычно используются с am: am Abend." },
-  ] },
-];
-
-export function validateGame(id: GameId, module: VocabModule) {
-  const cards = module.cards;
-  if (["articles", "train", "builder", "finalsound"].includes(id) && module.languageCode !== "de") return "Этот сценарий основан на правилах немецкого языка. Для другого языка выберите карточки и общий игровой формат.";
-  if (id === "articles" && (cards.filter((card) => card.article).length < 3 || new Set(cards.map((card) => card.article).filter(Boolean)).size < 2)) return "Для сортировки нужны 3 существительных минимум двух родов.";
-  if (id === "pairs" && new Set(cards.map((card) => card.translation.toLowerCase())).size < 2) return "Для пар нужны хотя бы 2 разных перевода.";
-  if (id === "datajoin" && new Set(cards.map((card) => card.translation.toLowerCase())).size < 2) return "Для Data JOIN нужны хотя бы 2 разных перевода.";
-  if (id === "boxes" && new Set(cards.map((card) => card.translation.trim().toLocaleLowerCase())).size < 4) return "Для коробок выберите минимум 4 слова с разными переводами.";
-  if (id === "finalsound" && cards.filter((card) => /[bdg]$/i.test(card.word.normalize("NFC"))).length < 1) return "В наборе нет слова на b, d или g для этого упражнения.";
-  if (id === "wordsearch" && cards.filter((card) => /^[\p{L}]{4,9}$/iu.test(card.word.normalize("NFC"))).length < 1) return "Для игры нужны слова длиной от 4 до 9 букв.";
-  if (id === "anagram" && cards.filter((card) => /^[\p{L}]{4,14}$/iu.test(card.word.normalize("NFC"))).length < 1) return "Для анаграммы нужно слово длиной от 4 до 14 букв.";
-  if (id === "fillblank" && (cards.filter((card) => Boolean(card.exampleSentence?.split("___").length === 2 && card.sentenceAnswer?.trim())).length < 2 || new Set(cards.map((card) => card.sentenceAnswer?.trim().toLocaleLowerCase()).filter(Boolean)).size < 2)) return "Добавьте минимум 2 предложения с пропуском и разными правильными ответами.";
-  if (id === "picture" && cards.some((card) => !card.image?.id)) return "Добавьте изображение к каждому выбранному слову в редакторе игры.";
-  if (!cards.length) return "Сначала выберите карточки для игры.";
-  return null;
-}
-
-const articlePracticeWords = [
-  ["der", "Hund", "собака", "[хунт]"], ["die", "Katze", "кошка", "[каце]"], ["das", "Buch", "книга", "[бух]"],
-  ["der", "Tisch", "стол", "[тиш]"], ["die", "Lampe", "лампа", "[лампе]"], ["das", "Haus", "дом", "[хаус]"],
-] as const;
-const soundPracticeWords = [
-  ["Hund", "собака", "[хунт]"], ["Tag", "день", "[так]"], ["Dieb", "вор", "[дип]"],
-] as const;
-const germanOnlyGames = new Set<GameId>(["articles", "builder", "train", "finalsound", "datajoin"]);
-const languageForms: Record<string, { adjective: string; locative: string }> = {
-  de: { adjective: "немецкое", locative: "немецком" }, en: { adjective: "английское", locative: "английском" },
-  es: { adjective: "испанское", locative: "испанском" }, fr: { adjective: "французское", locative: "французском" },
-  it: { adjective: "итальянское", locative: "итальянском" }, tr: { adjective: "турецкое", locative: "турецком" },
-};
-
-function practiceSample(module: VocabModule, kind: "articles" | "sound" | "general"): VocabCard[] {
-  const rows = kind === "articles" ? articlePracticeWords : kind === "sound" ? soundPracticeWords : articlePracticeWords;
-  return rows.map((row, index) => {
-    const [article, word, translation, transcription] = kind === "articles" ? row as typeof articlePracticeWords[number] : kind === "sound" ? [null, ...row] as [null, string, string, string] : row as typeof articlePracticeWords[number];
-    return { id: `sample-${module.languageCode}-${kind}-${index + 1}`, moduleId: module.id, article: article as VocabCard["article"], word, translation, transcription, partOfSpeech: "noun", phoneticRuleId: kind === "sound" ? "PHON-03" : null };
-  });
-}
-
-export function prepareGameModule(id: GameId, module: VocabModule): VocabModule {
-  if (module.languageCode !== "de") return module;
-  const cards = module.cards;
-  const hasArticlePack = cards.filter((card) => card.article).length >= 3 && new Set(cards.map((card) => card.article).filter(Boolean)).size >= 2;
-  const hasNoun = cards.some((card) => card.article);
-  const hasSound = cards.some((card) => /[bdg]$/i.test(card.word.normalize("NFC")));
-  const hasLongWord = cards.some((card) => id === "wordsearch" ? /^[\p{L}]{4,9}$/iu.test(card.word.normalize("NFC")) : id === "anagram" ? /^[\p{L}]{4,14}$/iu.test(card.word.normalize("NFC")) : false);
-  if (id === "articles" && !hasArticlePack) return { ...module, cards: practiceSample(module, "articles"), practiceNote: "Примерный набор A1 · немецкие существительные" };
-  if ((id === "train" || id === "builder") && !hasNoun) return { ...module, cards: practiceSample(module, "articles"), practiceNote: "Примерный набор A1 · немецкие существительные" };
-  if (id === "finalsound" && !hasSound) return { ...module, cards: practiceSample(module, "sound"), practiceNote: "Примерный набор A1 · конечные согласные" };
-  if ((id === "wordsearch" || id === "anagram") && !hasLongWord) return { ...module, cards: practiceSample(module, "general"), practiceNote: "Примерный набор A1 · слова для игры" };
-  if ((id === "pairs" || id === "datajoin") && new Set(cards.map((card) => card.translation.toLowerCase())).size < 2) return { ...module, cards: practiceSample(module, "general"), practiceNote: "Примерный набор A1 · слова для игры" };
-  if (id === "boxes" && new Set(cards.map((card) => card.translation.toLocaleLowerCase())).size < 4) return { ...module, cards: practiceSample(module, "general"), practiceNote: "Примерный набор A1 · слова для игры" };
-  return module;
-}
-
-type SavedActivity = { id: string; title: string; gameId: GameId; moduleId: number; languageCode: string; level: string; cardIds: string[]; cards?: VocabCard[]; instructions?: string; media?: NonNullable<VocabModule["practiceMedia"]> };
+type SavedActivity = { id: string; title: string; gameId: GameId; moduleId: number; languageCode: string; level: string; cardIds: string[]; cards?: VocabCard[]; instructions?: string; media?: NonNullable<VocabModule["practiceMedia"]>; lastPlayedAt?: number };
 type GrammarDraftQuestion = { prompt: string; optionsText: string; answer: string; explanation: string };
 type GrammarDraft = { id: string; title: string; description: string; explanation: string; examplesText: string; group: "basics" | "sentences"; questions: GrammarDraftQuestion[] };
 
@@ -221,40 +33,80 @@ function SavedImagePreview({ image, alt }: { image: VocabCard["image"]; alt: str
 }
 
 function GameArtwork({ gameId, module }: { gameId: GameId; module: VocabModule }) {
-  const card = module.cards[0];
-  const second = module.cards[1];
-  const shownWord = card ? `${card.article ? `${card.article} ` : ""}${card.word}` : "Слово";
-  const secondWord = second ? `${second.article ? `${second.article} ` : ""}${second.word}` : "Карточка";
-  const word = card?.word ?? "Tisch";
-  const translation = card?.translation ?? "стол";
-  const title = GAME_LIST.find((game) => game.id === gameId)?.title ?? "Игра";
+  const sampled = useMemo(() => module.cards.filter((item) => item.word.trim() && item.translation.trim()).slice(0, 6), [module.cards]);
+  const card = sampled[0];
+  const german = (item: VocabCard) => `${item.article ? `${item.article} ` : ""}${item.word}`;
+  const uniqueCards = [...new Map(module.cards.filter((item) => item.translation.trim()).map((item) => [item.translation.toLocaleLowerCase(), item])).values()];
+  const alternatives = card ? [...sampled.filter((item) => item.id !== card.id), ...uniqueCards.filter((item) => item.id !== card.id)].filter((item, index, items) => items.findIndex((other) => other.translation.toLocaleLowerCase() === item.translation.toLocaleLowerCase()) === index).slice(0, 5) : [];
   let art: ReactNode;
-  if (gameId === "pairs" || gameId === "datajoin") art = <span className="game-art-pairs"><span>{shownWord}</span><b>↔</b><span>{translation}</span><span>{secondWord}</span><b>↔</b><span>{second?.translation ?? "книга"}</span></span>;
-  else if (gameId === "articles") art = <span className="game-art-columns"><span><b>der</b><i>{card?.article === "der" ? word : "Hund"}</i></span><span><b>die</b><i>{card?.article === "die" ? word : "Katze"}</i></span><span><b>das</b><i>{card?.article === "das" ? word : "Haus"}</i></span></span>;
-  else if (gameId === "builder") art = <span className="game-art-builder"><b>{translation}</b><span>{card?.article ?? "der"}</span><span>{word}</span><span>?</span></span>;
-  else if (gameId === "train") art = <span className="game-art-train"><span>🚂</span><b>{card?.article ?? "der"}</b><b>{word}</b><b>✓</b></span>;
-  else if (gameId === "blitz") art = <span className="game-art-quiz"><b>{translation}</b><span>{translation}</span><span>{second?.translation ?? "книга"}</span><span>вода</span><span>дом</span></span>;
-  else if (gameId === "hangman") art = <span className="game-art-hangman"><b>Подсказка · {translation}</b><strong>{[...word].map(() => "_ ").join("").trim()}</strong><span>A&nbsp; E&nbsp; I&nbsp; O&nbsp; U</span></span>;
-  else if (gameId === "wordsearch") art = <span className="game-art-search"><b>Найдите: {word.toLocaleUpperCase()}</b><span>{[...`${word.toLocaleUpperCase()}ABCDEF`].slice(0, 12).map((letter, index) => <i key={`${letter}-${index}`}>{letter}</i>)}</span><small>Введите ответ</small></span>;
-  else if (gameId === "anagram") art = <span className="game-art-anagram"><b>{translation}</b><span>{[...word.toLocaleUpperCase()].reverse().slice(0, 7).map((letter, index) => <i key={`${letter}-${index}`}>{letter}</i>)}</span><small>Соберите слово</small></span>;
-  else if (gameId === "moles") art = <span className="game-art-moles"><b>{shownWord}</b><span>🐹</span><span>{translation}</span><span>🐹</span><span>🐹</span><span>🐹</span></span>;
-  else if (gameId === "boxes") art = <span className="game-art-boxes"><b>Найдите перевод · {shownWord}</b><span>🎁</span><span>🎁</span><span>🎁</span></span>;
-  else if (gameId === "wheel") art = <span className="game-art-wheel"><span>✦</span><span>КРУТИТЬ</span></span>;
-  else if (gameId === "phonetic") art = <span className="game-art-phonetic"><b>Какое слово услышали?</b><span>🔊</span><span>{shownWord}</span><span>{secondWord}</span></span>;
-  else if (gameId === "fillblank") {
-    const sentence = card?.exampleSentence?.trim();
-    art = <span className="game-art-fillblank"><b>Вставьте слово</b>{sentence?.split("___").length === 2 ? <><span>{sentence.split("___").map((part, index) => <Fragment key={index}>{part}{index === 0 && <i>________</i>}</Fragment>)}</span><small>{card?.sentenceAnswer ?? word}　{second?.sentenceAnswer ?? second?.word ?? "вариант"}</small></> : <span className="game-art-fillblank-empty">Добавьте своё предложение с пропуском</span>}</span>;
+
+  if (gameId === "pairs") {
+    const rows = sampled.slice(0, 3);
+    const translations = rows.length >= 3 ? [rows[1].translation, rows[0].translation, ...rows.slice(2).map((item) => item.translation)] : rows.map((item) => item.translation);
+    const connectedIndex = rows.length >= 3 ? 2 : 0;
+    art = <span className="gp-pairs">{rows.map((item, index) => <span className="gp-pair-row" key={item.id}><b>{german(item)}</b><i className={index === connectedIndex ? "connected" : ""} aria-hidden="true" /><span>{translations[index]}</span></span>)}</span>;
+  } else if (gameId === "articles") {
+    const nouns = module.cards.filter((item) => item.article).slice(0, 6);
+    art = <span className="gp-articles">{(["der", "die", "das"] as const).map((article) => <span className={`gp-article-col ${article}`} key={article}><b>{article}</b>{nouns.filter((item) => item.article === article).slice(0, 2).map((item) => <i key={item.id}>{item.word}</i>)}</span>)}</span>;
+  } else if (gameId === "sentenceorder" || gameId === "fillblank") {
+    const sentenceCard = module.cards.find((item) => item.exampleSentence?.trim());
+    const sentence = gameId === "fillblank" ? sentenceCard?.exampleSentence ?? "" : sentenceCard?.exampleSentence?.replace("___", sentenceCard.sentenceAnswer || german(sentenceCard)) ?? "";
+    const tokens = sentence.split(/\s+/).filter(Boolean);
+    const shuffledTokens = tokens.length > 2 ? [tokens[1], tokens[0], ...tokens.slice(2).reverse()] : tokens;
+    art = <span className="gp-sentence"><b>{gameId === "fillblank" ? sentence.replace("___", "________") : "Соберите предложение"}</b>{gameId === "sentenceorder" ? <><span className="gp-tokens">{shuffledTokens.slice(0, 5).map((token, index) => <i key={`${token}-${index}`}>{token.replace(/[.,!?]$/, "")}</i>)}</span><span className="gp-answer-line" /></> : <span className="gp-quiz-options">{alternatives.slice(0, 3).map((item) => <i key={item.id}>{item.word}</i>)}</span>}</span>;
+  } else if (gameId === "builder") {
+    art = <span className="gp-builder"><b>{card?.translation ?? "Добавьте слова"}</b><span className="gp-builder-slots"><i>{card?.article ?? "□"}</i><strong>{card?.word ?? "□"}</strong></span><small>артикль + существительное</small></span>;
+  } else if (gameId === "train") {
+    const nouns = module.cards.filter((item) => item.article).slice(0, 3);
+    art = <span className="gp-train">{nouns.map((item) => <span key={item.id}><i>{item.article}</i><b>{item.word}</b></span>)}</span>;
+  } else if (gameId === "blitz") {
+    const choices = [card, ...alternatives].filter((item): item is VocabCard => Boolean(item)).slice(0, 4);
+    art = <span className="gp-quiz"><b>{card ? german(card) : "Добавьте слова"}</b><span className="gp-quiz-options">{choices.map((item, index) => <i className={index === 0 ? "correct" : ""} key={item.id}>{item.translation}</i>)}</span></span>;
+  } else if (gameId === "moles") {
+    const choices = [card, ...alternatives].filter((item): item is VocabCard => Boolean(item)).slice(0, 4);
+    art = <span className="gp-moles"><b>{card ? german(card) : "Добавьте слова"}</b><span>{choices.map((item, index) => <i className={index === 0 ? "correct" : ""} key={item.id}>{item.translation}</i>)}</span></span>;
+  } else if (gameId === "boxes") {
+    const choices = [card, ...alternatives].filter((item): item is VocabCard => Boolean(item)).slice(0, 3);
+    art = <span className="gp-boxes"><b>{card ? german(card) : "Добавьте слова"}</b><span>{choices.map((item, index) => <i className={index === 0 ? "open" : ""} key={item.id}><small>{index === 0 ? item.translation : "?"}</small></i>)}</span></span>;
+  } else if (gameId === "wheel") {
+    art = <span className="gp-wheel"><span className="gp-wheel-disc">{sampled.slice(0, 4).map((item, index) => <i className={`sector-${index}`} key={item.id}>{german(item)}</i>)}</span><b>✦</b></span>;
+  } else if (gameId === "phonetic") {
+    art = <span className="gp-phonetic"><b><Icon name="volume" size={23} /></b><span>{sampled.slice(0, 3).map((item, index) => <i className={index === 0 ? "selected" : ""} key={item.id}>{german(item)}</i>)}</span></span>;
+  } else if (gameId === "hangman") {
+    const letters = [...(card?.word ?? "")];
+    art = <span className="gp-word"><b>{card?.translation ?? "Добавьте слова"}</b><strong>{letters.map((letter, index) => index < 2 ? letter : "＿").join(" ")}</strong></span>;
+  } else if (gameId === "wordsearch") {
+    const letters = [...(card?.word.toLocaleUpperCase() ?? "")].slice(0, 3);
+    art = <span className="gp-word"><b>{card?.translation ?? "Добавьте слова"}</b><strong className="gp-input-preview">{letters.join("")}<i>▏</i>_____</strong></span>;
+  } else if (gameId === "anagram") {
+    const letters = [...(card?.word.toLocaleUpperCase() ?? "")].slice(0, 10);
+    art = <span className="gp-letters"><b>{card?.translation ?? "Добавьте слова"}</b><span>{[...letters].reverse().map((letter, index) => <i key={`${letter}-${index}`}>{letter}</i>)}</span><small className="gp-answer-line" /></span>;
+  } else if (gameId === "finalsound") {
+    const finalSoundCard = module.cards.find((item) => /[bdg]$/i.test(item.word));
+    art = <span className="gp-phonetic"><b><Icon name="volume" size={23} /></b><span><strong>{finalSoundCard ? german(finalSoundCard) : "Добавьте слова"}</strong><i className="selected">{finalSoundCard?.word.slice(-1).toLocaleLowerCase() ?? "b"}</i><i>{finalSoundCard?.word.endsWith("b") ? "p" : finalSoundCard?.word.endsWith("d") ? "t" : "k"}</i></span></span>;
+  } else if (gameId === "picture") {
+    const pictureCard = module.cards.find((item) => item.image?.id);
+    art = <span className="gp-picture">{pictureCard?.image?.id ? <SavedImagePreview image={pictureCard.image} alt={`Пример: ${pictureCard.word}`} /> : null}<b>{pictureCard?.word ?? "Добавьте картинку"}</b><span className="gp-quiz-options">{module.cards.filter((item) => item.image?.id).slice(0, 3).map((item) => <i key={item.id}>{item.word}</i>)}</span></span>;
+  } else {
+    art = <span className="gp-letters"><b>{card ? german(card) : "Добавьте слова"}</b><span>{sampled.slice(0, 3).map((item) => <i key={item.id}>{item.translation}</i>)}</span></span>;
   }
-  else if (gameId === "picture") art = <span className="game-art-picture">{card?.image?.id ? <SavedImagePreview image={card.image} alt={`Пример: ${card.word}`} /> : <span className="game-art-picture-placeholder"><span>🖼️</span><small>Добавьте картинку</small></span>}<b>{card?.word ?? "Haus"}</b></span>;
-  else art = <span className="game-art-sounds"><b>{shownWord}</b><span>п</span><span>т</span><span>к</span></span>;
-  return <span className={`game-tile-art art-${gameId}`} aria-hidden="true"><span className="game-art-top"><span className="game-art-dot" />{title}<span>1 / 8</span></span><span className={`game-art-board game-art-board-${gameId}`}>{art}</span></span>;
+  return <span className={`game-tile-art art-${gameId}`} aria-hidden="true"><span className="gp-scene">{art}</span></span>;
 }
 
-export function GameHub({ modules, preferredModuleId, languageCode, languageName, level, onStart, onGrammar, onAudioAnswer, onAudioEvent, audioQuizzes, onAudioQuizzesChange, canManageContent = true }: { modules: VocabModule[]; preferredModuleId: number | null; languageCode: string; languageName: string; level: string; onStart: (id: GameId, module: VocabModule, route?: string) => void; onGrammar: (topic: GrammarTopic) => void; onAudioAnswer: (correct: boolean) => void; onAudioEvent?: (payload: Record<string, unknown>) => void; audioQuizzes: AudioQuiz[]; onAudioQuizzesChange: React.Dispatch<React.SetStateAction<AudioQuiz[]>>; canManageContent?: boolean }) {
+function gamePreviewDescription(gameId: GameId, module: VocabModule) {
+  const card = module.cards[0];
+  const word = card ? `${card.article ? `${card.article} ` : ""}${card.word} — ${card.translation}` : "слов пока нет";
+  const second = module.cards[1] ? `${module.cards[1].word} — ${module.cards[1].translation}` : "";
+  const title = GAME_LIST.find((game) => game.id === gameId)?.title ?? "Игра";
+  return `${title}: ${[word, second].filter(Boolean).join(", ")}`;
+}
+
+export function GameHub({ modules, preferredModuleId, languageCode, languageName, level, onStart, onGrammar, onAddWords, onStartAudio, onAudioRestart, onAudioAnswer, onAudioEvent, audioQuizzes, onAudioQuizzesChange, canManageContent = true }: { modules: VocabModule[]; preferredModuleId: number | null; languageCode: string; languageName: string; level: string; onStart: (id: GameId, module: VocabModule, route?: string) => void; onGrammar: (topic: GrammarTopic) => void; onAddWords: () => void; onStartAudio?: (id: string) => boolean | Promise<boolean>; onAudioRestart?: () => void | boolean | Promise<void | boolean>; onAudioAnswer: (correct: boolean) => void; onAudioEvent?: (payload: Record<string, unknown>) => void; audioQuizzes: AudioQuiz[]; onAudioQuizzesChange: React.Dispatch<React.SetStateAction<AudioQuiz[]>>; canManageContent?: boolean }) {
   const preferred = modules.find((module) => module.id === 1) ?? modules[0];
   const [moduleId, setModuleId] = useState(preferred?.id ?? 0);
   const [notice, setNotice] = useState("");
   const [activeTab, setActiveTab] = useState<"games" | "grammar">("games");
+  const [gameFilter, setGameFilter] = useState<"all" | "words" | "listening" | "writing" | "grammar">("all");
   const [hashRoute, setHashRoute] = useState(() => window.location.hash);
   const [activities, setActivities] = useState<SavedActivity[]>(() => { try { const saved = JSON.parse(readProfileItem("linguaplay-saved-activities") || "[]"); return Array.isArray(saved) ? saved : []; } catch { return []; } });
   const [audioBuilderOpen, setAudioBuilderOpen] = useState(false);
@@ -280,6 +132,8 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
   const visibleCustomGrammar = customGrammar.filter((topic) => (topic.languageCode ?? "de") === languageCode && (topic.level ?? "A1–A2") === level);
   const [grammarBuilderOpen, setGrammarBuilderOpen] = useState(false);
   const [grammarDraft, setGrammarDraft] = useState<GrammarDraft | null>(null);
+  const processedAudioRoute = useRef("");
+  const processedGameRoute = useRef("");
   useEffect(() => writeProfileItem("linguaplay-saved-activities", JSON.stringify(activities)), [activities]);
   useEffect(() => writeProfileItem("linguaplay-custom-grammar", JSON.stringify(customGrammar)), [customGrammar]);
   useEffect(() => {
@@ -303,6 +157,7 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
   useEffect(() => { if (!modules.some((module) => module.id === moduleId)) setModuleId(modules[0]?.id ?? 0); }, [modules, moduleId]);
   const selectedModule = modules.find((module) => module.id === moduleId) ?? modules[0];
   const selectedCards = selectedModule?.cards ?? [];
+  const wordCountLabel = (count: number) => count === 1 ? "слово" : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? "слова" : "слов";
   const builderModule = modules.find((module) => module.id === builderModuleId) ?? selectedModule;
   const builderCards = activityCards;
   const selectedBuilderCards = builderCards.filter((card) => selectedCardIds.includes(card.id));
@@ -310,9 +165,23 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
   const pictureIncomplete = activityGame === "picture" && selectedBuilderCards.some((card) => !card.image?.id);
   const languageForm = languageForms[languageCode] ?? { adjective: "учебное", locative: languageName.toLocaleLowerCase() };
   const availableGames = GAME_LIST.filter((game) => languageCode === "de" || !germanOnlyGames.has(game.id)).map((game) => game.id === "pairs" ? { ...game, description: `Соедините ${languageForm.adjective} слово с переводом` } : game.id === "phonetic" ? { ...game, description: `На слух найдите слово на ${languageForm.locative}` } : game);
+  const cardGames = selectedModule ? availableGames.map((game) => ({ game, module: prepareGameModule(game.id, selectedModule), reason: validateGame(game.id, prepareGameModule(game.id, selectedModule)) })) : [];
+  const gameFilterIds: Record<Exclude<typeof gameFilter, "all">, Set<GameId>> = {
+    words: new Set(["pairs", "blitz", "hangman", "moles", "boxes", "wheel", "picture"]),
+    listening: new Set(["phonetic", "finalsound"]),
+    writing: new Set(["wordsearch", "anagram", "sentenceorder"]),
+    grammar: new Set(["articles", "builder", "train", "fillblank", "sentenceorder"]),
+  };
+  const filteredCardGames = cardGames.filter((item) => gameFilter === "all" || gameFilterIds[gameFilter].has(item.game.id));
+  const gameGroups = [
+    { title: "Слова", ids: new Set<GameId>(["pairs", "blitz", "hangman", "wordsearch", "anagram", "moles", "boxes", "wheel", "picture"]) },
+    { title: "На слух", ids: new Set<GameId>(["phonetic", "finalsound"]) },
+    { title: "Грамматика и фразы", ids: new Set<GameId>(["articles", "builder", "train", "fillblank", "sentenceorder"]) },
+  ].map((group) => ({ ...group, games: filteredCardGames.filter((item) => !item.reason && group.ids.has(item.game.id)) }));
+  const lockedGames = filteredCardGames.filter((item) => Boolean(item.reason));
   const builderGames = GAME_LIST.filter((game) => builderModule?.languageCode === "de" || !germanOnlyGames.has(game.id)).map((game) => game.id === "pairs" ? { ...game, description: `Соедините ${languageForm.adjective} слово с переводом` } : game.id === "phonetic" ? { ...game, description: `На слух найдите слово на ${languageForm.locative}` } : game);
   const filteredCards = builderCards.filter((card) => cardPreset === "all" || card.partOfSpeech === cardPreset);
-  const moduleActivities = activities.filter((activity) => activity.languageCode === languageCode && activity.level === level && availableGames.some((game) => game.id === activity.gameId));
+  const moduleActivities = activities.filter((activity) => activity.languageCode === languageCode && activity.level === level && activity.moduleId === selectedModule?.id && availableGames.some((game) => game.id === activity.gameId));
   const visibleAudioQuizzes = audioQuizzes.filter((quiz) => quiz.languageCode === languageCode && quiz.level === level);
   const closeActivityBuilder = () => {
     pendingMediaIds.current.forEach((id) => void removeMediaFile(id).catch(() => undefined));
@@ -400,6 +269,9 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
     const module = { ...sourceModule, title: activity.title, cards, practiceInstructions: activity.instructions, practiceMedia: activity.media };
     const unavailable = validateGame(activity.gameId, module);
     if (unavailable) { setNotice(unavailable); return; }
+    const updatedActivities = activities.map((item) => item.id === activity.id ? { ...item, lastPlayedAt: Date.now() } : item);
+    setActivities(updatedActivities);
+    writeProfileItem("linguaplay-saved-activities", JSON.stringify(updatedActivities));
     onStart(activity.gameId, module, `games?activity=${encodeURIComponent(activity.id)}`);
   };
   const deleteActivity = (activity: SavedActivity) => {
@@ -407,7 +279,6 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
     if (activity.media?.id) void removeMediaFile(activity.media.id).catch(() => undefined);
     activity.cards?.forEach((card) => { if (card.image?.id) void removeMediaFile(card.image.id).catch(() => undefined); });
   };
-  const copyMaterialLink = async (route: string) => setNotice(await copyAppLink(route) ? "Ссылка скопирована. Она откроет этот материал в текущем кабинете." : "Не удалось скопировать ссылку.");
   useEffect(() => {
     const params = new URLSearchParams(hashRoute.split("?").slice(1).join("?"));
     const activityId = params.get("activity");
@@ -416,8 +287,10 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
     const templateId = params.get("template") as GameId | null;
     const requestedModuleId = Number(params.get("module"));
     if (activityId) {
+      if (processedGameRoute.current === hashRoute) return;
+      processedGameRoute.current = hashRoute;
       const activity = activities.find((item) => item.id === activityId);
-      if (!activity) return;
+      if (!activity) { setNotice("Сохранённая игра не найдена. Вернитесь в список игр и выберите другую."); return; }
       runActivity(activity);
     } else if (grammarId) {
       const topic = visibleCustomGrammar.find((item) => item.id === grammarId) ?? GRAMMAR_TOPICS.find((item) => item.id === grammarId);
@@ -426,18 +299,26 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
       setActiveTab("grammar");
       onGrammar(topic);
     } else if (audioId && audioQuizzes.some((quiz) => quiz.id === audioId && quiz.languageCode === languageCode && quiz.level === level)) {
-      window.history.replaceState(window.history.state, "", "#/games");
-      setActiveAudioId(audioId);
+      if (processedAudioRoute.current === hashRoute) return;
+      processedAudioRoute.current = hashRoute;
+      void Promise.resolve(onStartAudio?.(audioId) ?? true).then((allowed) => {
+        if (!allowed) return;
+        window.history.replaceState(window.history.state, "", "#/games");
+        setHashRoute("#/games");
+        setActiveAudioId(audioId);
+      });
     } else if (templateId && GAME_LIST.some((game) => game.id === templateId)) {
+      if (processedGameRoute.current === hashRoute) return;
+      processedGameRoute.current = hashRoute;
       const targetModule = modules.find((module) => module.id === requestedModuleId) ?? selectedModule;
-      if (!targetModule || targetModule.languageCode !== languageCode || targetModule.level !== level) return;
+      if (!targetModule || targetModule.languageCode !== languageCode || targetModule.level !== level) { setNotice("Этот набор сейчас недоступен в выбранном кабинете. Выберите подходящий модуль."); return; }
       const prepared = prepareGameModule(templateId, targetModule);
       const unavailable = validateGame(templateId, prepared);
       if (unavailable) { setNotice(unavailable); return; }
       setModuleId(targetModule.id);
       onStart(templateId, prepared, `games?template=${encodeURIComponent(templateId)}&module=${targetModule.id}`);
     }
-  }, [activities, audioQuizzes, visibleCustomGrammar, modules, hashRoute]);
+  }, [activities, audioQuizzes, visibleCustomGrammar, modules, hashRoute, onStartAudio]);
   const saveAudioQuiz = (quiz: AudioQuiz) => {
     const title = uniqueMaterialName(quiz.title, [...activities, ...audioQuizzes, ...customGrammar], quiz.id);
     const savedQuiz = { ...quiz, title };
@@ -461,22 +342,23 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
     ? GRAMMAR_TOPICS.filter((topic) => (topic.group ?? (["accusative", "wohin", "negation"].includes(topic.id) ? "basics" : "sentences")) === grammarGroup)
     : [];
   const activeAudioQuiz = audioQuizzes.find((quiz) => quiz.id === activeAudioId);
-  if (activeAudioQuiz) return <AudioQuizSession quiz={activeAudioQuiz} onExit={() => setActiveAudioId(null)} onAnswer={onAudioAnswer} onEvent={onAudioEvent} />;
+  if (activeAudioQuiz) return <AudioQuizSession quiz={activeAudioQuiz} onExit={() => setActiveAudioId(null)} onAnswer={onAudioAnswer} onEvent={onAudioEvent} onRestart={onAudioRestart} />;
   return <div className="page games-page">
-    <div className="page-heading"><div><p className="eyebrow">{selectedModule?.languageName ?? "УЧЕБНЫЙ КАБИНЕТ"} · {selectedModule?.level ?? ""}</p><h1>Практика</h1><p>{selectedModule ? `Задания только по модулю «${selectedModule.title}». Выберите слова и сценарий своей игры.` : "Добавьте материалы в текущий языковой кабинет."}</p></div>{Boolean(modules.length) && <label className="module-select-label">Модуль<select value={moduleId} onChange={(event) => { setModuleId(Number(event.target.value)); setNotice(""); }}>{modules.map((module) => <option key={module.id} value={module.id}>Модуль {module.id} · {module.title}</option>)}</select></label>}</div>
+    <div className="page-heading"><div><p className="eyebrow">{selectedModule?.languageName ?? "УЧЕБНЫЙ КАБИНЕТ"} · {selectedModule?.level ?? ""}</p><h1>Практика</h1><p>{selectedModule ? `Модуль «${selectedModule.title}»` : "Добавьте материалы в текущий языковой кабинет."}</p></div>{Boolean(modules.length) && <label className="module-select-label">Модуль<select value={moduleId} onChange={(event) => { setModuleId(Number(event.target.value)); setNotice(""); }}>{modules.map((module) => <option key={module.id} value={module.id}>Модуль {module.id} · {module.title}</option>)}</select></label>}</div>
     <div className="practice-tabs"><button className={activeTab === "games" ? "active" : ""} onClick={() => setActiveTab("games")}>Игры по словам</button><button className={activeTab === "grammar" ? "active" : ""} onClick={() => setActiveTab("grammar")}>Грамматика</button></div>
+    {activeTab === "games" && selectedModule && <div className="game-filter-row" role="group" aria-label="Фильтр игр">{([['all', 'Все'], ['words', 'Слова'], ['listening', 'Слух'], ['writing', 'Письмо'], ['grammar', 'Грамматика']] as const).map(([id, label]) => <button type="button" key={id} className={gameFilter === id ? "active" : ""} aria-pressed={gameFilter === id} onClick={() => setGameFilter(id)}>{label}</button>)}</div>}
     {notice && <div className="inline-notice"><Icon name="info" />{notice}<button onClick={() => setNotice("")} aria-label="Закрыть"><Icon name="close" size={16} /></button></div>}
-    {activeTab === "games" && selectedModule && <><div className="practice-section-title"><div><h2>Игры по вашим словам</h2><p>Выберите формат и потренируйте карточки этого модуля.</p></div>{canManageContent && <button className="primary-button compact" onClick={openNewActivity}><Icon name="plus" size={16} /> Создать игру</button>}</div><div className="games-grid">{availableGames.map((game, index) => {
-      const prepared = prepareGameModule(game.id, selectedModule);
-      const unavailable = validateGame(game.id, prepared);
-      return <article className="game-tile-wrap" key={game.id}><button className={`game-tile ${unavailable ? "locked" : ""}`} onClick={() => { if (unavailable) setNotice(unavailable); else { setNotice(""); onStart(game.id, prepared, `games?template=${encodeURIComponent(game.id)}&module=${selectedModule.id}`); } }}>
-        <GameArtwork gameId={game.id} module={prepared} /><span className="game-tile-copy"><strong>{game.title}</strong><small>{unavailable || (prepared.practiceNote ? `${game.description} · ${prepared.practiceNote}` : game.description)}</small>{!unavailable && <em>Посмотреть пример →</em>}</span><span className="game-lock">{unavailable ? "⌑" : <Icon name="arrow" size={17} />}</span>
-      </button>{!unavailable && <button className="game-tile-link" aria-label={`Ссылка на игру ${game.title}`} title={`Скопировать ссылку на ${game.title}`} onClick={() => void copyMaterialLink(`games?template=${encodeURIComponent(game.id)}&module=${selectedModule.id}`)}>Ссылка</button>}</article>;
-    })}</div>
-      <section className="saved-activities"><div className="section-title"><div><h2>Мои игры</h2><p>Сценарии для текущего языка и уровня.</p></div></div>{moduleActivities.length ? <div className="saved-activity-list">{moduleActivities.map((activity) => <article key={activity.id}><span className="activity-icon">{GAME_LIST.find((game) => game.id === activity.gameId)?.mark}</span><div><strong>{activity.title}</strong><small>{GAME_LIST.find((game) => game.id === activity.gameId)?.title} · Модуль {activity.moduleId} · {activity.cardIds.length} карточек</small></div><button onClick={() => runActivity(activity)}>Начать</button><button onClick={() => void copyMaterialLink(`games?activity=${encodeURIComponent(activity.id)}`)}>Ссылка</button>{canManageContent && <><button aria-label={`Изменить игру ${activity.title}`} onClick={() => openEditActivity(activity)}>Изменить</button><button aria-label={`Удалить игру ${activity.title}`} onClick={() => deleteActivity(activity)}>Удалить</button></>}</article>)}</div> : <p className="empty-inline">Создайте игру, выберите шаблон и слова: например, только местоимения или существительные.</p>}</section>
-      </>}
-    {activeTab === "games" && <section className="saved-activities audio-activities"><div className="section-title"><div><h2>Аудиотесты</h2><p>Свои аудиозаписи и вопросы только для {languageName} · {level}.</p></div>{canManageContent && <button className="primary-button compact" onClick={() => { setEditingAudio(undefined); setAudioBuilderOpen(true); }}><Icon name="plus" size={15} /> Создать тест</button>}</div>{visibleAudioQuizzes.length ? <div className="saved-activity-list">{visibleAudioQuizzes.map((quiz) => <article key={quiz.id}><span className="activity-icon"><Icon name="headphones" size={17} /></span><div><strong>{quiz.title}</strong><small>{quiz.questions.length} вопросов · {quiz.audioName}</small></div><button onClick={() => setActiveAudioId(quiz.id)}>Начать</button><button onClick={() => void copyMaterialLink(`games?audio=${encodeURIComponent(quiz.id)}`)}>Ссылка</button>{canManageContent && <><button onClick={() => { setEditingAudio(quiz); setAudioBuilderOpen(true); }}>Изменить</button><button aria-label={`Удалить аудиотест ${quiz.title}`} onClick={() => { onAudioQuizzesChange((current) => current.filter((item) => item.id !== quiz.id)); if (quiz.audioMediaId) void removeMediaFile(quiz.audioMediaId).catch(() => undefined); }}>Удалить</button></>}</article>)}</div> : <p className="empty-inline">Загрузите аудио, задайте число вопросов и вариантов, затем отметьте верный ответ.</p>}</section>}
-    {activeTab === "grammar" && <div className="grammar-hub"><div className="practice-section-title"><div><h2>Грамматика · {languageName} · {level}</h2><p>Сначала правило и примеры, затем упражнения по теме.</p></div>{canManageContent && <button className="primary-button compact" onClick={() => openGrammarBuilder()}><Icon name="plus" size={15} /> Создать тему</button>}</div><div className="grammar-tabs"><button className={grammarGroup === "basics" ? "active" : ""} onClick={() => setGrammarGroup("basics")}>Основы</button><button className={grammarGroup === "sentences" ? "active" : ""} onClick={() => setGrammarGroup("sentences")}>Предложение</button></div><div className="grammar-grid">{builtinGrammarTopics.map((topic) => <article className="custom-grammar-card" key={topic.id}><button className="custom-grammar-start" onClick={() => onGrammar(topic)}><span><Icon name="brain" /></span><strong>{topic.title}</strong><small>{topic.description}</small><Icon name="arrow" size={17} /></button><footer><button onClick={() => void copyMaterialLink(`games?grammar=${encodeURIComponent(topic.id)}`)}>Ссылка</button></footer></article>)}{visibleCustomGrammar.filter((topic) => topic.group === grammarGroup).map((topic) => <article className="custom-grammar-card" key={topic.id}><button className="custom-grammar-start" onClick={() => onGrammar(topic)}><span><Icon name="brain" /></span><strong>{topic.title}</strong><small>{topic.description}</small><Icon name="arrow" size={17} /></button><footer><button onClick={() => void copyMaterialLink(`games?grammar=${encodeURIComponent(topic.id)}`)}>Ссылка</button>{canManageContent && <><button onClick={() => openGrammarBuilder(topic)}>Изменить</button><button onClick={() => setCustomGrammar((current) => current.filter((item) => item.id !== topic.id))}>Удалить</button></>}</footer></article>)}</div>{!builtinGrammarTopics.length && !visibleCustomGrammar.some((topic) => topic.group === grammarGroup) && <p className="empty-inline">Для этого языка и уровня пока нет готовых тем. Добавьте свою тему кнопкой «Создать тему».</p>}</div>}
+    {activeTab === "games" && selectedModule && <>
+      <div className="practice-section-title"><div><h2>Игры по вашим словам · {selectedCards.length} {wordCountLabel(selectedCards.length)}</h2></div>{canManageContent && <button className="primary-button compact" onClick={openNewActivity}><Icon name="plus" size={16} /> Создать игру</button>}</div>
+      {selectedCards.length > 0 ? <>
+        <section className="practice-word-bank" aria-label="Слова текущего модуля"><div><strong>Слова для игр</strong><span>{selectedCards.slice(0, 4).map((card) => <span className="practice-word-chip" key={card.id}>{card.article ? `${card.article} ` : ""}{card.word}</span>)}{selectedCards.length > 4 && <span className="practice-word-more">+{selectedCards.length - 4}</span>}</span></div><button type="button" onClick={onAddWords}>Изменить слова</button></section>
+      <section className="practice-game-groups" aria-label="Доступные игры">{gameGroups.map((group) => group.games.length > 0 && <div className="practice-game-category" key={group.title}><h4>{group.title}</h4><div className="games-grid">{group.games.map(({ game, module: prepared }) => <article className="game-tile-wrap" key={game.id}><button className="game-tile" aria-label={`${game.title}. ${game.description}. ${gamePreviewDescription(game.id, prepared)}`} onClick={() => { setNotice(""); onStart(game.id, prepared, `games?template=${encodeURIComponent(game.id)}&module=${selectedModule.id}`); }}><GameArtwork gameId={game.id} module={prepared} /><span className="game-tile-copy"><strong>{game.title}</strong><small>{game.description}</small></span></button></article>)}</div></div>)}</section>
+      </> : <div className="practice-empty-words"><span aria-hidden="true">＋</span><h3>Добавьте слова для игр</h3><p>Игры соберутся по словам из этого модуля.</p><button className="primary-button compact" onClick={onAddWords}>Добавить слова</button></div>}
+      {selectedCards.length > 0 && lockedGames.length > 0 && <details className="locked-game-group"><summary><strong>Нужно добавить слова</strong><span>{lockedGames.length} игр</span></summary><div className="games-grid">{lockedGames.map(({ game, module: prepared, reason }) => <article className="game-tile-wrap locked-wrap" key={game.id}><button className="game-tile locked" title={game.description} aria-label={`${gamePreviewDescription(game.id, prepared)}. ${reason}`} onClick={() => setNotice(reason ?? "Добавьте подходящие слова в модуль.")}><GameArtwork gameId={game.id} module={prepared} /><span className="game-tile-copy"><strong>{game.title}</strong><small className="game-lock-reason"><Icon name="info" size={13} />{reason}</small><small className="game-card-meta">{prepared.cards.length} {wordCountLabel(prepared.cards.length)}</small></span></button><div className="locked-game-actions"><span>Пока недоступна</span><button type="button" onClick={onAddWords}>Добавить слова</button></div></article>)}</div></details>}
+      <section className="saved-activities my-games-section"><div className="section-title"><div><h2>Мои игры</h2><p>Сценарии, которые вы сохранили.</p></div></div>{moduleActivities.length ? <div className="my-games-grid">{moduleActivities.map((activity) => <article className="my-game-card" key={activity.id}><span className="activity-icon">{GAME_LIST.find((game) => game.id === activity.gameId)?.mark}</span><div><strong>{activity.title}</strong><small>{GAME_LIST.find((game) => game.id === activity.gameId)?.title} · {activity.cardIds.length} {wordCountLabel(activity.cardIds.length)}</small><small>{activity.lastPlayedAt ? `Запускали ${new Date(activity.lastPlayedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}` : "Ещё не запускали"}</small></div><button className="primary-button compact" onClick={() => runActivity(activity)}>Играть</button>{canManageContent && <footer><button onClick={() => openEditActivity(activity)}>Изменить</button><button aria-label={`Удалить игру ${activity.title}`} onClick={() => deleteActivity(activity)}>Удалить</button></footer>}</article>)}</div> : <p className="empty-inline">Создайте свою игру из слов модуля.</p>}</section>
+    </>}
+    {activeTab === "games" && <section className="saved-activities audio-activities"><div className="section-title"><div><h2>Аудиотесты</h2><p>Свои аудиозаписи и вопросы только для {languageName} · {level}.</p></div>{canManageContent && <button className="primary-button compact" onClick={() => { setEditingAudio(undefined); setAudioBuilderOpen(true); }}><Icon name="plus" size={15} /> Создать тест</button>}</div>{visibleAudioQuizzes.length ? <div className="saved-activity-list">{visibleAudioQuizzes.map((quiz) => <article key={quiz.id}><span className="activity-icon"><Icon name="headphones" size={17} /></span><div><strong>{quiz.title}</strong><small>{quiz.questions.length} вопросов · {quiz.audioName}</small></div><button onClick={() => { window.location.hash = `#/games?audio=${encodeURIComponent(quiz.id)}`; }}>Начать</button>{canManageContent && <><button onClick={() => { setEditingAudio(quiz); setAudioBuilderOpen(true); }}>Изменить</button><button aria-label={`Удалить аудиотест ${quiz.title}`} onClick={() => { onAudioQuizzesChange((current) => current.filter((item) => item.id !== quiz.id)); if (quiz.audioMediaId) void removeMediaFile(quiz.audioMediaId).catch(() => undefined); }}>Удалить</button></>}</article>)}</div> : <p className="empty-inline">Загрузите аудио, задайте число вопросов и вариантов, затем отметьте верный ответ.</p>}</section>}
+    {activeTab === "grammar" && <div className="grammar-hub"><div className="practice-section-title"><div><h2>Грамматика · {languageName} · {level}</h2><p>Сначала правило и примеры, затем упражнения по теме.</p></div>{canManageContent && <button className="primary-button compact" onClick={() => openGrammarBuilder()}><Icon name="plus" size={15} /> Создать тему</button>}</div><div className="grammar-tabs"><button className={grammarGroup === "basics" ? "active" : ""} onClick={() => setGrammarGroup("basics")}>Основы</button><button className={grammarGroup === "sentences" ? "active" : ""} onClick={() => setGrammarGroup("sentences")}>Предложение</button></div><div className="grammar-grid">{builtinGrammarTopics.map((topic) => <article className="custom-grammar-card" key={topic.id}><button className="custom-grammar-start" onClick={() => onGrammar(topic)}><span><Icon name="brain" /></span><strong>{topic.title}</strong><small>{topic.description}</small><Icon name="arrow" size={17} /></button><footer></footer></article>)}{visibleCustomGrammar.filter((topic) => topic.group === grammarGroup).map((topic) => <article className="custom-grammar-card" key={topic.id}><button className="custom-grammar-start" onClick={() => onGrammar(topic)}><span><Icon name="brain" /></span><strong>{topic.title}</strong><small>{topic.description}</small><Icon name="arrow" size={17} /></button><footer>{canManageContent && <><button onClick={() => openGrammarBuilder(topic)}>Изменить</button><button onClick={() => setCustomGrammar((current) => current.filter((item) => item.id !== topic.id))}>Удалить</button></>}</footer></article>)}</div>{!builtinGrammarTopics.length && !visibleCustomGrammar.some((topic) => topic.group === grammarGroup) && <p className="empty-inline">Для этого языка и уровня пока нет готовых тем. Добавьте свою тему кнопкой «Создать тему».</p>}</div>}
     {!selectedModule && activeTab === "games" && <div className="empty-state cabinet-empty"><Icon name="library" size={32} /><h2>В этом кабинете пока пусто</h2><p>Добавьте словарь в выбранном языке и уровне — задания будут строиться только по нему.</p></div>}
     {builderOpen && builderModule && canManageContent && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeActivityBuilder(); }}><section className="dialog-card activity-builder" role="dialog" aria-modal="true" aria-labelledby="activity-title">
       <button className="dialog-close" onClick={closeActivityBuilder} aria-label="Закрыть"><Icon name="close" /></button>
@@ -501,50 +383,50 @@ export function GameHub({ modules, preferredModuleId, languageCode, languageName
 
 function LiveTemplatePreview({ gameId, module, cards, onEditCard, onMoveCard }: { gameId: GameId; module: VocabModule; cards: VocabCard[]; onEditCard: (cardId: string, patch: Partial<VocabCard>) => void; onMoveCard: (cardId: string, direction: -1 | 1) => void }) {
   const card = cards[0] ?? module.cards[0];
-  const word = card ? `${card.article ? `${card.article} ` : ""}${card.word}` : "der Tisch";
-  const translation = card?.translation || "стол";
-  const other = cards[1]?.translation ?? "книга";
+  const word = card ? `${card.article ? `${card.article} ` : ""}${card.word}` : "Слово";
+  const translation = card?.translation || "Перевод";
+  const other = cards[1]?.translation ?? "Вариант 2";
   let task = "Выберите правильный ответ";
   let activity: ReactNode;
   if (gameId === "pairs" || gameId === "datajoin") {
     task = "Соедините слово и перевод";
-    activity = cards.length ? <div className="preview-pair-editor">{cards.map((item, index) => <article key={item.id}><div className="preview-pair-fields"><label><small>Слово</small><input aria-label={`Слово ${index + 1}`} value={`${item.article ? `${item.article} ` : ""}${item.word}`} onChange={(event) => { const value = event.target.value.trim().split(/\s+/); const article = ["der", "die", "das"].includes(value[0]?.toLowerCase()) ? value.shift() as VocabCard["article"] : null; onEditCard(item.id, { article, word: value.join(" ") }); }} /></label><span aria-hidden="true">↔</span><label><small>Перевод</small><input aria-label={`Перевод ${index + 1}`} value={item.translation} onChange={(event) => onEditCard(item.id, { translation: event.target.value })} /></label></div><div className="preview-pair-order"><span>Пара {index + 1}</span><button type="button" aria-label={`Переместить пару ${index + 1} выше`} disabled={index === 0} onClick={() => onMoveCard(item.id, -1)}>↑</button><button type="button" aria-label={`Переместить пару ${index + 1} ниже`} disabled={index === cards.length - 1} onClick={() => onMoveCard(item.id, 1)}>↓</button></div></article>)}</div> : <div className="preview-pair-columns"><span>{word}</span><span>{translation}</span><span>{cards[1]?.word ?? "das Buch"}</span><span>{other}</span></div>;
+    activity = cards.length ? <div className="preview-pair-editor">{cards.map((item, index) => <article key={item.id}><div className="preview-pair-fields"><label><small>Слово</small><input aria-label={`Слово ${index + 1}`} value={`${item.article ? `${item.article} ` : ""}${item.word}`} onChange={(event) => { const value = event.target.value.trim().split(/\s+/); const article = ["der", "die", "das"].includes(value[0]?.toLowerCase()) ? value.shift() as VocabCard["article"] : null; onEditCard(item.id, { article, word: value.join(" ") }); }} /></label><span aria-hidden="true">↔</span><label><small>Перевод</small><input aria-label={`Перевод ${index + 1}`} value={item.translation} onChange={(event) => onEditCard(item.id, { translation: event.target.value })} /></label></div><div className="preview-pair-order"><span>Пара {index + 1}</span><button type="button" aria-label={`Переместить пару ${index + 1} выше`} disabled={index === 0} onClick={() => onMoveCard(item.id, -1)}>↑</button><button type="button" aria-label={`Переместить пару ${index + 1} ниже`} disabled={index === cards.length - 1} onClick={() => onMoveCard(item.id, 1)}>↓</button></div></article>)}</div> : <div className="preview-pair-columns"><span>{word}</span><span>{translation}</span><span>{cards[1]?.word ?? "Слово 2"}</span><span>{other}</span></div>;
   } else if (gameId === "articles") {
     task = "Разложите слова по колонкам";
     activity = <><div className="preview-word-chip">{word} · {translation}</div><div className="preview-columns"><span>der</span><span>die</span><span>das</span></div></>;
   } else if (gameId === "builder" || gameId === "train") {
     task = gameId === "train" ? "Соберите вагончики" : "Соберите словосочетание";
-    activity = <><div className="preview-prompt">{translation}</div><div className="preview-word-tiles"><span>{card?.article ?? "der"}</span><span>{card?.word ?? "Tisch"}</span></div></>;
+    activity = <><div className="preview-prompt">{translation}</div><div className="preview-word-tiles"><span>{card?.article ?? "—"}</span><span>{card?.word ?? "Слово"}</span></div></>;
   } else if (gameId === "hangman") {
     task = "Откройте слово по буквам";
     activity = <><div className="preview-prompt">{translation}</div><div className="preview-blanks">_ _ _ _ _</div><div className="preview-letters">A&nbsp; E&nbsp; I&nbsp; O&nbsp; U&nbsp; Ä&nbsp; Ö&nbsp; Ü</div></>;
   } else if (gameId === "wordsearch") {
     task = "Найдите слово в сетке";
-    activity = <><div className="preview-prompt">Найдите: {word}</div><div className="preview-letter-grid">{[..."TISCHABCDEFGH"].map((letter, index) => <i key={index}>{letter}</i>)}</div></>;
+    activity = <><div className="preview-prompt">Найдите: {word}</div><div className="preview-letter-grid">{[..."ABCEFGHIKLMNO"].map((letter, index) => <i key={index}>{letter}</i>)}</div></>;
   } else if (gameId === "anagram") {
     task = "Соберите слово из букв";
-    activity = <><div className="preview-prompt">{translation}</div><div className="preview-word-tiles"><span>T</span><span>S</span><span>I</span><span>H</span><span>C</span></div></>;
+    activity = <><div className="preview-prompt">{translation}</div><div className="preview-word-tiles"><span>□</span><span>□</span><span>□</span><span>□</span><span>□</span></div></>;
   } else if (gameId === "moles") {
     task = "Нажмите на правильный перевод";
-    activity = <><div className="preview-prompt">{word}</div><div className="preview-answer-grid"><span>{translation}</span><span>вода</span><span>дом</span><span>книга</span></div></>;
+    activity = <><div className="preview-prompt">{word}</div><div className="preview-answer-grid"><span>{translation}</span><span>Вариант 2</span><span>Вариант 3</span><span>Вариант 4</span></div></>;
   } else if (gameId === "boxes") {
     task = "Откройте коробку с переводом";
     activity = <><div className="preview-prompt">{word}</div><div className="preview-boxes"><i>?</i><i>?</i><i>?</i></div></>;
   } else if (gameId === "wheel") {
     task = "Колесо выбирает слово для перевода";
-    activity = <div className="preview-wheel-layout"><div className="preview-wheel-art"><span>{word}</span><i>{cards[1]?.word ?? "du"}</i><b>{cards[2]?.word ?? "sein"}</b><em>{cards[3]?.word ?? "wir"}</em><strong>Крутить</strong><small aria-hidden="true">▼</small></div><div className="preview-wheel-selected"><small>ВЫПАЛО СЛОВО</small><strong>{word}</strong><span>Выберите перевод: {translation}</span></div></div>;
+    activity = <div className="preview-wheel-layout"><div className="preview-wheel-art"><span>{word}</span><i>{cards[1]?.word ?? "Слово 2"}</i><b>{cards[2]?.word ?? "Слово 3"}</b><em>{cards[3]?.word ?? "Слово 4"}</em><strong>Крутить</strong><small aria-hidden="true">▼</small></div><div className="preview-wheel-selected"><small>ВЫПАЛО СЛОВО</small><strong>{word}</strong><span>Выберите перевод: {translation}</span></div></div>;
   } else if (gameId === "phonetic") {
     task = "Послушайте и выберите слово";
-    activity = <><div className="preview-sound">♫</div><div className="preview-answer-grid"><span>{word}</span><span>der Tag</span></div></>;
+    activity = <><div className="preview-sound">♫</div><div className="preview-answer-grid"><span>{word}</span><span>Вариант 2</span></div></>;
   } else if (gameId === "fillblank") {
     task = "Выберите слово для пропуска";
     activity = card?.exampleSentence?.includes("___") ? <><div className="preview-sentence">{card.exampleSentence.split("___").map((part, index) => <span key={index}>{part}{index === 0 && <b>{card.sentenceAnswer?.trim() || "___"}</b>}</span>)}</div><div className="preview-answer-grid"><span>{card.sentenceAnswer?.trim() || "ответ"}</span><span>{cards[1] ? `${cards[1].article ? `${cards[1].article} ` : ""}${cards[1].word}` : "второй вариант"}</span></div></> : <div className="preview-sentence-empty">Добавьте своё предложение с пропуском в настройках карточек.</div>;
   } else if (gameId === "picture") {
     task = "Какое слово подходит к картинке?";
-    activity = <div className="preview-picture-stage">{card?.image ? <SavedImagePreview image={card.image} alt={`Картинка: ${word}`} /> : <span aria-hidden="true">🖼️</span>}<div className="preview-answer-grid"><span>{word}</span><span>{cards[1] ? `${cards[1].article ? `${cards[1].article} ` : ""}${cards[1].word}` : "das Haus"}</span></div></div>;
+    activity = <div className="preview-picture-stage">{card?.image ? <SavedImagePreview image={card.image} alt={`Картинка: ${word}`} /> : <span aria-hidden="true">🖼️</span>}<div className="preview-answer-grid"><span>{word}</span><span>{cards[1] ? `${cards[1].article ? `${cards[1].article} ` : ""}${cards[1].word}` : "Слово 2"}</span></div></div>;
   } else if (gameId === "finalsound") {
     task = "Как звучит последний согласный?";
-    activity = <><div className="preview-prompt">der Hund</div><div className="preview-answer-grid"><span>п</span><span>т</span><span>к</span></div></>;
+    activity = <><div className="preview-prompt">{word}</div><div className="preview-answer-grid"><span>п</span><span>т</span><span>к</span></div></>;
   } else {
     task = "Выберите верный вариант";
     activity = <><div className="preview-prompt">{word}</div><div className="preview-answer-grid"><span>{translation}</span><span>{other}</span></div></>;
@@ -605,9 +487,9 @@ function useCompletionSignal(completed: boolean, onComplete: () => void) {
   useEffect(() => { if (completed && !fired.current) { fired.current = true; callback.current(); } }, [completed]);
 }
 
-export function GameSession({ gameId, module, onExit, onAnswer, onComplete = () => undefined }: { gameId: GameId; module: VocabModule; onExit: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void; onComplete?: () => void }) {
+export function GameSession({ gameId, module, onExit, onAnswer, onComplete = () => undefined, onRestart }: { gameId: GameId; module: VocabModule; onExit: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void; onComplete?: () => void; onRestart?: () => void | boolean | Promise<void | boolean> }) {
   const [runKey, setRunKey] = useState(0);
-  const restart = () => setRunKey((current) => current + 1);
+  const restart = async () => { const allowed = await onRestart?.(); if (allowed === false) return; setRunKey((current) => current + 1); };
   return <><ActivityMediaPanel module={module} />{gameId === "pairs" || gameId === "datajoin" ? <PairGame key={runKey} gameId={gameId} module={module} onExit={onExit} onRestart={restart} onAnswer={onAnswer} onComplete={onComplete} /> : gameId === "articles" ? <ArticleSortGame key={runKey} module={module} onExit={onExit} onRestart={restart} onAnswer={onAnswer} onComplete={onComplete} /> : <QuestionGame key={runKey} gameId={gameId} module={module} onExit={onExit} onRestart={restart} onAnswer={onAnswer} onComplete={onComplete} />}</>;
 }
 
@@ -687,23 +569,89 @@ function PairGame({ gameId, module, onExit, onRestart, onAnswer, onComplete }: {
     return shuffle([...unique.values()].filter((card) => card.translation.trim())).slice(0, 10);
   }, [module.id]);
   const [groupIndex, setGroupIndex] = useState(0);
+  const [phase, setPhase] = useState<"intro" | "playing" | "checking" | "review">("intro");
+  const [introStep, setIntroStep] = useState(0);
   const [selectedGerman, setSelectedGerman] = useState<string | null>(null);
-  const [matched, setMatched] = useState<string[]>([]);
-  const [matchedPairs, setMatchedPairs] = useState<Array<{ leftId: string; rightId: string }>>([]);
-  const [wrongPair, setWrongPair] = useState<string[]>([]);
+  const [matchedPairs, setMatchedPairs] = useState<Array<{ leftId: string; rightId: string; status?: "correct" | "wrong" }>>([]);
+  const [reviewHistory, setReviewHistory] = useState<Record<number, Array<{ leftId: string; rightId: string; status: "correct" | "wrong" }>>>({});
+  const [furthestRoundIndex, setFurthestRoundIndex] = useState(0);
+  const [showFinalResult, setShowFinalResult] = useState(false);
+  const [checkedCount, setCheckedCount] = useState(0);
   const [score, setScore] = useState(0);
-  const [notice, setNotice] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  const answerRef = useRef(onAnswer);
+  const reviewPairsRef = useRef(matchedPairs);
+  answerRef.current = onAnswer;
   const dragCard = useRef<string | null>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
   const leftRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const rightRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [connections, setConnections] = useState<Array<{ id: string; startX: number; startY: number; endX: number; endY: number }>>([]);
+  const [connections, setConnections] = useState<Array<{ id: string; startX: number; startY: number; endX: number; endY: number; status?: "correct" | "wrong" }>>([]);
   const [pairSize, setPairSize] = useState({ width: 1, height: 1 });
-  const group = cards.slice(groupIndex, groupIndex + 5);
-  const done = groupIndex >= cards.length;
+  const group = useMemo(() => cards.slice(groupIndex, groupIndex + 5), [cards, groupIndex]);
+  const done = showFinalResult;
   useCompletionSignal(done, onComplete);
   const leftGroup = useMemo(() => shuffle(group), [cards, groupIndex]);
   const rightGroup = useMemo(() => shuffle(group), [cards, groupIndex]);
+  const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+  useEffect(() => {
+    if (done || phase !== "intro") return;
+    let step = 0;
+    const total = group.length * 2;
+    const timer = window.setInterval(() => {
+      step += 1;
+      setIntroStep(step);
+      playPairIntroTone(step - 1);
+      if (step >= total) {
+        window.clearInterval(timer);
+        window.setTimeout(() => setPhase("playing"), 220);
+      }
+    }, 245);
+    return () => window.clearInterval(timer);
+  }, [done, phase, group.length, groupIndex]);
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const timer = window.setInterval(() => setElapsed((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [phase]);
+  useEffect(() => {
+    if (phase !== "checking") return;
+    let index = 0;
+    const timer = window.setInterval(() => {
+      const pairs = reviewPairsRef.current;
+      if (index >= pairs.length) {
+        window.clearInterval(timer);
+        window.setTimeout(() => {
+          const reviewed = pairs.map((pair) => ({ ...pair, status: pair.leftId === pair.rightId ? "correct" as const : "wrong" as const }));
+          setMatchedPairs(reviewed);
+          setReviewHistory((current) => ({ ...current, [groupIndex]: reviewed }));
+          setCheckedCount(reviewed.length);
+          if (groupIndex + group.length >= cards.length) setPhase("review");
+          else {
+            const nextIndex = groupIndex + group.length;
+            setFurthestRoundIndex((value) => Math.max(value, nextIndex));
+            setGroupIndex(nextIndex);
+            setMatchedPairs([]);
+            setCheckedCount(0);
+            setIntroStep(0);
+            setPhase("intro");
+          }
+        }, 750);
+        return;
+      }
+      const pair = pairs[index];
+      const correct = pair.leftId === pair.rightId;
+      const card = group.find((item) => item.id === pair.leftId);
+      const answer = group.find((item) => item.id === pair.rightId);
+      if (card) answerRef.current(card, correct, correct ? undefined : answer?.id);
+      if (correct) setScore((value) => value + 1);
+      playFeedbackSound(correct);
+      setMatchedPairs((current) => current.map((item, position) => position === index ? { ...item, status: correct ? "correct" : "wrong" } : item));
+      setCheckedCount(index + 1);
+      index += 1;
+    }, 650);
+    return () => window.clearInterval(timer);
+  }, [phase, group, groupIndex, cards.length]);
   useLayoutEffect(() => {
     const container = columnsRef.current;
     if (!container) return;
@@ -713,7 +661,7 @@ function PairGame({ gameId, module, onExit, onRestart, onAnswer, onComplete }: {
       setConnections(matchedPairs.flatMap((pair) => {
         const left = leftRefs.current[pair.leftId]?.getBoundingClientRect();
         const right = rightRefs.current[pair.rightId]?.getBoundingClientRect();
-        return left && right ? [{ id: pair.leftId, startX: left.right - bounds.left, startY: left.top + left.height / 2 - bounds.top, endX: right.left - bounds.left, endY: right.top + right.height / 2 - bounds.top }] : [];
+        return left && right ? [{ id: pair.leftId, startX: left.right - bounds.left, startY: left.top + left.height / 2 - bounds.top, endX: right.left - bounds.left, endY: right.top + right.height / 2 - bounds.top, status: pair.status }] : [];
       }));
     };
     measure();
@@ -721,27 +669,50 @@ function PairGame({ gameId, module, onExit, onRestart, onAnswer, onComplete }: {
     observer.observe(container);
     window.addEventListener("resize", measure);
     return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
-  }, [matchedPairs, groupIndex, leftGroup, rightGroup]);
-  const matchPair = (leftId: string, rightId: string) => {
-    if (matched.includes(leftId) || matched.includes(rightId)) return;
+  }, [matchedPairs, groupIndex, leftGroup, rightGroup, introStep]);
+  const connectPair = (leftId: string, rightId: string) => {
+    if (phase !== "playing") return;
     const left = group.find((item) => item.id === leftId);
     const right = group.find((item) => item.id === rightId);
     if (!left || !right) return;
-    if (left.id === right.id) {
-      playFeedbackSound(true); onAnswer(left, true); setScore((value) => value + 1); setMatched((value) => [...value, left.id]); setMatchedPairs((value) => [...value, { leftId: left.id, rightId: right.id }]); setSelectedGerman(null); setWrongPair([]); setNotice("Верная пара");
-      if (matched.length + 1 === group.length) window.setTimeout(() => { setGroupIndex((value) => value + group.length); setMatched([]); setMatchedPairs([]); setConnections([]); setNotice(""); }, 850);
-    } else {
-      playFeedbackSound(false); onAnswer(left, false, right.id); setWrongPair([left.id, right.id]); setNotice("Пары не совпали. Попробуйте ещё раз."); window.setTimeout(() => { setWrongPair([]); setSelectedGerman(null); setNotice(""); }, 900);
-    }
+    setMatchedPairs((current) => [...current.filter((pair) => pair.leftId !== leftId && pair.rightId !== rightId), { leftId, rightId }]);
+    setSelectedGerman(null);
   };
-  const chooseTranslation = (id: string) => { if (selectedGerman) matchPair(selectedGerman, id); };
-  return <div className={`game-shell game-${gameId}`}><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{gameId === "datajoin" ? "DATA JOIN" : "МЭТЧИНГ ПАР"}</span><strong>{score} / {cards.length}</strong></div><button onClick={onRestart}>Начать заново <Icon name="refresh" /></button></header>
-    {done ? <div className="game-result"><span className="result-medal">✓</span><p className="eyebrow">ИГРА ЗАВЕРШЕНА</p><h1>Собрано пар: {score} из {cards.length}</h1><button className="primary-button" onClick={onRestart}>Пройти ещё раз · новый порядок</button><button className="secondary-button" onClick={onExit}>Вернуться к играм</button></div> : <main className="game-center pair-game"><p className="question-kicker">Перетащите слово из колонки {module.languageName.toLocaleLowerCase()} к его переводу. Или нажмите слово, затем перевод. Пары зачтутся только после вашего выбора.</p><div className="pair-columns" ref={columnsRef}><svg className="pair-connection-layer" viewBox={`0 0 ${pairSize.width} ${pairSize.height}`} preserveAspectRatio="none" aria-hidden="true"><defs><marker id="pair-arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" /></marker></defs>{connections.map((line) => <path key={line.id} d={`M ${line.startX} ${line.startY} C ${line.startX + 48} ${line.startY}, ${line.endX - 48} ${line.endY}, ${line.endX} ${line.endY}`} markerEnd="url(#pair-arrowhead)" />)}</svg><div><h2>{module.languageName}</h2>{leftGroup.map((card) => <button key={card.id} ref={(element) => { leftRefs.current[card.id] = element; }} data-pair-left={card.id} draggable={!matched.includes(card.id)} className={`pair-word-tile ${selectedGerman === card.id ? "chosen" : matched.includes(card.id) ? "matched" : ""} ${wrongPair.includes(card.id) ? "wrong-pair" : ""}`} disabled={matched.includes(card.id)} onClick={() => { speakText(german(card), speechLocaleForCode(module.languageCode)); setSelectedGerman(card.id); }} onDragStart={() => { dragCard.current = card.id; }} onDragEnd={() => { dragCard.current = null; }} onDragOver={(event) => event.preventDefault()}>{german(card)}<span className="pair-speak-mark" aria-hidden="true">♫</span></button>)}</div><div><h2>Перевод на русский</h2>{rightGroup.map((card) => <button key={card.id} ref={(element) => { rightRefs.current[card.id] = element; }} data-pair-right={card.id} draggable={false} className={`pair-word-tile ${matched.includes(card.id) ? "matched" : ""} ${wrongPair.includes(card.id) ? "wrong-pair" : ""}`} disabled={matched.includes(card.id)} onClick={() => chooseTranslation(card.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragCard.current) matchPair(dragCard.current, card.id); dragCard.current = null; }}>{card.translation}</button>)}</div></div>{notice && <p className={`game-feedback ${wrongPair.length ? "wrong" : "correct"}`}>{notice}</p>}</main>}
+  const chooseTranslation = (id: string) => { if (selectedGerman) connectPair(selectedGerman, id); };
+  const submit = () => {
+    if (phase !== "playing" || matchedPairs.length !== group.length) return;
+    const ordered = [...matchedPairs].sort((left, right) => leftGroup.findIndex((card) => card.id === left.leftId) - leftGroup.findIndex((card) => card.id === right.leftId));
+    reviewPairsRef.current = ordered;
+    setMatchedPairs(ordered);
+    setSelectedGerman(null);
+    setPhase("checking");
+  };
+  const showRound = (targetIndex: number) => {
+    const saved = reviewHistory[targetIndex];
+    setShowFinalResult(false);
+    setGroupIndex(targetIndex);
+    setMatchedPairs(saved ?? []);
+    setCheckedCount(saved?.length ?? 0);
+    setIntroStep(saved ? Math.min(10, cards.length - targetIndex) * 2 : 0);
+    setSelectedGerman(null);
+    setPhase(saved ? "review" : "intro");
+  };
+  const previousRound = () => showRound(Math.max(0, groupIndex - 5));
+  const nextRound = () => {
+    if (groupIndex + 5 >= cards.length) setShowFinalResult(true);
+    else if (groupIndex + 5 <= furthestRoundIndex || reviewHistory[groupIndex + 5]) showRound(groupIndex + 5);
+  };
+  const canBrowseRounds = phase === "review" || (phase === "playing" && matchedPairs.length === 0);
+  const canGoPrevious = canBrowseRounds && groupIndex > 0 && Boolean(reviewHistory[groupIndex - 5]);
+  const canGoNext = canBrowseRounds && (groupIndex + 5 >= cards.length || groupIndex + 5 <= furthestRoundIndex || Boolean(reviewHistory[groupIndex + 5]));
+  const remainingCount = group.length - matchedPairs.length;
+      return <div className={`game-shell game-${gameId}`}><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{gameId === "datajoin" ? "DATA JOIN" : "МЭТЧИНГ ПАР"}</span><strong>{score} / {cards.length} · {timeLabel}</strong></div><button onClick={onRestart}>Начать заново <Icon name="refresh" /></button></header>
+    {done ? <div className="game-result"><span className="result-medal">✓</span><p className="eyebrow">ИГРА ЗАВЕРШЕНА</p><h1>Собрано пар: {score} из {cards.length}</h1><p>Время: {timeLabel} · пары проверялись по очереди.</p><button className="secondary-button" onClick={() => showRound(Math.max(0, cards.length - 5))}>← Посмотреть ответы</button><button className="primary-button" onClick={onRestart}>Пройти ещё раз · новый порядок</button><button className="secondary-button" onClick={onExit}>Вернуться к играм</button></div> : <><main className="game-center pair-game"><p className="question-kicker">{phase === "intro" ? "Запоминайте карточки — сейчас они появятся слева направо." : phase === "checking" ? "Проверяем пары по порядку…" : phase === "review" ? "Этот раунд проверен. Можно просмотреть соседние раунды." : "Соедините немецкое слово с переводом. Перетаскивайте или нажмите сначала слово, затем перевод. Ответы откроются после проверки."}</p><div className="pair-game-status"><span>{phase === "intro" ? "ПОДГОТОВКА" : phase === "checking" ? `ПРОВЕРКА ${Math.min(checkedCount + 1, group.length)} / ${group.length}` : phase === "review" ? "РАУНД ПРОВЕРЕН" : `ВРЕМЯ ${timeLabel}`}</span><strong>{score} правильных</strong></div><div className="pair-round-nav"><button aria-label="Предыдущий раунд" disabled={!canGoPrevious} onClick={previousRound}>←</button><span>Раунд {Math.floor(groupIndex / 5) + 1} из {Math.ceil(cards.length / 5)}</span><button aria-label="Следующий раунд" disabled={!canGoNext} onClick={nextRound}>→</button></div><div className="pair-columns" ref={columnsRef}><svg className="pair-connection-layer" viewBox={`0 0 ${pairSize.width} ${pairSize.height}`} preserveAspectRatio="none" aria-hidden="true"><defs><marker id="pair-arrow-pending" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" /></marker><marker id="pair-arrow-correct" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" /></marker><marker id="pair-arrow-wrong" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" /></marker></defs>{connections.map((line) => <path className={`pair-link ${line.status ? `pair-link-${line.status}` : ""}`} key={line.id} d={`M ${line.startX} ${line.startY} C ${line.startX + 48} ${line.startY}, ${line.endX - 48} ${line.endY}, ${line.endX} ${line.endY}`} markerEnd={`url(#pair-arrow-${line.status ?? "pending"})`} />)}</svg><div><h2>{module.languageName}</h2>{leftGroup.map((card, index) => { const shown = phase !== "intro" || introStep > index; const pair = matchedPairs.find((item) => item.leftId === card.id); return <button key={card.id} ref={(element) => { leftRefs.current[card.id] = element; }} data-pair-left={card.id} draggable={phase === "playing"} className={`pair-word-tile ${selectedGerman === card.id ? "chosen" : ""} ${pair ? "paired" : ""} ${pair?.status ? `pair-${pair.status}` : ""} ${!shown ? "pair-reveal-hidden" : phase === "intro" ? "pair-reveal-in" : ""}`} disabled={phase !== "playing" || !shown} onClick={() => { speakText(german(card), speechLocaleForCode(module.languageCode)); setSelectedGerman((value) => value === card.id ? null : card.id); }} onDragStart={() => { dragCard.current = card.id; }} onDragEnd={() => { dragCard.current = null; }} onDragOver={(event) => event.preventDefault()}>{german(card)}<span className="pair-speak-mark" aria-hidden="true">♫</span>{pair?.status && <span className={`pair-result-pop ${pair.status}`} key={`${pair.leftId}-${pair.status}`} aria-hidden="true">{pair.status === "correct" ? "✓" : "×"}</span>}</button>; })}</div><div><h2>Перевод на русский</h2>{rightGroup.map((card, index) => { const shown = phase !== "intro" || introStep > group.length + index; const pair = matchedPairs.find((item) => item.rightId === card.id); return <button key={card.id} ref={(element) => { rightRefs.current[card.id] = element; }} data-pair-right={card.id} draggable={false} className={`pair-word-tile ${selectedGerman && phase === "playing" ? "drop-ready" : ""} ${pair ? "paired" : ""} ${pair?.status ? `pair-${pair.status}` : ""} ${!shown ? "pair-reveal-hidden" : phase === "intro" ? "pair-reveal-in" : ""}`} disabled={phase !== "playing" || !shown} onClick={() => chooseTranslation(card.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragCard.current) connectPair(dragCard.current, card.id); dragCard.current = null; }}>{card.translation}{pair?.status && <span className={`pair-result-pop ${pair.status}`} key={`${pair.leftId}-${pair.status}`} aria-hidden="true">{pair.status === "correct" ? "✓" : "×"}</span>}</button>; })}</div></div></main><footer className="game-footer pair-game-footer"><span>{phase === "intro" ? "Карточки показываются по очереди" : phase === "checking" ? "Верные и ошибочные пары отмечаются под звук" : phase === "review" ? "Ответы сохраняются, пока вы не выйдете из игры" : remainingCount ? `Соединено ${matchedPairs.length} из ${group.length} · можно менять пары до проверки` : "Все пары соединены · нажмите проверить"}</span><button className="primary-button" disabled={phase !== "playing" || remainingCount > 0} onClick={submit}>{phase === "checking" ? "Проверяем…" : "Проверить пары"}</button></footer></>}
   </div>;
 }
 
 function QuestionGame({ gameId, module, onExit, onRestart, onAnswer, onComplete }: { gameId: GameId; module: VocabModule; onExit: () => void; onRestart: () => void; onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void; onComplete: () => void }) {
-  const eligible = module.cards.filter((card) => gameId === "picture" ? Boolean(card.image?.id) : gameId === "fillblank" ? Boolean(card.exampleSentence?.split("___").length === 2 && card.sentenceAnswer?.trim()) : gameId === "finalsound" ? /[bdg]$/i.test(card.word.normalize("NFC")) : gameId === "wordsearch" ? /^[\p{L}]{4,9}$/iu.test(card.word.normalize("NFC")) : gameId === "anagram" ? /^[\p{L}]{4,14}$/iu.test(card.word.normalize("NFC")) : gameId === "articles" || gameId === "train" ? Boolean(card.article) : true);
+  const eligible = module.cards.filter((card) => gameId === "picture" ? Boolean(card.image?.id) : gameId === "fillblank" ? Boolean(card.exampleSentence?.split("___").length === 2 && card.sentenceAnswer?.trim()) : gameId === "sentenceorder" ? Boolean(card.exampleSentence?.trim()) : gameId === "finalsound" ? /[bdg]$/i.test(card.word.normalize("NFC")) : gameId === "wordsearch" ? /^[\p{L}]{4,9}$/iu.test(card.word.normalize("NFC")) : gameId === "anagram" ? /^[\p{L}]{4,14}$/iu.test(card.word.normalize("NFC")) : gameId === "articles" || gameId === "train" ? Boolean(card.article) : true);
   const rounds = useMemo(() => shuffle(eligible).slice(0, Math.min(10, eligible.length)), [module.id, gameId]);
   const [roundQueue, setRoundQueue] = useState<VocabCard[]>(rounds);
   const [index, setIndex] = useState(0);
@@ -757,6 +728,9 @@ function QuestionGame({ gameId, module, onExit, onRestart, onAnswer, onComplete 
   const [wheelSpinning, setWheelSpinning] = useState(false);
   const [wheelRotation, setWheelRotation] = useState(0);
   const [typedAnswer, setTypedAnswer] = useState("");
+  const [sentenceOrder, setSentenceOrder] = useState<string[]>([]);
+  const [feedbackNonce, setFeedbackNonce] = useState(0);
+  const sentenceDragId = useRef<string | null>(null);
   const [listening, setListening] = useState(false);
   const [speechMessage, setSpeechMessage] = useState("");
   const recognitionRef = useRef<RecognitionLike | null>(null);
@@ -789,7 +763,7 @@ function QuestionGame({ gameId, module, onExit, onRestart, onAnswer, onComplete 
     if (!card || feedback) return;
     playFeedbackSound(correct);
     const confusedWith = !correct && chosen.length ? module.cards.find((item) => item.translation === chosen[0] || german(item) === chosen[0])?.id : undefined;
-    setFeedback(correct ? "correct" : "wrong"); setScore((value) => value + (correct ? 1 : 0)); onAnswer(card, correct, confusedWith);
+    setFeedback(correct ? "correct" : "wrong"); setFeedbackNonce((value) => value + 1); setScore((value) => value + (correct ? 1 : 0)); onAnswer(card, correct, confusedWith);
   };
   const advanceRound = () => {
     if (!feedback) return;
@@ -815,18 +789,32 @@ function QuestionGame({ gameId, module, onExit, onRestart, onAnswer, onComplete 
     try { recognition.start(); setListening(true); } catch { setListening(false); setSpeechMessage("Не удалось включить микрофон. Проверьте разрешение браузера."); }
   };
   useEffect(() => { setRoundQueue(rounds); setIndex(0); setScore(0); setFeedback(null); }, [rounds]);
-  useEffect(() => { setChosen([]); setLetters([]); setLives(0); setSpun(false); setWheelCard(null); setWheelSpinning(false); setTypedAnswer(""); }, [index]);
+  useEffect(() => { setChosen([]); setLetters([]); setLives(0); setSpun(false); setWheelCard(null); setWheelSpinning(false); setTypedAnswer(""); setSentenceOrder([]); }, [index]);
   useEffect(() => { setSpeechMessage(""); setListening(false); }, [index]);
   const targetWord = card?.word.normalize("NFC").toLocaleLowerCase().replace(/[^\p{L}]/gu, "") ?? "";
   const alphabet = [...new Set([...[..."abcdefghijklmnopqrstuvwxyz"], ...[...targetWord]])];
   const scrambled = useMemo(() => shuffle([...targetWord]), [card.id, targetWord]);
   const nounTiles = useMemo(() => shuffle([card.article || "", card.word, card.article === "der" ? "die" : "der"].filter(Boolean)), [card.id]);
+  const sentenceTokens = useMemo(() => {
+    const source = card.exampleSentence?.trim().replace("___", card.sentenceAnswer?.trim() || german(card)) || "";
+    return source.split(/\s+/u).filter(Boolean).map((token, index) => index === 0 ? token.replace(/^([^\p{L}]*)(\p{L})/u, (_whole, prefix: string, letter: string) => `${prefix}${letter.toLocaleLowerCase(module.languageCode)}`) : token);
+  }, [card.id, module.languageCode]);
+  const sentenceChoices = useMemo(() => shuffle(sentenceTokens.map((token, index) => ({ id: String(index), token }))), [card.id, sentenceTokens]);
   const wheelEntries = useMemo(() => shuffle(module.cards).slice(0, Math.min(6, module.cards.length)), [module.id, module.cards]);
   const builderOptions = useMemo(() => shuffle([card.word, "der", "die", "das"]), [card.id]);
   if (done || !card) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><span>Результат</span><span /></header><div className="game-result"><span className="result-medal">{score >= rounds.length * 0.7 ? "★" : "✓"}</span><p className="eyebrow">ИГРА ЗАВЕРШЕНА</p><h1>{score} из {rounds.length} верно</h1><p>Результат сохранён в вашем учебном прогрессе.</p><button className="primary-button" onClick={onRestart}>Пройти ещё раз · новый порядок</button><button className="secondary-button" onClick={onExit}>Вернуться к играм</button></div></div>;
   const expectedNoun = [card.article, card.word].filter(Boolean) as string[];
   const pickedNoun = chosen;
   const renderChoiceButtons = (items: string[], correct: string) => <div className="game-choice-grid">{items.map((item, i) => <button key={`${item}-${i}`} disabled={Boolean(feedback)} className={feedback && item === correct ? "correct" : feedback && chosen.includes(item) && norm(item) !== norm(correct) ? "wrong" : chosen.includes(item) ? "chosen" : ""} onClick={() => { setChosen([item]); finishAnswer(norm(item) === norm(correct)); }}><kbd>{i + 1}</kbd>{item}</button>)}</div>;
+  const placeSentenceToken = (id: string, beforeId?: string) => {
+    if (feedback) return;
+    const next = sentenceOrder.filter((item) => item !== id);
+    const insertionIndex = beforeId ? next.indexOf(beforeId) : -1;
+    next.splice(insertionIndex < 0 ? next.length : insertionIndex, 0, id);
+    setSentenceOrder(next);
+    setChosen(next.map((item) => sentenceTokens[Number(item)]));
+    if (next.length === sentenceTokens.length) finishAnswer(next.every((item, position) => Number(item) === position));
+  };
   let content;
   if (gameId === "articles") content = <><p className="question-kicker">Выберите артикль</p><SpeakablePrompt text={card.word} languageCode={module.languageCode} />{renderChoiceButtons(["der", "die", "das"], card.article || "")}</>;
   else if (gameId === "fillblank") {
@@ -836,6 +824,7 @@ function QuestionGame({ gameId, module, onExit, onRestart, onAnswer, onComplete 
     content = <><p className="question-kicker">Выберите слово, которое подходит по смыслу</p><div className="fillblank-sentence">{parts.map((part, partIndex) => <span key={partIndex}>{part}{partIndex === 0 && <button className={`fillblank-slot ${chosen.length ? "filled" : ""} ${feedback ? feedback : ""}`} disabled={Boolean(feedback)} onClick={() => setChosen([])}>{chosen[0] || "Выберите слово"}</button>}</span>)}</div><div className="fillblank-options">{choices.map((item, optionIndex) => <button key={`${item}-${optionIndex}`} disabled={Boolean(feedback)} className={feedback && norm(item) === norm(expected) ? "correct" : feedback && chosen[0] === item ? "wrong" : chosen[0] === item ? "chosen" : ""} onClick={() => { setChosen([item]); finishAnswer(norm(item) === norm(expected)); }}><kbd>{optionIndex + 1}</kbd>{item}</button>)}</div></>;
   }
   else if (gameId === "picture") content = <><p className="question-kicker">Какое слово изображено?</p><SavedImagePreview image={card.image} alt={`Изображение к заданию ${index + 1}`} /><div className="picture-game-options">{choices.map((item, optionIndex) => <button key={`${item}-${optionIndex}`} disabled={Boolean(feedback)} className={feedback && norm(item) === norm(germanOption(card, module.cards)) ? "correct" : feedback && chosen.includes(item) ? "wrong" : chosen.includes(item) ? "chosen" : ""} onClick={() => { setChosen([item]); finishAnswer(norm(item) === norm(germanOption(card, module.cards))); }}><kbd>{optionIndex + 1}</kbd>{item}</button>)}</div></>;
+  else if (gameId === "sentenceorder") content = <><p className="question-kicker">Перетащите слова в правильном порядке или нажимайте их по очереди</p><h1>{card.translation}</h1><div className="sentence-order-built" onDragOver={(event) => event.preventDefault()} onDrop={() => { if (sentenceDragId.current) placeSentenceToken(sentenceDragId.current); sentenceDragId.current = null; }}><span className="sentence-order-label">Ваше предложение</span>{sentenceOrder.map((id, position) => { const token = sentenceTokens[Number(id)]; const displayed = feedback && position === 0 ? token.replace(/^(\P{L}*)(\p{L})/u, (_whole, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase(module.languageCode)}`) : token; return <button key={`${id}-${position}`} draggable={!feedback} onClick={() => !feedback && setSentenceOrder((current) => current.filter((_, index) => index !== position))} onDragStart={() => { sentenceDragId.current = id; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.stopPropagation(); if (sentenceDragId.current) placeSentenceToken(sentenceDragId.current, id); sentenceDragId.current = null; }}>{displayed}</button>; })}{!sentenceOrder.length && <small>Нажмите или перетащите слова сюда</small>}</div><div className="sentence-order-options">{sentenceChoices.filter((item) => !sentenceOrder.includes(item.id)).map((item) => <button key={item.id} disabled={Boolean(feedback)} draggable={!feedback} onClick={() => placeSentenceToken(item.id)} onDragStart={() => { sentenceDragId.current = item.id; }} onDragEnd={() => { sentenceDragId.current = null; }}>{item.token}</button>)}</div></>;
   else if (gameId === "moles") content = <><p className="question-kicker">Ударьте по переводу слова</p><SpeakablePrompt text={german(card)} languageCode={module.languageCode} /><div className="mole-grid">{moleChoices.map((item, i) => <button key={`${item}-${i}`} disabled={Boolean(feedback)} className={feedback && item === card.translation ? "correct" : feedback && chosen.includes(item) ? "wrong" : ""} onClick={() => { setChosen([item]); finishAnswer(item === card.translation); }}><span aria-hidden="true">🐹</span><small>{item}</small></button>)}</div></>;
   else if (gameId === "blitz" || gameId === "phonetic") content = <><p className="question-kicker">{gameId === "phonetic" ? `Прослушайте слово на ${languageForms[module.languageCode]?.locative ?? module.languageName.toLocaleLowerCase()} и выберите услышанное` : "Выберите правильный перевод"}</p>{gameId === "phonetic" && <div className="phonetic-controls"><button className="listen-button" onClick={() => speakText(card.word, speechLocaleForCode(module.languageCode))}><Icon name="volume" /> Прослушать слово</button><button className={`listen-button ${listening ? "recording" : ""}`} onClick={() => listening ? recognitionRef.current?.stop() : startSpeech()}><span className="mic-dot" />{listening ? "Слушаю…" : "Произнести самому"}</button></div>}{gameId === "phonetic" ? <h1>Какое слово вы услышали?</h1> : <SpeakablePrompt text={german(card)} languageCode={module.languageCode} />}{gameId === "phonetic" && speechMessage && <p className="speech-message">{speechMessage}</p>}{gameId === "phonetic" ? <div className="phonetic-choice-grid">{choices.map((item, i) => <div className="phonetic-choice" key={`${item}-${i}`}><button className="phonetic-choice-audio" aria-label={`Прослушать ${item}`} onClick={() => speakText(item, speechLocaleForCode(module.languageCode))}><Icon name="volume" size={17} /></button><button disabled={Boolean(feedback)} className={feedback && item === germanOption(card, module.cards) ? "correct" : feedback && chosen.includes(item) ? "wrong" : chosen.includes(item) ? "chosen" : ""} onClick={() => { setChosen([item]); finishAnswer(norm(item) === norm(germanOption(card, module.cards))); }}>{item}</button></div>)}</div> : renderChoiceButtons(choices, card.translation)}</>;
   else if (gameId === "builder") content = <><p className="question-kicker">Соберите немецкую именную группу</p><h1>{card.translation}</h1><div className="labeled-builder-slots"><div><small>Артикль</small><button onClick={() => setChosen((value) => value.filter((_, index) => index !== 0))}>{pickedNoun[0] || "der / die / das"}</button></div><div><small>Существительное</small><button onClick={() => setChosen((value) => value.filter((_, index) => index !== 1))}>{pickedNoun[1] || "Слово"}</button></div></div><p className="builder-instruction">Нажмите сначала на существительное или артикль — каждый попадёт в своё место.</p><div className="game-choice-grid">{builderOptions.map((item, i) => <button key={`${item}-${i}`} disabled={Boolean(feedback) || pickedNoun.includes(item)} onClick={() => { const slot = item === card.word ? 1 : 0; const next = [...pickedNoun]; next[slot] = item; setChosen(next); if (next.filter(Boolean).length === expectedNoun.length) finishAnswer(next[0] === card.article && next[1] === card.word); }}>{item}</button>)}</div></>;
@@ -866,8 +855,9 @@ function QuestionGame({ gameId, module, onExit, onRestart, onAnswer, onComplete 
           const correction = (targetAngle - currentAngle + 360) % 360;
           setWheelSelectedIndex(selectedIndex);
           setWheelSpinning(true);
+          playWheelSpinSound();
           setWheelRotation((value) => value + 360 * 5 + correction);
-          window.setTimeout(() => { setWheelCard(wheelEntries[selectedIndex]); setSpun(true); setWheelSpinning(false); }, 1900);
+          window.setTimeout(() => { setWheelCard(wheelEntries[selectedIndex]); setSpun(true); setWheelSpinning(false); playFeedbackSound(true); }, 1900);
         }}>{wheelSpinning ? "Крутится…" : spun ? "Выпало!" : "Крутить"}</button>
       </div>
       {spun && <div className="fortune-wheel-result"><span>Стрелка выбрала</span><strong>{german(card)}</strong><small>Перевод: {card.translation}</small></div>}
@@ -877,23 +867,24 @@ function QuestionGame({ gameId, module, onExit, onRestart, onAnswer, onComplete 
   else content = <><p className="question-kicker">Выберите правильный ответ</p><h1>{german(card)}</h1>{renderChoiceButtons(choices, card.translation)}</>;
 
   const questionCounter = index < rounds.length ? `${index + 1} / ${rounds.length}` : `Повтор · ${index - rounds.length + 1}`;
-  return <div className={`game-shell game-${gameId}`}><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{GAME_LIST.find((game) => game.id === gameId)?.title.toLocaleUpperCase()}</span><strong>{questionCounter}</strong></div><div className="game-score">★ {score}</div></header><main className="game-center"><div className="game-progress"><i style={{ width: `${(Math.min(index + 1, rounds.length) / rounds.length) * 100}%` }} /></div>{card.hint && <div className="round-hint"><button type="button" onClick={() => setHintVisible((value) => !value)}><Icon name="info" size={15} /> {hintVisible ? "Скрыть подсказку" : "Подсказка к этому раунду"}</button>{hintVisible && <p>{card.hint}</p>}</div>}{content}{feedback && <p className={`game-feedback ${feedback}`}>{feedback === "correct" ? "Правильно!" : `Ответ: ${gameId === "finalsound" ? "конечный согласный оглушается" : gameId === "articles" ? card.article : german(card)} · ${card.translation}. Это задание вернётся в конец набора.`}</p>}</main><footer className="game-footer">{feedback ? <button className="primary-button" onClick={advanceRound}>{feedback === "wrong" ? "Понятно, повторю в конце" : "Дальше"} <Icon name="arrow" size={16} /></button> : <span>{module.practiceNote ? module.practiceNote : `Словарь: модуль ${module.id} · ${module.title}`}</span>}</footer></div>;
+  return <div className={`game-shell game-${gameId} ${gameId === "wheel" && spun ? "has-spun" : ""}`}><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{GAME_LIST.find((game) => game.id === gameId)?.title.toLocaleUpperCase()}</span><strong>{questionCounter}</strong></div><div className="game-score">★ {score}</div></header><main className="game-center"><div className="game-progress"><i style={{ width: `${(Math.min(index + 1, rounds.length) / rounds.length) * 100}%` }} /></div>{card.hint && <div className="round-hint"><button type="button" onClick={() => setHintVisible((value) => !value)}><Icon name="info" size={15} /> {hintVisible ? "Скрыть подсказку" : "Подсказка к этому раунду"}</button>{hintVisible && <p>{card.hint}</p>}</div>}{content}{feedback && <span className={`answer-burst ${feedback}`} key={feedbackNonce} aria-hidden="true">{feedback === "correct" ? "✓" : "×"}</span>}{feedback && <div className={`game-feedback-panel ${feedback}`}>{feedback === "wrong" && <p className="game-feedback wrong">Ответ: {gameId === "sentenceorder" ? sentenceTokens.map((token, position) => position === 0 ? token.replace(/^(\P{L}*)(\p{L})/u, (_whole, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase(module.languageCode)}`) : token).join(" ") : gameId === "finalsound" ? "конечный согласный оглушается" : gameId === "articles" ? card.article : german(card)} · {card.translation}. Это задание вернётся в конец набора.</p>}<button className="primary-button" onClick={advanceRound}>{feedback === "wrong" ? "Понятно, повторю в конце" : "Дальше"} <Icon name="arrow" size={16} /></button></div>}</main><footer className="game-footer"><span>{module.practiceNote ? module.practiceNote : `Словарь: модуль ${module.id} · ${module.title}`}</span></footer></div>;
 }
 
-export function GrammarPractice({ topic, onExit, onAnswer, onEvent }: { topic: GrammarTopic; onExit: () => void; onAnswer: (correct: boolean) => void; onEvent?: (payload: Record<string, unknown>) => void }) {
+export function GrammarPractice({ topic, onExit, onAnswer, onEvent, onExerciseStart }: { topic: GrammarTopic; onExit: () => void; onAnswer: (correct: boolean) => void; onEvent?: (payload: Record<string, unknown>) => void; onExerciseStart?: () => void | boolean | Promise<void | boolean> }) {
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
   const [score, setScore] = useState(0);
+  const [feedbackNonce, setFeedbackNonce] = useState(0);
   const [started, setStarted] = useState(false);
   const [finished, setFinished] = useState(false);
   const dragOption = useRef<string | null>(null);
   const question = topic.questions[index];
-  const startRun = () => { setStarted(true); onEvent?.({ type: "practice-start", activityId: topic.id, activity: topic.title, moduleTitle: "Грамматика", roundIndex: 0, roundTotal: topic.questions.length, mode: "grammar" }); };
+  const startRun = async () => { const allowed = await onExerciseStart?.(); if (allowed === false) return false; setStarted(true); onEvent?.({ type: "practice-start", activityId: topic.id, activity: topic.title, moduleTitle: "Грамматика", roundIndex: 0, roundTotal: topic.questions.length, mode: "grammar" }); return true; };
   const submit = () => {
     if (!selected || checked) return;
     const correct = selected === question.answer;
-    playFeedbackSound(correct); setChecked(true); setScore((value) => value + (correct ? 1 : 0)); onAnswer(correct);
+    playFeedbackSound(correct); setChecked(true); setFeedbackNonce((value) => value + 1); setScore((value) => value + (correct ? 1 : 0)); onAnswer(correct);
     onEvent?.({ type: "practice-answer", activityId: topic.id, activity: topic.title, moduleTitle: "Грамматика", roundIndex: index + 1, roundTotal: topic.questions.length, prompt: question.prompt, selectedAnswer: selected, correctAnswer: question.answer, correct, mode: "grammar" });
   };
   const next = () => {
@@ -903,8 +894,8 @@ export function GrammarPractice({ topic, onExit, onAnswer, onEvent }: { topic: G
     }
     setIndex((value) => value + 1); setSelected(null); setChecked(false);
   };
-  if (finished) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><span>{topic.title}</span><span /></header><div className="game-result"><span className="result-medal">{score === topic.questions.length ? "★" : "✓"}</span><p className="eyebrow">ТЕМА ЗАВЕРШЕНА</p><h1>{score} из {topic.questions.length}</h1><p>Ответы сохранены в прогрессе. Можно пройти тему ещё раз или выбрать другую.</p><button className="primary-button" onClick={() => { setIndex(0); setSelected(null); setChecked(false); setScore(0); setFinished(false); startRun(); }}>Пройти ещё раз</button><button className="secondary-button" onClick={onExit}>К темам грамматики</button></div></div>;
-  if (!started) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="close" /> Назад</button><div><span>ПРАВИЛО И ПРИМЕРЫ</span><strong>{topic.title}</strong></div><span /></header><main className="game-center grammar-intro"><span className="grammar-topic-icon"><Icon name="brain" size={24} /></span><p className="eyebrow">ГРАММАТИКА · {(topic.languageCode ?? "de").toLocaleUpperCase()}</p><h1>{topic.title}</h1><p className="grammar-explanation">{topic.explanation}</p><div className="grammar-example-list">{topic.examples.map((example) => <p key={example}><Icon name="check" size={16} />{example}</p>)}</div><button className="primary-button" onClick={startRun}>Начать · {topic.questions.length} упражнения <Icon name="arrow" /></button></main></div>;
+  if (finished) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><span>{topic.title}</span><span /></header><div className="game-result"><span className="result-medal">{score === topic.questions.length ? "★" : "✓"}</span><p className="eyebrow">ТЕМА ЗАВЕРШЕНА</p><h1>{score} из {topic.questions.length}</h1><p>Ответы сохранены в прогрессе. Можно пройти тему ещё раз или выбрать другую.</p><button className="primary-button" onClick={() => void startRun().then((allowed) => { if (!allowed) return; setIndex(0); setSelected(null); setChecked(false); setScore(0); setFinished(false); })}>Пройти ещё раз</button><button className="secondary-button" onClick={onExit}>К темам грамматики</button></div></div>;
+  if (!started) return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="close" /> Назад</button><div><span>ПРАВИЛО И ПРИМЕРЫ</span><strong>{topic.title}</strong></div><span /></header><main className="game-center grammar-intro"><span className="grammar-topic-icon"><Icon name="brain" size={24} /></span><p className="eyebrow">ГРАММАТИКА · {(topic.languageCode ?? "de").toLocaleUpperCase()}</p><h1>{topic.title}</h1><p className="grammar-explanation">{topic.explanation}</p><div className="grammar-example-list">{topic.examples.map((example) => <p key={example}><Icon name="check" size={16} />{example}</p>)}</div><button className="primary-button" onClick={() => void startRun()}>Начать · {topic.questions.length} упражнения <Icon name="arrow" /></button></main></div>;
   const promptParts = question.prompt.split("___");
-  return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{topic.title.toLocaleUpperCase()}</span><strong>{index + 1} / {topic.questions.length}</strong></div><div>✓ {score}</div></header><main className="game-center grammar-practice"><div className="game-progress"><i style={{ width: `${(index + 1) / topic.questions.length * 100}%` }} /></div><p className="question-kicker">Нажмите вариант или перетащите его в пропуск</p><div className="grammar-sentence">{promptParts[0]}<button className={`grammar-answer-slot ${selected ? "filled" : ""} ${checked ? selected === question.answer ? "correct" : "wrong" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (!checked && dragOption.current) setSelected(dragOption.current); }} onClick={() => !checked && setSelected(null)}>{selected ?? "Выберите"}</button>{promptParts[1]}</div><div className="grammar-options">{question.options.map((option) => <button key={option} draggable={!checked} disabled={checked} className={checked && option === question.answer ? "correct" : checked && option === selected ? "wrong" : selected === option ? "chosen tile-picked" : ""} onClick={() => setSelected(option)} onDragStart={() => { dragOption.current = option; }}>{option}</button>)}</div>{checked && <div className="explanation-card"><strong>{selected === question.answer ? "Верно" : `Правильный ответ: ${question.answer}`}</strong><p>{question.explanation}</p></div>}<button className="primary-button" disabled={!selected} onClick={checked ? next : submit}>{checked ? index === topic.questions.length - 1 ? "Результат" : "Дальше" : "Проверить"} <Icon name="arrow" /></button></main></div>;
+  return <div className="game-shell"><header className="game-topbar"><button onClick={onExit}><Icon name="arrowLeft" /> Назад</button><div><span>{topic.title.toLocaleUpperCase()}</span><strong>{index + 1} / {topic.questions.length}</strong></div><div>✓ {score}</div></header><main className="game-center grammar-practice"><div className="game-progress"><i style={{ width: `${(index + 1) / topic.questions.length * 100}%` }} /></div><p className="question-kicker">Нажмите вариант или перетащите его в пропуск</p><div className="grammar-sentence">{promptParts[0]}<button className={`grammar-answer-slot ${selected ? "filled" : ""} ${checked ? selected === question.answer ? "correct" : "wrong" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (!checked && dragOption.current) setSelected(dragOption.current); }} onClick={() => !checked && setSelected(null)}>{selected ?? "Выберите"}</button>{promptParts[1]}</div><div className="grammar-options">{question.options.map((option) => <button key={option} draggable={!checked} disabled={checked} className={checked && option === question.answer ? "correct" : checked && option === selected ? "wrong" : selected === option ? "chosen tile-picked" : ""} onClick={() => setSelected(option)} onDragStart={() => { dragOption.current = option; }}>{option}</button>)}</div>{checked && <span className={`answer-burst ${selected === question.answer ? "correct" : "wrong"}`} key={feedbackNonce} aria-hidden="true">{selected === question.answer ? "✓" : "×"}</span>}{checked && <div className={`game-feedback-panel ${selected === question.answer ? "correct" : "wrong"}`}>{selected !== question.answer && <p className="game-feedback wrong">Правильный ответ: {question.answer}</p>}<div className="explanation-card"><p>{question.explanation}</p></div><button className="primary-button" onClick={next}>{index === topic.questions.length - 1 ? "Результат" : "Дальше"} <Icon name="arrow" /></button></div>}{!checked && <button className="primary-button" disabled={!selected} onClick={submit}>Проверить <Icon name="arrow" /></button>}</main></div>;
 }

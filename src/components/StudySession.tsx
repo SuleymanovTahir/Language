@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { VocabCard } from "../lib/vocab";
 import { Icon } from "./Icon";
+import { speakText, speechLocaleForCode } from "../lib/speech";
+export { speechLocaleForCode } from "../lib/speech";
+import { HelpHint } from "./HelpHint";
+export { speakText } from "../lib/speech";
 
 export type StudyMode = "cards" | "quick" | "refresh" | "test" | "write";
 export type CardProgress = { reps: number; level: number; stability: number; dueAt: string; correct: number; wrong: number; starred: boolean };
@@ -9,32 +13,6 @@ export function detectSpeechLanguage(text: string) {
   if (/[\u0400-\u04ff]/.test(text)) return "ru-RU";
   if (/[äöüß]/i.test(text) || /^(der|die|das|ein|eine|ich|du|wir|sie|und|nicht|mit|für)\b/i.test(text)) return "de-DE";
   return "en-US";
-}
-
-export function speechLocaleForCode(code: string) {
-  const locales: Record<string, string> = { de: "de-DE", en: "en-US", ru: "ru-RU", es: "es-ES", fr: "fr-FR", it: "it-IT", tr: "tr-TR" };
-  return locales[code] ?? `${code}-${code.toUpperCase()}`;
-}
-
-export function speakText(text: string, lang = detectSpeechLanguage(text), slow = false) {
-  if (!("speechSynthesis" in window)) return false;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = lang;
-  utterance.rate = slow ? 0.7 : 0.9;
-  const language = lang.toLowerCase().split("-")[0];
-  const voices = window.speechSynthesis.getVoices();
-  const qualityScore = (voice: SpeechSynthesisVoice) => {
-    const description = `${voice.name} ${voice.voiceURI}`.toLowerCase();
-    return (/natural|neural|enhanced|premium|google|microsoft|samantha|ava|alex|helena|katja|markus|jenny/.test(description) ? 10 : 0)
-      + (!voice.localService ? 1 : 0)
-      + (voice.lang.toLowerCase() === lang.toLowerCase() ? 4 : 0);
-  };
-  const matchingVoices = voices.filter((voice) => voice.lang.toLowerCase() === lang.toLowerCase() || voice.lang.toLowerCase().startsWith(`${language}-`));
-  utterance.voice = [...matchingVoices].sort((a, b) => qualityScore(b) - qualityScore(a))[0]
-    ?? null;
-  window.speechSynthesis.speak(utterance);
-  return true;
 }
 
 function german(card: VocabCard) {
@@ -263,8 +241,8 @@ export function StudySession({
           {mode === "cards" && <button className="study-card-edge-nav previous" onClick={() => navigateCard(index - 1)} disabled={index === 0} aria-label="Предыдущая карточка" title="Предыдущая карточка"><Icon name="chevron" className="chevron-left" size={22} /></button>}
           <div className="flashcard-wrap">
           <div role="button" tabIndex={0} aria-label={flipped ? "Сторона ответа" : "Показать ответ"} className={`flashcard ${flipped ? "flipped" : ""}`} onClick={() => setFlipped((value) => !value)} onKeyDown={(event) => { if (event.key === "Enter") setFlipped((value) => !value); }}>
-            <div className="card-face card-front"><button className={`star-button ${progress[card.id]?.starred ? "is-starred" : ""}`} aria-label="Отметить сложное слово" onClick={(event) => { event.stopPropagation(); onToggleStar(card); }}><Icon name="star" /></button><span className={`article-label ${card.article || "neutral"}`}>{card.article === "der" ? "● M" : card.article === "die" ? "▲ F" : card.article === "das" ? "■ N" : "WORT"}</span><h1>{direction === "de-ru" ? german(card) : card.translation}</h1><p className="transcription">{direction === "de-ru" ? card.transcription : "Переведите на немецкий"}</p><span className="flip-hint">Нажмите или пробел, чтобы открыть ответ</span></div>
-            <div className="card-face card-back"><p>ОТВЕТ</p><h2>{direction === "de-ru" ? card.translation : german(card)}</h2>{direction === "de-ru" && <p className="transcription">{card.transcription}</p>}<button className="rule-link" onClick={(event) => { event.stopPropagation(); setShowRule((value) => !value); }}>ⓘ Правило чтения</button>{showRule && <p className="rule-hint">{phoneticHint(card.word)}</p>}<span className="flip-hint">После ответа выберите, как быстро вспомнили слово</span></div>
+            <div className="card-face card-front"><button className={`star-button ${progress[card.id]?.starred ? "is-starred" : ""}`} aria-label="Отметить сложное слово" onClick={(event) => { event.stopPropagation(); onToggleStar(card); }}><Icon name="star" /></button><span className={`article-label ${card.article || "neutral"}`}>{card.article === "der" ? "● M" : card.article === "die" ? "▲ F" : card.article === "das" ? "■ N" : "WORT"}</span><h1>{direction === "de-ru" ? german(card) : card.translation}</h1><p className="transcription">{direction === "de-ru" ? card.transcription : "Переведите на немецкий"}</p><span className="flip-hint">Нажмите, чтобы открыть ответ</span></div>
+            <div className="card-face card-back"><p>ОТВЕТ</p><h2>{direction === "de-ru" ? card.translation : german(card)}</h2>{direction === "de-ru" && <p className="transcription">{card.transcription}</p>}<button className="rule-link" onClick={(event) => { event.stopPropagation(); setShowRule((value) => !value); }}>ⓘ Правило чтения</button>{showRule && <p className="rule-hint">{phoneticHint(card.word)}</p>}</div>
           </div>
           </div>
           {mode === "cards" && <button className="study-card-edge-nav next" onClick={() => navigateCard(index + 1)} disabled={index === cards.length - 1} aria-label="Следующая карточка" title="Следующая карточка"><Icon name="chevron" size={22} /></button>}
@@ -273,7 +251,7 @@ export function StudySession({
       <footer className="study-dock">
         {quick ? <button className="primary-button dock-primary" disabled={!selected && !checked} onClick={() => { if (!checked) setChecked(true); else advance(selected === card.id, selected === card.id ? 2 : 1); }}>{!checked ? "Проверить" : index === cards.length - 1 ? "Завершить" : "Дальше"} <Icon name="arrow" /></button>
           : writing ? <button className="primary-button dock-primary" disabled={status !== "correct" && !(status && equivalentAnswer(answer, target))} onClick={() => advance(status === "correct" || equivalentAnswer(answer, target), status === "correct" ? 2 : 1)}>{index === cards.length - 1 ? "Завершить" : "Дальше"} <Icon name="arrow" /></button>
-            : flipped ? <div className="rating-panel"><div className="rating-explainer"><strong>Когда повторить это слово?</strong><span>Если перевод вспомнился без подсказки — выберите «Вспомнил сразу». Выбор и дата повтора сохраняются в прогрессе этого кабинета на устройстве; в нужный день слово появится в «Сегодня» → «Повторение дня».</span></div><div className="rating-buttons"><button onClick={() => advance(false, 1)}><kbd>1</kbd><span>Не вспомнил</span><small>Повтор завтра</small></button><button onClick={() => advance(true, 2)}><kbd>2</kbd><span>Вспомнил с трудом</span><small>Повтор через 3 дня</small></button><button className="easy" onClick={() => advance(true, 3)}><kbd>3</kbd><span>Вспомнил сразу</span><small>Повтор через 7 дней</small></button></div></div>
+          : flipped ? <div className="rating-panel"><div className="rating-explainer"><strong>Как вспомнили?</strong><HelpHint>Оцените, насколько легко вспомнили слово. Приложение выберет следующий день повтора.</HelpHint></div><div className="rating-buttons"><button onClick={() => advance(false, 1)}><kbd>1</kbd><span>Не вспомнил</span><small>Завтра</small></button><button onClick={() => advance(true, 2)}><kbd>2</kbd><span>С трудом</span><small>Через 3 дня</small></button><button className="easy" onClick={() => advance(true, 3)}><kbd>3</kbd><span>Легко</span><small>Через 7 дней</small></button></div></div>
               : <><button className="hint-button" onClick={() => setHint((value) => Math.min(3, value + 1))} disabled={hint >= 3}><Icon name="brain" /> Подсказка {hint > 0 ? `${hint}/3` : ""}</button><button className="primary-button dock-primary" onClick={() => setFlipped(true)}>Показать ответ</button></>}
       </footer>
     </div>

@@ -6,13 +6,16 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-run("npx", ["--yes", "auth@latest", "migrate", "--config", "./src/lib/auth.ts", "--yes"]);
+run("pnpm", ["exec", "auth", "migrate", "--config", "./src/lib/auth.ts", "--yes"]);
 run("node", ["./scripts/ensure-app-schema.mjs"]);
 
 if (process.env.INITIAL_ADMIN_EMAIL && process.env.INITIAL_ADMIN_PASSWORD) {
-  run("npx", [
-    "--yes",
-    "auth@latest",
+  if (!process.env.LINGUAPLAY_OWNER_EMAIL || process.env.INITIAL_ADMIN_EMAIL.trim().toLowerCase() !== process.env.LINGUAPLAY_OWNER_EMAIL.trim().toLowerCase()) {
+    throw new Error("INITIAL_ADMIN_EMAIL must match LINGUAPLAY_OWNER_EMAIL so a Better Auth administrator cannot be created outside the owner mapping.");
+  }
+  run("pnpm", [
+    "exec",
+    "auth",
     "create-admin",
     "--email",
     process.env.INITIAL_ADMIN_EMAIL,
@@ -26,6 +29,7 @@ if (process.env.INITIAL_ADMIN_EMAIL && process.env.INITIAL_ADMIN_PASSWORD) {
     "./src/lib/auth.ts",
     "--yes",
   ]);
+  run("node", ["./scripts/ensure-app-schema.mjs"]);
 }
 
-run("npm", ["run", "build"]);
+run("pnpm", ["run", "build"]);

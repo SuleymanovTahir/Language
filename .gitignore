@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+__pycache__/
 .cache/
 .env*
 !.env.example
@@ -10,6 +11,7 @@ vite.config.*.timestamp-*
 *-debug.log*
 logs/
 *.log
+.DS_Store
 .claude-replay.*
 .tmp-*
 /.figma/design-context/

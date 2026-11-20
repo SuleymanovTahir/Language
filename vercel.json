@@ -1,8 +1,15 @@
 {
   "buildCommand": "node ./scripts/vercel-build.mjs",
+  "installCommand": "pnpm install --frozen-lockfile",
   "functions": {
     "api/**/*.ts": {
       "includeFiles": "src/lib/**/*.ts"
+    },
+    "api/**/*.py": {
+      "maxDuration": 30
     }
-  }
+  },
+  "crons": [
+    { "path": "/api/cleanup-events", "schedule": "0 3 * * *" }
+  ]
 }

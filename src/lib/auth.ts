@@ -37,6 +37,13 @@ export async function ensureInitialAppRole(userId: string) {
     const primaryOwnerEmail = process.env.LINGUAPLAY_OWNER_EMAIL?.trim().toLocaleLowerCase();
     const isConfiguredOwner = Boolean(primaryOwnerEmail && email === primaryOwnerEmail);
     const existing = await client.query(`SELECT role FROM linguaplay_user_roles WHERE user_id=$1`, [userId]);
+    if (primaryOwnerEmail && !isConfiguredOwner) {
+      if (existing.rows[0]?.role === "owner") {
+        await client.query(`UPDATE linguaplay_user_roles SET role='admin',updated_at=now() WHERE user_id=$1`, [userId]);
+      }
+      await client.query(`UPDATE "user" SET role='user' WHERE id=$1 AND role<>'user'`, [userId]);
+      return;
+    }
     if (existing.rowCount && !isConfiguredOwner) return;
 
     await client.query("BEGIN");
@@ -44,16 +51,17 @@ export async function ensureInitialAppRole(userId: string) {
     if (isConfiguredOwner) {
       await client.query(`UPDATE linguaplay_user_roles SET role='admin', updated_at=now() WHERE role='owner' AND user_id<>$1`, [userId]);
       await client.query(`INSERT INTO linguaplay_user_roles (user_id, role) VALUES ($1,'owner') ON CONFLICT (user_id) DO UPDATE SET role='owner', updated_at=now()`, [userId]);
+      await client.query(`UPDATE "user" SET role='user' WHERE id<>$1 AND role<>'user'`, [userId]);
       await client.query(`UPDATE "user" SET role='admin' WHERE id=$1`, [userId]);
       await client.query("COMMIT");
       return;
     }
     const result = await client.query(`
       INSERT INTO linguaplay_user_roles (user_id, role)
-      VALUES ($1, CASE WHEN EXISTS (SELECT 1 FROM linguaplay_user_roles WHERE role='owner') THEN 'student' ELSE 'owner' END)
+      VALUES ($1, CASE WHEN EXISTS (SELECT 1 FROM linguaplay_user_roles WHERE role='owner') OR $2::boolean THEN 'student' ELSE 'owner' END)
       ON CONFLICT (user_id) DO NOTHING
       RETURNING role
-    `, [userId]);
+    `, [userId, Boolean(process.env.VERCEL)]);
     if (result.rows[0]?.role === "owner") await client.query(`UPDATE "user" SET role='admin' WHERE id=$1`, [userId]);
     await client.query("COMMIT");
   } catch (error) {
