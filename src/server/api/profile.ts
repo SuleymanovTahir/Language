@@ -1,4 +1,4 @@
-import { auth, ensureInitialAppRole, pool } from "../src/lib/auth.ts";
+import { auth, ensureInitialAppRole, pool } from "../../lib/auth.ts";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -36,7 +36,9 @@ export async function GET(request: Request) {
     SELECT status,starts_at,ends_at,'manual_grant'::text AS source FROM linguaplay_user_entitlements WHERE user_id=$1
     UNION ALL
     SELECT status,starts_at,ends_at,source FROM linguaplay_entitlements WHERE account_id=$1 AND feature='pro'
-  ) current_entitlement ORDER BY ends_at DESC NULLS LAST LIMIT 1`,
+  ) current_entitlement
+  ORDER BY CASE WHEN status='active' AND (starts_at IS NULL OR starts_at<=now()) AND ends_at>now() THEN 0 ELSE 1 END,
+    ends_at DESC NULLS LAST LIMIT 1`,
     [session.user.id],
   );
   const pro = entitlement.rows[0];

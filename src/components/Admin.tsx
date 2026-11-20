@@ -770,6 +770,19 @@ type AnalyticsData = {
   actions: Array<{ action: string; route: string; clicks: number }>;
   pages: Array<{ route: string; views: number; users: number }>;
   recent: Array<{ id: number; name: string; route: string; action: string; created_at: string }>;
+  learning: Array<{
+    language_code: string;
+    level: string;
+    skill: string;
+    variant_id: string;
+    answers: number;
+    sessions: number;
+    first_try_correct: number;
+    average_attempts: number;
+    hints_used: number;
+    skipped: number;
+    average_duration_ms: number | null;
+  }>;
   dormant: Array<{
     id: string;
     name: string;
@@ -1050,6 +1063,40 @@ export function AdminAnalyticsScreen() {
                 )}
               </section>
             </div>
+            <section className="analytics-panel">
+              <div className="analytics-panel-heading">
+                <div>
+                  <h2>Качество учебных сессий</h2>
+                  <p>Последние 30 дней · показываются группы минимум из пяти ответов.</p>
+                </div>
+                <span>{data.learning.length} групп</span>
+              </div>
+              {data.learning.length ? (
+                <div className="analytics-row-list">
+                  {data.learning.map((item) => (
+                    <article
+                      key={`${item.language_code}-${item.level}-${item.skill}-${item.variant_id}`}
+                    >
+                      <strong>{item.variant_id || item.skill}</strong>
+                      <span>
+                        {item.language_code.toUpperCase()} · {item.level || "любой уровень"} ·{" "}
+                        {item.skill}
+                      </span>
+                      <small>
+                        {item.sessions} сессий ·{" "}
+                        {Math.round((item.first_try_correct * 100) / Math.max(1, item.answers))}%
+                        верно с первого раза · подсказок {item.hints_used} · пропусков{" "}
+                        {item.skipped} · попыток {Number(item.average_attempts).toFixed(1)}
+                      </small>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="admin-analytics-empty">
+                  Показатели появятся после нескольких игровых сессий.
+                </p>
+              )}
+            </section>
             <div className="analytics-two-column">
               <section className="analytics-panel">
                 <div className="analytics-panel-heading">

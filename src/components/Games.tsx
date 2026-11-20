@@ -8,6 +8,7 @@ import { PandaNote } from "./PandaNote";
 import { speakText, speechLocaleForCode } from "./StudySession";
 import { AudioQuizBuilder, AudioQuizSession, type AudioQuiz } from "./AudioQuiz";
 import { getActiveProfileId, readProfileItem, writeProfileItem } from "../lib/profileStorage";
+import { ScenarioGame, type ScenarioGameId } from "./ScenarioGames";
 
 import {
   GAME_LIST,
@@ -350,6 +351,31 @@ function GameArtwork({ gameId, module }: { gameId: GameId; module: VocabModule }
         </span>
       </span>
     );
+  } else if (gameId === "dialogue") {
+    art = (
+      <span className="gp-scenario gp-dialogue-art">
+        <i>Guten Morgen!</i>
+        <b>Was möchten Sie?</b>
+        <strong>Einen Kaffee, bitte.</strong>
+      </span>
+    );
+  } else if (gameId === "quest") {
+    art = (
+      <span className="gp-scenario gp-quest-art">
+        <i>1 · слово</i>
+        <i>2 · диалог</i>
+        <i>3 · фраза</i>
+        <i>4 · ошибка</i>
+      </span>
+    );
+  } else if (gameId === "error-editor") {
+    art = (
+      <span className="gp-scenario gp-error-art">
+        <del>Ich gehen …</del>
+        <b>Ich gehe …</b>
+        <small>Форма глагола · ich</small>
+      </span>
+    );
   } else {
     art = (
       <span className="gp-letters">
@@ -550,10 +576,28 @@ export function GameHub({
       }))
     : [];
   const gameFilterIds: Record<Exclude<typeof gameFilter, "all">, Set<GameId>> = {
-    words: new Set(["pairs", "blitz", "hangman", "moles", "boxes", "wheel", "picture"]),
+    words: new Set([
+      "pairs",
+      "blitz",
+      "hangman",
+      "moles",
+      "boxes",
+      "wheel",
+      "picture",
+      "dialogue",
+      "quest",
+    ]),
     listening: new Set(["phonetic", "finalsound"]),
     writing: new Set(["wordsearch", "anagram", "sentenceorder"]),
-    grammar: new Set(["articles", "builder", "train", "fillblank", "sentenceorder"]),
+    grammar: new Set([
+      "articles",
+      "builder",
+      "train",
+      "fillblank",
+      "sentenceorder",
+      "quest",
+      "error-editor",
+    ]),
   };
   const filteredCardGames = cardGames.filter(
     (item) => gameFilter === "all" || gameFilterIds[gameFilter].has(item.game.id),
@@ -577,6 +621,10 @@ export function GameHub({
     {
       title: "Грамматика и фразы",
       ids: new Set<GameId>(["articles", "builder", "train", "fillblank", "sentenceorder"]),
+    },
+    {
+      title: "В контексте",
+      ids: new Set<GameId>(["dialogue", "quest", "error-editor"]),
     },
   ].map((group) => ({
     ...group,
@@ -2537,19 +2585,39 @@ function useCompletionSignal(completed: boolean, onComplete: () => void) {
   }, [completed]);
 }
 
+export type AnswerTelemetry = {
+  attemptCount: number;
+  firstTryCorrect: boolean;
+  hintUsed: boolean;
+  durationMs: number;
+  variantId?: string;
+  skill?: string;
+  recordProgress?: boolean;
+  sessionTotal?: number;
+};
+
 export function GameSession({
   gameId,
   module,
+  avoidMicrophone = false,
   onExit,
   onAnswer,
+  onSkip = () => undefined,
   onComplete = () => undefined,
   onRestart,
 }: {
   gameId: GameId;
   module: VocabModule;
+  avoidMicrophone?: boolean;
   onExit: () => void;
-  onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void;
-  onComplete?: () => void;
+  onAnswer: (
+    card: VocabCard,
+    correct: boolean,
+    confusedWith?: string,
+    telemetry?: AnswerTelemetry,
+  ) => void;
+  onSkip?: (card: VocabCard) => void;
+  onComplete?: (totalRounds?: number) => void;
   onRestart?: () => void | boolean | Promise<void | boolean>;
 }) {
   const [runKey, setRunKey] = useState(0);
@@ -2561,7 +2629,17 @@ export function GameSession({
   return (
     <>
       <ActivityMediaPanel module={module} />
-      {gameId === "pairs" || gameId === "datajoin" ? (
+      {gameId === "dialogue" || gameId === "quest" || gameId === "error-editor" ? (
+        <ScenarioGame
+          key={runKey}
+          gameId={gameId as ScenarioGameId}
+          module={module}
+          onExit={onExit}
+          onAnswer={onAnswer}
+          onSkip={onSkip}
+          onComplete={onComplete}
+        />
+      ) : gameId === "pairs" || gameId === "datajoin" ? (
         <PairGame
           key={runKey}
           gameId={gameId}
@@ -2585,9 +2663,11 @@ export function GameSession({
           key={runKey}
           gameId={gameId}
           module={module}
+          avoidMicrophone={avoidMicrophone}
           onExit={onExit}
           onRestart={restart}
           onAnswer={onAnswer}
+          onSkip={onSkip}
           onComplete={onComplete}
         />
       )}
@@ -3364,16 +3444,25 @@ function PairGame({
 function QuestionGame({
   gameId,
   module,
+  avoidMicrophone = false,
   onExit,
   onRestart,
   onAnswer,
+  onSkip,
   onComplete,
 }: {
   gameId: GameId;
   module: VocabModule;
+  avoidMicrophone?: boolean;
   onExit: () => void;
   onRestart: () => void;
-  onAnswer: (card: VocabCard, correct: boolean, confusedWith?: string) => void;
+  onAnswer: (
+    card: VocabCard,
+    correct: boolean,
+    confusedWith?: string,
+    telemetry?: AnswerTelemetry,
+  ) => void;
+  onSkip: (card: VocabCard) => void;
   onComplete: () => void;
 }) {
   const eligible = module.cards.filter((card) =>
@@ -3393,10 +3482,34 @@ function QuestionGame({
                   ? Boolean(card.article)
                   : true,
   );
-  const rounds = useMemo(
-    () => shuffle(eligible).slice(0, Math.min(10, eligible.length)),
-    [module.id, gameId],
-  );
+  const rounds = useMemo(() => {
+    let recent: Array<{ gameId: string; moduleId: number; ids: string[] }> = [];
+    try {
+      const saved: unknown = JSON.parse(readProfileItem("linguaplay-recent-game-sessions") || "[]");
+      if (Array.isArray(saved))
+        recent = saved.filter(
+          (entry): entry is { gameId: string; moduleId: number; ids: string[] } =>
+            Boolean(
+              entry &&
+              typeof entry === "object" &&
+              typeof (entry as { gameId?: unknown }).gameId === "string" &&
+              Number.isInteger((entry as { moduleId?: unknown }).moduleId) &&
+              Array.isArray((entry as { ids?: unknown }).ids),
+            ),
+        );
+    } catch {
+      recent = [];
+    }
+    const previousIds = new Set(
+      recent
+        .filter((entry) => entry.gameId === gameId && entry.moduleId === module.id)
+        .slice(-3)
+        .flatMap((entry) => entry.ids),
+    );
+    const unseen = eligible.filter((item) => !previousIds.has(item.id));
+    const pool = unseen.length >= Math.min(10, eligible.length) ? unseen : eligible;
+    return shuffle(pool).slice(0, Math.min(10, pool.length));
+  }, [module.id, gameId]);
   const [roundQueue, setRoundQueue] = useState<VocabCard[]>(rounds);
   const [index, setIndex] = useState(0);
   const [score, setScore] = useState(0);
@@ -3417,9 +3530,35 @@ function QuestionGame({
   const [listening, setListening] = useState(false);
   const [speechMessage, setSpeechMessage] = useState("");
   const recognitionRef = useRef<RecognitionLike | null>(null);
+  const answerAttempts = useRef<
+    Record<
+      string,
+      { attempts: number; firstTryCorrect: boolean; hintUsed: boolean; durationMs: number }
+    >
+  >({});
+  const historySaved = useRef(false);
+  const roundStartedAt = useRef(Date.now());
   const card = wheelCard ?? roundQueue[index] ?? module.cards[0];
   const done = index >= roundQueue.length;
   useCompletionSignal(done, onComplete);
+  useEffect(() => {
+    if (!done || !rounds.length || historySaved.current) return;
+    historySaved.current = true;
+    let previous: Array<{ gameId: string; moduleId: number; ids: string[] }> = [];
+    try {
+      const saved: unknown = JSON.parse(readProfileItem("linguaplay-recent-game-sessions") || "[]");
+      if (Array.isArray(saved)) previous = saved as typeof previous;
+    } catch {
+      previous = [];
+    }
+    writeProfileItem(
+      "linguaplay-recent-game-sessions",
+      JSON.stringify([
+        ...previous.slice(-29),
+        { gameId, moduleId: module.id, ids: rounds.map((item) => item.id) },
+      ]),
+    );
+  }, [done, gameId, module.id, rounds]);
   const answerMode =
     gameId === "phonetic" || gameId === "picture" || gameId === "fillblank"
       ? "word"
@@ -3472,17 +3611,39 @@ function QuestionGame({
         ? module.cards.find((item) => item.translation === chosen[0] || german(item) === chosen[0])
             ?.id
         : undefined;
+    const previous = answerAttempts.current[card.id] ?? {
+      attempts: 0,
+      firstTryCorrect: false,
+      hintUsed: false,
+      durationMs: 0,
+    };
+    const attempts = previous.attempts + 1;
+    const firstTryCorrect = attempts === 1 ? correct : previous.firstTryCorrect;
+    const durationMs = Math.max(0, Date.now() - roundStartedAt.current);
+    answerAttempts.current[card.id] = {
+      ...previous,
+      attempts,
+      firstTryCorrect,
+      durationMs: previous.durationMs + durationMs,
+    };
     setFeedback(correct ? "correct" : "wrong");
     setFeedbackNonce((value) => value + 1);
-    setScore((value) => value + (correct ? 1 : 0));
-    onAnswer(card, correct, confusedWith);
+    if (attempts === 1 && correct) setScore((value) => value + 1);
+    onAnswer(card, correct, confusedWith, {
+      attemptCount: attempts,
+      firstTryCorrect,
+      hintUsed: previous.hintUsed,
+      durationMs,
+    });
   };
   const advanceRound = () => {
     if (!feedback) return;
-    if (feedback === "wrong" && card) setRoundQueue((current) => [...current, card]);
+    if (feedback === "wrong" && card && (answerAttempts.current[card.id]?.attempts ?? 0) === 1)
+      setRoundQueue((current) => [...current, card]);
     setFeedback(null);
     setHintVisible(false);
     setIndex((value) => value + 1);
+    roundStartedAt.current = Date.now();
     setChosen([]);
     setLetters([]);
     setLives(0);
@@ -3585,6 +3746,23 @@ function QuestionGame({
     [module.id, module.cards],
   );
   const builderOptions = useMemo(() => shuffle([card.word, "der", "die", "das"]), [card.id]);
+  const answerResults = Object.values(answerAttempts.current);
+  const answeredCount = answerResults.filter((item) => item.attempts > 0).length;
+  const firstTryErrors = answerResults.filter(
+    (item) => item.attempts > 0 && !item.firstTryCorrect,
+  ).length;
+  const retryCount = answerResults.filter((item) => item.attempts > 1).length;
+  const skippedCount = new Set(
+    rounds.filter((item) => !answerAttempts.current[item.id]?.attempts).map((item) => item.id),
+  ).size;
+  const finishEarly = () => {
+    const unanswered = new Map<string, VocabCard>();
+    roundQueue.slice(index).forEach((item) => {
+      if (!answerAttempts.current[item.id]?.attempts) unanswered.set(item.id, item);
+    });
+    unanswered.forEach(onSkip);
+    setIndex(roundQueue.length);
+  };
   if (done || !card)
     return (
       <div className="game-shell">
@@ -3596,12 +3774,17 @@ function QuestionGame({
           <span />
         </header>
         <div className="game-result">
-          <span className="result-medal">{score >= rounds.length * 0.7 ? "★" : "✓"}</span>
+          <span className="result-medal">
+            {score >= Math.max(1, rounds.length) * 0.7 ? "★" : "✓"}
+          </span>
           <p className="eyebrow">ИГРА ЗАВЕРШЕНА</p>
           <h1>
-            {score} из {rounds.length} верно
+            {score} из {answeredCount} ответов с первого раза
           </h1>
-          <p>Результат сохранён в вашем учебном прогрессе.</p>
+          <p>
+            Новых вопросов: {rounds.length} · ошибки с первой попытки: {firstTryErrors} · повторов:{" "}
+            {retryCount} · без ответа: {skippedCount}. Результат первой попытки сохранён отдельно.
+          </p>
           <button className="primary-button" onClick={onRestart}>
             Пройти ещё раз · новый порядок
           </button>
@@ -3857,13 +4040,15 @@ function QuestionGame({
             >
               <Icon name="volume" /> Прослушать слово
             </button>
-            <button
-              className={`listen-button ${listening ? "recording" : ""}`}
-              onClick={() => (listening ? recognitionRef.current?.stop() : startSpeech())}
-            >
-              <span className="mic-dot" />
-              {listening ? "Слушаю…" : "Произнести самому"}
-            </button>
+            {!avoidMicrophone && (
+              <button
+                className={`listen-button ${listening ? "recording" : ""}`}
+                onClick={() => (listening ? recognitionRef.current?.stop() : startSpeech())}
+              >
+                <span className="mic-dot" />
+                {listening ? "Слушаю…" : "Произнести самому"}
+              </button>
+            )}
           </div>
         )}
         {gameId === "phonetic" ? (
@@ -4266,7 +4451,22 @@ function QuestionGame({
         </div>
         {card.hint && (
           <div className="round-hint">
-            <button type="button" onClick={() => setHintVisible((value) => !value)}>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !hintVisible;
+                setHintVisible(next);
+                if (next) {
+                  const previous = answerAttempts.current[card.id] ?? {
+                    attempts: 0,
+                    firstTryCorrect: false,
+                    hintUsed: false,
+                    durationMs: 0,
+                  };
+                  answerAttempts.current[card.id] = { ...previous, hintUsed: true };
+                }
+              }}
+            >
               <Icon name="info" size={15} />{" "}
               {hintVisible ? "Скрыть подсказку" : "Подсказка к этому раунду"}
             </button>
@@ -4301,12 +4501,14 @@ function QuestionGame({
                     : gameId === "articles"
                       ? card.article
                       : german(card)}{" "}
-                · {card.translation}. Это задание вернётся в конец набора.
+                · {card.translation}.{" "}
+                {(answerAttempts.current[card.id]?.attempts ?? 0) === 1
+                  ? "Можно повторить один раз."
+                  : "Задание добавлено в повтор."}
               </p>
             )}
             <button className="primary-button" onClick={advanceRound}>
-              {feedback === "wrong" ? "Понятно, повторю в конце" : "Дальше"}{" "}
-              <Icon name="arrow" size={16} />
+              {feedback === "wrong" ? "Понятно, дальше" : "Дальше"} <Icon name="arrow" size={16} />
             </button>
           </div>
         )}
@@ -4317,6 +4519,9 @@ function QuestionGame({
             ? module.practiceNote
             : `Словарь: модуль ${module.id} · ${module.title}`}
         </span>
+        <button className="text-button" onClick={finishEarly}>
+          Закончить сессию
+        </button>
       </footer>
     </div>
   );
@@ -4335,6 +4540,8 @@ export function GrammarPractice({
   onEvent?: (payload: Record<string, unknown>) => void;
   onExerciseStart?: () => void | boolean | Promise<void | boolean>;
 }) {
+  const sessionId = useRef(`grammar-${crypto.randomUUID?.() ?? Date.now()}`);
+  const questionStartedAt = useRef(Date.now());
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [checked, setChecked] = useState(false);
@@ -4351,10 +4558,15 @@ export function GrammarPractice({
     onEvent?.({
       type: "practice-start",
       activityId: topic.id,
+      sessionId: sessionId.current,
+      variantId: `grammar:${topic.id}`,
       activity: topic.title,
       moduleTitle: "Грамматика",
       roundIndex: 0,
       roundTotal: topic.questions.length,
+      languageCode: topic.languageCode ?? "de",
+      level: topic.level ?? "A1–A2",
+      skill: "grammar",
       mode: "grammar",
     });
     return true;
@@ -4370,10 +4582,22 @@ export function GrammarPractice({
     onEvent?.({
       type: "practice-answer",
       activityId: topic.id,
+      sessionId: sessionId.current,
+      eventKey: crypto.randomUUID?.() ?? `${Date.now()}-${index}`,
+      itemId: `${topic.id}-${index}`,
+      variantId: `grammar:${topic.id}`,
       activity: topic.title,
       moduleTitle: "Грамматика",
       roundIndex: index + 1,
       roundTotal: topic.questions.length,
+      languageCode: topic.languageCode ?? "de",
+      level: topic.level ?? "A1–A2",
+      skill: "grammar",
+      firstTryCorrect: correct,
+      attemptCount: 1,
+      hintUsed: false,
+      skipped: false,
+      durationMs: Math.max(0, Date.now() - questionStartedAt.current),
       prompt: question.prompt,
       selectedAnswer: selected,
       correctAnswer: question.answer,
@@ -4386,10 +4610,15 @@ export function GrammarPractice({
       onEvent?.({
         type: "practice-complete",
         activityId: topic.id,
+        sessionId: sessionId.current,
+        variantId: `grammar:${topic.id}`,
         activity: topic.title,
         moduleTitle: "Грамматика",
         roundIndex: topic.questions.length,
         roundTotal: topic.questions.length,
+        languageCode: topic.languageCode ?? "de",
+        level: topic.level ?? "A1–A2",
+        skill: "grammar",
         mode: "grammar",
       });
       setFinished(true);
@@ -4398,6 +4627,7 @@ export function GrammarPractice({
     setIndex((value) => value + 1);
     setSelected(null);
     setChecked(false);
+    questionStartedAt.current = Date.now();
   };
   if (finished)
     return (

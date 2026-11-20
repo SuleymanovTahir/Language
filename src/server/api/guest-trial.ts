@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
-import { pool } from "../src/lib/auth.ts";
+import { pool } from "../../lib/auth.ts";
 
 const COOKIE = "linguaplay_guest_id";
 const json = (data: unknown, status = 200, headers: HeadersInit = {}) =>

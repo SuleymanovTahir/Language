@@ -476,18 +476,29 @@ export function AudioQuizSession({
   const [hintVisible, setHintVisible] = useState(false);
   const [feedbackNonce, setFeedbackNonce] = useState(0);
   const completionReported = useRef(false);
+  const sessionId = useRef(`audio-${crypto.randomUUID?.() ?? Date.now()}`);
+  const questionStartedAt = useRef(Date.now());
+  const hintWasUsed = useRef(false);
   const question = questions[index];
   const restart = async () => {
     const allowed = await onRestart?.();
     if (allowed === false) return;
     completionReported.current = false;
+    sessionId.current = `audio-${crypto.randomUUID?.() ?? Date.now()}`;
+    questionStartedAt.current = Date.now();
+    hintWasUsed.current = false;
     onEvent?.({
       type: "practice-start",
       activityId: quiz.id,
+      sessionId: sessionId.current,
+      variantId: `audio:${quiz.id}`,
       activity: quiz.title,
       moduleTitle: "Аудиотест",
       roundIndex: 0,
       roundTotal: quiz.questions.length,
+      languageCode: quiz.languageCode,
+      level: quiz.level,
+      skill: "listening",
       mode: "audio",
     });
     setQuestions(shuffleQuestions(quiz.questions));
@@ -512,10 +523,15 @@ export function AudioQuizSession({
     onEvent?.({
       type: "practice-start",
       activityId: quiz.id,
+      sessionId: sessionId.current,
+      variantId: `audio:${quiz.id}`,
       activity: quiz.title,
       moduleTitle: "Аудиотест",
       roundIndex: 0,
       roundTotal: quiz.questions.length,
+      languageCode: quiz.languageCode,
+      level: quiz.level,
+      skill: "listening",
       mode: "audio",
     });
   }, [quiz.id]);
@@ -525,10 +541,15 @@ export function AudioQuizSession({
     onEvent?.({
       type: "practice-complete",
       activityId: quiz.id,
+      sessionId: sessionId.current,
+      variantId: `audio:${quiz.id}`,
       activity: quiz.title,
       moduleTitle: "Аудиотест",
       roundIndex: questions.length,
       roundTotal: questions.length,
+      languageCode: quiz.languageCode,
+      level: quiz.level,
+      skill: "listening",
       mode: "audio",
     });
   }, [finished, quiz.id, quiz.title, questions.length]);
@@ -582,10 +603,22 @@ export function AudioQuizSession({
     onEvent?.({
       type: "practice-answer",
       activityId: quiz.id,
+      sessionId: sessionId.current,
+      eventKey: crypto.randomUUID?.() ?? `${Date.now()}-${index}`,
+      itemId: question.id,
+      variantId: `audio:${quiz.id}`,
       activity: quiz.title,
       moduleTitle: "Аудиотест",
       roundIndex: index + 1,
       roundTotal: questions.length,
+      languageCode: quiz.languageCode,
+      level: quiz.level,
+      skill: "listening",
+      firstTryCorrect: correct,
+      attemptCount: 1,
+      hintUsed: hintWasUsed.current,
+      skipped: false,
+      durationMs: Math.max(0, Date.now() - questionStartedAt.current),
       prompt: question.prompt || "Прослушивание",
       selectedAnswer: optionLabel(selected),
       correctAnswer: optionLabel(correctIndex),
@@ -600,6 +633,8 @@ export function AudioQuizSession({
       setSelected(null);
       setChecked(false);
       setHintVisible(false);
+      hintWasUsed.current = false;
+      questionStartedAt.current = Date.now();
     }
   };
   return (
@@ -631,7 +666,16 @@ export function AudioQuizSession({
         <h1>{question.prompt}</h1>
         {question.hint && (
           <div className="round-hint">
-            <button type="button" onClick={() => setHintVisible((value) => !value)}>
+            <button
+              type="button"
+              onClick={() =>
+                setHintVisible((value) => {
+                  const next = !value;
+                  if (next) hintWasUsed.current = true;
+                  return next;
+                })
+              }
+            >
               <Icon name="info" size={15} />{" "}
               {hintVisible ? "Скрыть подсказку" : "Подсказка к раунду"}
             </button>

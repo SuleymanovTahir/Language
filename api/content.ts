@@ -45,7 +45,8 @@ const canEdit = (user: { role: string } | null) =>
 function parseBody(body: unknown) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const item = body as Record<string, unknown>;
-  const kind = typeof item.kind === "string" ? (item.kind as ContentKind) : "";
+  const kindValue = typeof item.kind === "string" ? item.kind : "";
+  const kind = kindValue as ContentKind;
   const languageCode =
     typeof item.languageCode === "string"
       ? item.languageCode.trim().toLowerCase().slice(0, 12)
@@ -58,6 +59,7 @@ function parseBody(body: unknown) {
   const content =
     item.body && typeof item.body === "object" && !Array.isArray(item.body) ? item.body : {};
   if (
+    !kindValue ||
     !kinds.has(kind) ||
     !/^[a-z]{2}(?:-[a-z]{2})?$/.test(languageCode) ||
     !level ||

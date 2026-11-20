@@ -20,6 +20,16 @@ export type CatalogSeed = {
   title: string;
   body: Record<string, unknown>;
 };
+type CatalogShare = {
+  id: number;
+  content_id: string;
+  title: string;
+  expires_at: string;
+  max_views: number;
+  view_count: number;
+  revoked_at: string | null;
+  created_at: string;
+};
 const kindNames: Record<string, string> = {
   module: "Словарь",
   lesson: "Урок",
@@ -59,6 +69,8 @@ export function CatalogScreen({
   const [working, setWorking] = useState(false);
   const [shared, setShared] = useState<CatalogItem | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
+  const [shares, setShares] = useState<CatalogShare[]>([]);
+  const [sharesLoading, setSharesLoading] = useState(false);
   const hashQuery =
     typeof window === "undefined" ? "" : window.location.hash.split("?").slice(1).join("?");
   const shareToken = useMemo(() => new URLSearchParams(hashQuery).get("share") ?? "", [hashQuery]);
@@ -99,6 +111,26 @@ export function CatalogScreen({
   useEffect(() => {
     void load();
   }, [languageCode, level, canManageContent]);
+  const loadShares = async () => {
+    if (!canManageContent) return;
+    setSharesLoading(true);
+    try {
+      const response = await fetch("/api/content-share?manage=1", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const result = (await response.json()) as { shares?: CatalogShare[]; error?: string };
+      if (!response.ok) throw new Error(result.error || "Не удалось загрузить ссылки.");
+      setShares(result.shares ?? []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось загрузить ссылки.");
+    } finally {
+      setSharesLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (canManageContent) void loadShares();
+  }, [canManageContent]);
   useEffect(() => {
     if (!shareToken) {
       setShared(null);
@@ -106,7 +138,10 @@ export function CatalogScreen({
     }
     let alive = true;
     setShareLoading(true);
-    void fetch(`/api/content-share?token=${encodeURIComponent(shareToken)}`, { cache: "no-store" })
+    void fetch("/api/content-share", {
+      headers: { "X-Content-Share-Token": shareToken },
+      cache: "no-store",
+    })
       .then(async (response) => {
         const data = (await response.json()) as { item?: CatalogItem; error?: string };
         if (!response.ok) throw new Error(data.error || "Ссылка недействительна.");
@@ -128,25 +163,28 @@ export function CatalogScreen({
     setBodyText(JSON.stringify(value.body, null, 2));
     setError("");
   };
-  const save = async (status?: CatalogItem["status"]) => {
-    if (!draft) return;
+  const save = async (target?: CatalogItem, status?: CatalogItem["status"]) => {
+    const source = target ?? draft;
+    if (!source) return;
     let body: Record<string, unknown>;
-    try {
-      const parsed: unknown = JSON.parse(bodyText);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-      body = parsed as Record<string, unknown>;
-    } catch {
-      setError("Содержимое должно быть корректным JSON объектом.");
-      return;
-    }
+    if (target) body = target.body;
+    else
+      try {
+        const parsed: unknown = JSON.parse(bodyText);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+        body = parsed as Record<string, unknown>;
+      } catch {
+        setError("Содержимое должно быть корректным JSON объектом.");
+        return;
+      }
     setWorking(true);
     setError("");
     try {
-      const payload = { ...draft, status: status ?? draft.status, body };
+      const payload = { ...source, status: status ?? source.status, body };
       const response = await fetch(
-        draft.id ? `/api/content?id=${encodeURIComponent(draft.id)}` : "/api/content",
+        source.id ? `/api/content?id=${encodeURIComponent(source.id)}` : "/api/content",
         {
-          method: draft.id ? "PATCH" : "POST",
+          method: source.id ? "PATCH" : "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -214,6 +252,7 @@ export function CatalogScreen({
       if (!response.ok || !result.token)
         throw new Error(result.error || "Не удалось создать ссылку.");
       const copied = await copyAppLink(`catalog?share=${encodeURIComponent(result.token)}`);
+      void loadShares();
       setNotice(
         copied
           ? "Одноразовая ссылка скопирована: действует 7 дней и до 3 просмотров."
@@ -221,6 +260,29 @@ export function CatalogScreen({
       );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось создать ссылку.");
+    } finally {
+      setWorking(false);
+    }
+  };
+  const revokeShare = async (share: CatalogShare) => {
+    if (!window.confirm(`Отозвать ссылку на «${share.title}»?`)) return;
+    setWorking(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/content-share?id=${encodeURIComponent(share.id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const result = (await response.json()) as { revoked?: boolean; error?: string };
+      if (!response.ok) throw new Error(result.error || "Не удалось отозвать ссылку.");
+      setShares((current) =>
+        current.map((item) =>
+          item.id === share.id ? { ...item, revoked_at: new Date().toISOString() } : item,
+        ),
+      );
+      setNotice(result.revoked ? "Ссылка отозвана." : "Ссылка уже была отозвана.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось отозвать ссылку.");
     } finally {
       setWorking(false);
     }
@@ -251,9 +313,7 @@ export function CatalogScreen({
               className="primary-button compact"
               disabled={working}
               onClick={() => {
-                setDraft(item);
-                setBodyText(JSON.stringify(item.body, null, 2));
-                void save("published");
+                void save(item, "published");
               }}
             >
               Опубликовать
@@ -334,6 +394,54 @@ export function CatalogScreen({
         <p className="form-error" role="alert">
           {error}
         </p>
+      )}
+      {canManageContent && (
+        <section className="catalog-shares">
+          <div className="catalog-shares-heading">
+            <div>
+              <h2>Ссылки на публикации</h2>
+              <p>Ограниченные ссылки можно отозвать в любой момент.</p>
+            </div>
+            <span>{shares.length}</span>
+          </div>
+          {sharesLoading ? (
+            <p className="empty-inline">Загружаю ссылки…</p>
+          ) : shares.length ? (
+            <div className="catalog-share-list">
+              {shares.map((share) => {
+                const expired = new Date(share.expires_at).getTime() <= Date.now();
+                const exhausted = Number(share.view_count) >= Number(share.max_views);
+                const inactive = Boolean(share.revoked_at) || expired || exhausted;
+                return (
+                  <article key={share.id}>
+                    <div>
+                      <strong>{share.title}</strong>
+                      <small>
+                        {inactive
+                          ? share.revoked_at
+                            ? "Отозвана"
+                            : expired
+                              ? "Срок истёк"
+                              : "Лимит просмотров исчерпан"
+                          : `До ${new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(new Date(share.expires_at))}`}{" "}
+                        · {share.view_count}/{share.max_views} просмотров
+                      </small>
+                    </div>
+                    <button
+                      className="text-danger"
+                      disabled={working || inactive}
+                      onClick={() => void revokeShare(share)}
+                    >
+                      Отозвать
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="empty-inline">Ссылок пока нет.</p>
+          )}
+        </section>
       )}
       {draft && (
         <section className="catalog-editor">
@@ -417,7 +525,7 @@ export function CatalogScreen({
             <button
               className="secondary-button"
               disabled={working}
-              onClick={() => void save("draft")}
+              onClick={() => void save(undefined, "draft")}
             >
               Сохранить черновик
             </button>
@@ -425,7 +533,7 @@ export function CatalogScreen({
               <button
                 className="primary-button"
                 disabled={working}
-                onClick={() => void save("published")}
+                onClick={() => void save(undefined, "published")}
               >
                 Сохранить публикацию
               </button>
@@ -434,7 +542,7 @@ export function CatalogScreen({
               <button
                 className="secondary-button"
                 disabled={working}
-                onClick={() => void save("draft")}
+                onClick={() => void save(undefined, "draft")}
               >
                 Снять с публикации
               </button>

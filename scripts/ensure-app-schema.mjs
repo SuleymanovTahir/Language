@@ -3,10 +3,10 @@ import pg from "pg";
 const { Pool } = pg;
 if (!process.env.DATABASE_URL)
   throw new Error("DATABASE_URL is required to prepare the application schema.");
-const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 22);
+const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 5);
 const energyCap = Number.isInteger(configuredEnergyCap)
   ? Math.max(1, Math.min(22, configuredEnergyCap))
-  : 22;
+  : 5;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -107,7 +107,7 @@ try {
     );
     CREATE TABLE IF NOT EXISTS linguaplay_energy_accounts (
       user_id text PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
-      energy integer NOT NULL DEFAULT 22 CHECK (energy BETWEEN 0 AND 22),
+      energy integer NOT NULL DEFAULT 5 CHECK (energy BETWEEN 0 AND 22),
       next_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -179,9 +179,12 @@ try {
     );
     CREATE TABLE IF NOT EXISTS linguaplay_learning_events (
       id bigserial PRIMARY KEY,
+      event_key text UNIQUE,
       user_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
       session_id text NOT NULL,
       item_id text NOT NULL,
+      language_code text NOT NULL DEFAULT '',
+      level text NOT NULL DEFAULT '',
       skill text NOT NULL,
       topic text NOT NULL DEFAULT '',
       variant_id text NOT NULL DEFAULT '',
@@ -192,6 +195,10 @@ try {
       duration_ms integer,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    ALTER TABLE linguaplay_learning_events ADD COLUMN IF NOT EXISTS event_key text;
+    ALTER TABLE linguaplay_learning_events ADD COLUMN IF NOT EXISTS language_code text NOT NULL DEFAULT '';
+    ALTER TABLE linguaplay_learning_events ADD COLUMN IF NOT EXISTS level text NOT NULL DEFAULT '';
+    CREATE UNIQUE INDEX IF NOT EXISTS linguaplay_learning_events_event_key_idx ON linguaplay_learning_events(event_key) WHERE event_key IS NOT NULL;
     CREATE INDEX IF NOT EXISTS linguaplay_learning_events_user_time_idx ON linguaplay_learning_events(user_id,created_at DESC);
     CREATE TABLE IF NOT EXISTS linguaplay_plans (
       code text PRIMARY KEY,
@@ -263,22 +270,25 @@ try {
     );
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS next_at_after timestamptz;
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS is_pro boolean NOT NULL DEFAULT false;
-    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 22;
+    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 5;
     CREATE INDEX IF NOT EXISTS linguaplay_energy_ledger_user_time_idx ON linguaplay_energy_ledger(user_id,created_at DESC);
   `);
 
   await pool.query(
-    `
-    INSERT INTO linguaplay_energy_accounts(user_id,energy,next_at)
-      SELECT id,$1,NULL FROM "user" ON CONFLICT(user_id) DO NOTHING;
-    INSERT INTO linguaplay_energy_ledger(user_id,amount,balance_after,next_at_after,reason,idempotency_key)
-      SELECT user_id,$1,$1,NULL,'Initial account energy','initial-account-v1' FROM linguaplay_energy_accounts
-      ON CONFLICT(user_id,idempotency_key) DO NOTHING;
-    UPDATE linguaplay_user_data
-      SET data=data-'linguaplay-energy'-'linguaplay-energy-reward-progress',updated_at=now()
-      WHERE data ? 'linguaplay-energy' OR data ? 'linguaplay-energy-reward-progress';
-  `,
+    `INSERT INTO linguaplay_energy_accounts(user_id,energy,next_at)
+      SELECT id,$1,NULL FROM "user" ON CONFLICT(user_id) DO NOTHING`,
     [energyCap],
+  );
+  await pool.query(
+    `INSERT INTO linguaplay_energy_ledger(user_id,amount,balance_after,next_at_after,reason,idempotency_key)
+      SELECT user_id,$1,$1,NULL,'Initial account energy','initial-account-v1' FROM linguaplay_energy_accounts
+      ON CONFLICT(user_id,idempotency_key) DO NOTHING`,
+    [energyCap],
+  );
+  await pool.query(
+    `UPDATE linguaplay_user_data
+      SET data=data-'linguaplay-energy'-'linguaplay-energy-reward-progress',updated_at=now()
+      WHERE data ? 'linguaplay-energy' OR data ? 'linguaplay-energy-reward-progress'`,
   );
 
   const profiles = await pool.query("SELECT user_id,data FROM linguaplay_user_data");

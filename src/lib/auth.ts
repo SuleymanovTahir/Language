@@ -138,7 +138,15 @@ export const auth = betterAuth({
     changeEmail: {
       enabled: true,
       // Confirm ownership of the existing address before verifying the new one.
-      sendChangeEmailConfirmation: async ({ user, newEmail, url }) =>
+      sendChangeEmailConfirmation: async ({
+        user,
+        newEmail,
+        url,
+      }: {
+        user: { email: string };
+        newEmail: string;
+        url: string;
+      }) =>
         sendAccountEmail({
           to: user.email,
           subject: "Изменение почты ClickLing",

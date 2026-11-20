@@ -5,7 +5,11 @@ import { readLimitedRequestBody } from "../src/lib/readLimitedRequestBody.ts";
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+    },
   });
 let schemaReady: Promise<void> | null = null;
 async function ensureSchema() {
@@ -35,7 +39,7 @@ async function userFor(request: Request) {
 const tokenDigest = (token: string) => createHash("sha256").update(token).digest("hex");
 
 export async function GET(request: Request) {
-  const token = new URL(request.url).searchParams.get("token") ?? "";
+  const token = request.headers.get("x-content-share-token") ?? "";
   if (!token && new URL(request.url).searchParams.get("manage") === "1") {
     const user = await userFor(request);
     if (!user) return json({ error: "Войдите, чтобы просмотреть ссылки." }, 401);
@@ -151,8 +155,17 @@ export async function DELETE(request: Request) {
   if (!id || !/^\d+$/.test(id)) return json({ error: "Не указан id ссылки." }, 400);
   await ensureSchema();
   const result = await pool.query(
-    "UPDATE linguaplay_content_shares SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL",
-    [id],
+    `UPDATE linguaplay_content_shares SET revoked_at=now()
+     WHERE id=$1 AND revoked_at IS NULL AND ($2::boolean OR created_by=$3)
+     RETURNING content_id`,
+    [id, user.role === "owner", user.id],
   );
+  if (result.rowCount)
+    await pool
+      .query(
+        "INSERT INTO linguaplay_admin_audit(actor_id,action,details) VALUES($1,'content-share-revoke',$2::jsonb)",
+        [user.id, JSON.stringify({ shareId: id, contentId: result.rows[0].content_id })],
+      )
+      .catch(() => undefined);
   return json({ revoked: Boolean(result.rowCount) });
 }

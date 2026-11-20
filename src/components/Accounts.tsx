@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth-client";
 import { saveMediaFile } from "../lib/mediaStore";
 import { Icon } from "./Icon";
@@ -29,6 +29,27 @@ export type Credentials = {
   password: string;
 };
 type BooleanPermission = Exclude<keyof AppPermissions, "hiddenSections">;
+function currencyScale(currency: string) {
+  try {
+    const digits = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
+      .maximumFractionDigits;
+    return 10 ** (digits ?? 2);
+  } catch {
+    return 100;
+  }
+}
+function formatMinorCurrency(amountMinor: number, currency: string) {
+  const amount = amountMinor / currencyScale(currency);
+  try {
+    return new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: Math.log10(currencyScale(currency)),
+    }).format(amount);
+  } catch {
+    return `${amount} ${currency}`;
+  }
+}
 const permissionLabels: Record<BooleanPermission, string> = {
   manageContent: "Создавать и редактировать модули, игры и уроки",
   manageUsers: "Управлять аккаунтами и ролями",
@@ -675,14 +696,16 @@ export function AccountPanel({
 }
 
 function BillingStatus() {
+  type Plan = {
+    code: string;
+    name: string;
+    amountMinor: number;
+    currency: string;
+    interval: string;
+    features?: { benefits?: string[] };
+  };
   const [data, setData] = useState<{
-    plans?: Array<{
-      code: string;
-      name: string;
-      amountMinor: number;
-      currency: string;
-      interval: string;
-    }>;
+    plans?: Plan[];
     entitlement?: { active: boolean; endsAt: string | null };
     checkoutEnabled?: boolean;
     message?: string;
@@ -732,35 +755,29 @@ function BillingStatus() {
         data && (
           <>
             <div className="account-plan-list">
-              {(data.plans ?? []).map((plan, index) => (
-                <article className={index === 1 ? "recommended" : ""} key={plan.code}>
-                  {index === 1 && <span className="plan-badge">Выгоднее</span>}
+              {(data.plans ?? []).map((plan) => (
+                <article key={plan.code}>
                   <strong>{plan.name}</strong>
                   <div>
-                    <b>
-                      {new Intl.NumberFormat("ru-RU", {
-                        style: "currency",
-                        currency: plan.currency,
-                        maximumFractionDigits: 0,
-                      }).format(plan.amountMinor / 100)}
-                    </b>
+                    <b>{formatMinorCurrency(plan.amountMinor, plan.currency)}</b>
                     <small>
                       /{" "}
                       {plan.interval === "month"
                         ? "месяц"
                         : plan.interval === "year"
                           ? "год"
-                          : "навсегда"}
+                          : "разово"}
                     </small>
                   </div>
-                  <ul>
-                    <li>
-                      <Icon name="check" size={13} /> Безлимитные тренировки
-                    </li>
-                    <li>
-                      <Icon name="check" size={13} /> Весь учебный маршрут
-                    </li>
-                  </ul>
+                  {(plan.features?.benefits ?? []).length > 0 && (
+                    <ul>
+                      {plan.features!.benefits!.slice(0, 8).map((benefit, benefitIndex) => (
+                        <li key={`${plan.code}-${benefitIndex}`}>
+                          <Icon name="check" size={13} /> {benefit}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   <button className="primary-button compact" disabled={!data.checkoutEnabled}>
                     Выбрать план
                   </button>
@@ -776,6 +793,255 @@ function BillingStatus() {
           </>
         )
       )}
+    </section>
+  );
+}
+
+function BillingPlanManager() {
+  type Plan = {
+    code: string;
+    name: string;
+    amountMinor: number;
+    currency: string;
+    interval: "month" | "year" | "once";
+    features?: { benefits?: string[] };
+    active: boolean;
+  };
+  const blank = {
+    code: "",
+    name: "",
+    amount: "",
+    currency: "EUR",
+    interval: "month" as Plan["interval"],
+    benefits: "",
+    active: false,
+    reason: "",
+  };
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [form, setForm] = useState(blank);
+  const [loading, setLoading] = useState(true);
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const load = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/billing", { credentials: "include", cache: "no-store" });
+      const result = (await response.json()) as { plans?: Plan[]; error?: string };
+      if (!response.ok) throw new Error(result.error || "Не удалось загрузить тарифы.");
+      setPlans(result.plans ?? []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось загрузить тарифы.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    void load();
+  }, []);
+  const edit = (plan?: Plan) => {
+    setError("");
+    setNotice("");
+    setForm(
+      plan
+        ? {
+            code: plan.code,
+            name: plan.name,
+            amount: String(
+              (plan.amountMinor / currencyScale(plan.currency)).toFixed(
+                Math.log10(currencyScale(plan.currency)),
+              ),
+            ),
+            currency: plan.currency,
+            interval: plan.interval,
+            benefits: (plan.features?.benefits ?? []).join("\n"),
+            active: plan.active,
+            reason: "",
+          }
+        : { ...blank },
+    );
+  };
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const amount = Number(form.amount.replace(",", "."));
+    const scale = currencyScale(form.currency);
+    if (!Number.isFinite(amount) || amount < 0 || Math.round(amount * scale) > 2_147_483_647) {
+      setError("Укажите корректную цену в основной валютной единице.");
+      return;
+    }
+    if (!form.reason.trim()) {
+      setError("Укажите причину изменения тарифа для журнала владельца.");
+      return;
+    }
+    setWorking(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/billing", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save-plan",
+          code: form.code,
+          name: form.name,
+          amountMinor: Math.round(amount * scale),
+          currency: form.currency,
+          interval: form.interval,
+          features: {
+            benefits: form.benefits
+              .split("\n")
+              .map((item) => item.trim())
+              .filter(Boolean),
+          },
+          active: form.active,
+          reason: form.reason,
+        }),
+      });
+      const result = (await response.json()) as { plan?: Plan; error?: string };
+      if (!response.ok || !result.plan)
+        throw new Error(result.error || "Не удалось сохранить тариф.");
+      setPlans((current) => [
+        result.plan!,
+        ...current.filter((plan) => plan.code !== result.plan!.code),
+      ]);
+      setNotice("Тариф сохранён. Покупка остаётся выключенной до подключения провайдера.");
+      setForm({ ...blank });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось сохранить тариф.");
+    } finally {
+      setWorking(false);
+    }
+  };
+  return (
+    <section className="admin-billing-plans">
+      <h3>Тарифы PRO</h3>
+      <p className="catalog-privacy-note">
+        Настройка каталога и цен. Checkout выключен, пока не настроены платёжный провайдер и
+        реальные цены.
+      </p>
+      {loading ? (
+        <p className="empty-inline">Загружаю тарифы…</p>
+      ) : (
+        <div className="admin-plan-list">
+          {plans.map((plan) => (
+            <article key={plan.code}>
+              <span>
+                <strong>{plan.name}</strong>
+                <small>
+                  {plan.code} · {plan.currency} · {plan.interval} ·{" "}
+                  {plan.active ? "виден в каталоге" : "черновик"}
+                </small>
+              </span>
+              <button className="secondary-button compact" onClick={() => edit(plan)}>
+                Изменить
+              </button>
+            </article>
+          ))}
+          {!plans.length && <p className="empty-inline">Тарифы ещё не настроены.</p>}
+        </div>
+      )}
+      <form className="admin-plan-form" onSubmit={(event) => void save(event)}>
+        <div className="catalog-form-grid">
+          <label className="field-label">
+            Код тарифа
+            <input
+              required
+              maxLength={40}
+              pattern="[a-z0-9][a-z0-9_-]{1,39}"
+              value={form.code}
+              onChange={(event) => setForm({ ...form, code: event.target.value.toLowerCase() })}
+            />
+          </label>
+          <label className="field-label">
+            Название
+            <input
+              required
+              maxLength={100}
+              value={form.name}
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+            />
+          </label>
+          <label className="field-label">
+            Цена
+            <input
+              required
+              type="number"
+              min="0"
+              step={String(1 / currencyScale(form.currency))}
+              value={form.amount}
+              onChange={(event) => setForm({ ...form, amount: event.target.value })}
+            />
+          </label>
+          <label className="field-label">
+            Валюта
+            <input
+              required
+              maxLength={3}
+              pattern="[A-Za-z]{3}"
+              value={form.currency}
+              onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })}
+            />
+          </label>
+          <label className="field-label">
+            Период
+            <select
+              value={form.interval}
+              onChange={(event) =>
+                setForm({ ...form, interval: event.target.value as Plan["interval"] })
+              }
+            >
+              <option value="month">Месяц</option>
+              <option value="year">Год</option>
+              <option value="once">Разовый</option>
+            </select>
+          </label>
+        </div>
+        <label className="field-label">
+          Включённые возможности
+          <textarea
+            rows={3}
+            value={form.benefits}
+            onChange={(event) => setForm({ ...form, benefits: event.target.value })}
+            placeholder="Одна возможность на строку"
+          />
+        </label>
+        <label className="admin-plan-toggle">
+          <input
+            type="checkbox"
+            checked={form.active}
+            onChange={(event) => setForm({ ...form, active: event.target.checked })}
+          />{" "}
+          Показывать тариф ученикам
+        </label>
+        <label className="field-label">
+          Причина изменения
+          <input
+            required
+            maxLength={300}
+            value={form.reason}
+            onChange={(event) => setForm({ ...form, reason: event.target.value })}
+          />
+        </label>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p className="catalog-notice" role="status">
+            {notice}
+          </p>
+        )}
+        <div className="catalog-actions">
+          <button className="secondary-button" type="button" onClick={() => edit()}>
+            Новый тариф
+          </button>
+          <button className="primary-button" type="submit" disabled={working}>
+            {working ? "Сохраняю…" : "Сохранить тариф"}
+          </button>
+        </div>
+      </form>
     </section>
   );
 }
@@ -1006,6 +1272,7 @@ function AdminUsersPanel({
                   <strong>{data.active.length}</strong> незавершённых игр
                 </span>
               </div>
+              {canEdit && <BillingPlanManager />}
               <h3>Пользователи</h3>
               {data.users.some((user) => user.role === "editor") && (
                 <p className="catalog-privacy-note">

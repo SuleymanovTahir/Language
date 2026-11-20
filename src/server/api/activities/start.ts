@@ -1,9 +1,10 @@
-import { auth, pool } from "../../src/lib/auth.ts";
-import { readLimitedRequestBody } from "../../src/lib/readLimitedRequestBody.ts";
+import { auth, pool } from "../../../lib/auth.ts";
+import { readLimitedRequestBody } from "../../../lib/readLimitedRequestBody.ts";
+import type { PoolClient } from "pg";
 
-const configuredCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 22);
+const configuredCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 5);
 const configuredRefillMinutes = Number(process.env.LINGUAPLAY_ENERGY_REFILL_MINUTES ?? 30);
-const ENERGY_CAP = Number.isInteger(configuredCap) ? Math.max(1, Math.min(22, configuredCap)) : 22;
+const ENERGY_CAP = Number.isInteger(configuredCap) ? Math.max(1, Math.min(22, configuredCap)) : 5;
 const REFILL_MS = Number.isInteger(configuredRefillMinutes)
   ? Math.max(1, Math.min(1440, configuredRefillMinutes)) * 60 * 1000
   : 30 * 60 * 1000;
@@ -16,7 +17,7 @@ function ensureTables() {
     .query(`
     CREATE TABLE IF NOT EXISTS linguaplay_energy_accounts (
       user_id text PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
-      energy integer NOT NULL DEFAULT 22 CHECK (energy BETWEEN 0 AND 22),
+      energy integer NOT NULL DEFAULT 5 CHECK (energy BETWEEN 0 AND 22),
       next_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -36,7 +37,7 @@ function ensureTables() {
     CREATE INDEX IF NOT EXISTS linguaplay_energy_ledger_user_time_idx ON linguaplay_energy_ledger(user_id,created_at DESC);
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS next_at_after timestamptz;
     ALTER TABLE linguaplay_energy_ledger ADD COLUMN IF NOT EXISTS is_pro boolean NOT NULL DEFAULT false;
-    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 22;
+    ALTER TABLE linguaplay_energy_accounts ALTER COLUMN energy SET DEFAULT 5;
   `)
     .then(() => undefined)
     .catch((error) => {
@@ -48,10 +49,7 @@ function ensureTables() {
 
 type EnergySnapshot = { energy: number; nextAt: string | null; now: Date };
 
-async function loadEnergy(
-  client: Awaited<ReturnType<typeof pool.connect>>,
-  userId: string,
-): Promise<EnergySnapshot> {
+async function loadEnergy(client: PoolClient, userId: string): Promise<EnergySnapshot> {
   let result = await client.query(
     `SELECT energy,next_at,now() AS db_now FROM linguaplay_energy_accounts WHERE user_id=$1 FOR UPDATE`,
     [userId],
@@ -128,7 +126,7 @@ async function loadEnergy(
   return { energy, nextAt: nextAt?.toISOString() ?? null, now };
 }
 
-async function hasPro(client: Awaited<ReturnType<typeof pool.connect>>, userId: string) {
+async function hasPro(client: PoolClient, userId: string) {
   const result = await client.query(
     `
     SELECT EXISTS(
@@ -147,10 +145,7 @@ async function hasPro(client: Awaited<ReturnType<typeof pool.connect>>, userId: 
   return Boolean(result.rows[0]?.active);
 }
 
-async function runWithAccount<T>(
-  userId: string,
-  operation: (client: Awaited<ReturnType<typeof pool.connect>>) => Promise<T>,
-) {
+async function runWithAccount<T>(userId: string, operation: (client: PoolClient) => Promise<T>) {
   await ensureTables();
   const client = await pool.connect();
   try {
@@ -269,55 +264,5 @@ export async function POST(request: Request) {
     return json(result);
   } catch {
     return json({ error: "Unable to start activity." }, 503);
-  }
-}
-
-export async function PATCH(request: Request) {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session?.user?.id) return json({ error: "Sign in is required." }, 401);
-  let body: { streak?: unknown; idempotencyKey?: unknown };
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return json({ error: "Invalid JSON." }, 400);
-  }
-  const streak = Number(body.streak);
-  const idempotencyKey = typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : "";
-  if (![3, 5, 10].includes(streak) || !/^streak:\d{4}-\d{2}-\d{2}:(3|5|10)$/.test(idempotencyKey))
-    return json({ error: "Invalid streak reward." }, 400);
-  const reward = streak === 10 ? 3 : streak === 5 ? 2 : 1;
-  try {
-    const result = await runWithAccount(session.user.id, async (client) => {
-      const previous = await client.query(
-        `SELECT balance_after AS energy FROM linguaplay_energy_ledger WHERE user_id=$1 AND idempotency_key=$2`,
-        [session.user.id, idempotencyKey],
-      );
-      if (previous.rowCount)
-        return { energy: Number(previous.rows[0].energy), cap: ENERGY_CAP, idempotent: true };
-      const snapshot = await loadEnergy(client, session.user.id);
-      const energy = Math.min(ENERGY_CAP, snapshot.energy + reward);
-      const granted = energy - snapshot.energy;
-      const nextAt = energy >= ENERGY_CAP ? null : snapshot.nextAt;
-      await client.query(
-        "UPDATE linguaplay_energy_accounts SET energy=$2,next_at=$3,updated_at=now() WHERE user_id=$1",
-        [session.user.id, energy, nextAt],
-      );
-      await client.query(
-        `INSERT INTO linguaplay_energy_ledger(user_id,amount,balance_after,next_at_after,reason,idempotency_key)
-         VALUES($1,$2,$3,$4,$5,$6)`,
-        [
-          session.user.id,
-          granted,
-          energy,
-          nextAt,
-          `Correct answer streak ${streak}`,
-          idempotencyKey,
-        ],
-      );
-      return { energy, cap: ENERGY_CAP, granted };
-    });
-    return json(result);
-  } catch {
-    return json({ error: "Unable to grant streak reward." }, 503);
   }
 }

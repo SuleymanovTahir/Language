@@ -1,5 +1,5 @@
-import { auth, pool } from "../src/lib/auth.ts";
-import { readLimitedRequestBody } from "../src/lib/readLimitedRequestBody.ts";
+import { auth, pool } from "../../lib/auth.ts";
+import { readLimitedRequestBody } from "../../lib/readLimitedRequestBody.ts";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -28,6 +28,7 @@ const profileKeys = new Set([
   "linguaplay-path-sequences-by-space",
   "linguaplay-preferences",
   "linguaplay-progress-by-space",
+  "linguaplay-recent-game-sessions",
   "linguaplay-saved-activities",
   "linguaplay-speech-settings",
   "linguaplay-stats-by-space",
@@ -294,7 +295,7 @@ async function handle(request: Request) {
       const conflict = Boolean(previous && baseVersion !== currentVersion);
       if (conflict) conflicts.push(key);
       const nextValue =
-        conflict && value === null
+        conflict && (value === null || (!serverValue && previous?.deleted))
           ? (serverValue ?? null)
           : mergeProfileValue(key, serverValue, value as string | null);
       if (nextValue === null) {

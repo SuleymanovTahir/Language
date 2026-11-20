@@ -23,6 +23,7 @@ import { migrateLocalMediaToProfile, removeMediaFile } from "./lib/mediaStore";
 import { copyAppLink } from "./lib/shareLink";
 import { recommendDailyMission, type MissionDifficulty } from "./lib/recommendations";
 import type { CardProgress, StudyMode } from "./components/StudySession";
+import type { AnswerTelemetry } from "./components/Games";
 import {
   speakText,
   speechLocaleForCode,
@@ -184,15 +185,28 @@ const defaultStats: UserStats = {
   studySecondsByDay: {},
   lastStudyDay: "",
 };
-const ENERGY_CAP = 22;
+const ENERGY_CAP = 5;
 const ENERGY_REFILL_MS = 30 * 60 * 1000;
 const defaultEnergy: EnergyState = { energy: ENERGY_CAP, nextAt: 0, version: 2 };
 const defaultPreferences: Preferences = {
   autoSpeak: false,
   highContrast: false,
   name: "",
-  dailyGoal: 50,
 };
+const skillForGame = (gameId: GameId) =>
+  gameId === "phonetic" || gameId === "finalsound"
+    ? "listening"
+    : gameId === "wordsearch" || gameId === "anagram"
+      ? "writing"
+      : gameId === "dialogue"
+        ? "speaking"
+        : ["articles", "builder", "train", "fillblank", "sentenceorder", "error-editor"].includes(
+              gameId,
+            )
+          ? "grammar"
+          : "vocabulary";
+const roundsForGame = (gameId: GameId, module: VocabModule) =>
+  ["dialogue", "quest", "error-editor"].includes(gameId) ? 4 : module.cards.length;
 const defaultSpace: LearningSpace = {
   id: "de-a1-a2",
   languageCode: "de",
@@ -402,6 +416,7 @@ function WorkspaceApp({
   const [goalNoticeDate, setGoalNoticeDate] = useStored("linguaplay-goal-notified", "");
   const [vacation, setVacation] = useStored<boolean>("linguaplay-vacation", false);
   const activityRound = useRef(0);
+  const currentGameRunId = useRef("");
   const lastLearnerInteraction = useRef(Date.now());
   const lastStudyTick = useRef(Date.now());
   const [session, setSession] = useState<{
@@ -432,7 +447,6 @@ function WorkspaceApp({
   const [serverEnergyCap, setServerEnergyCap] = useState(ENERGY_CAP);
   const [serverEnergyRefillMs, setServerEnergyRefillMs] = useState(ENERGY_REFILL_MS);
   const currentUserId = user?.id ?? null;
-  const previousCorrectStreak = useRef(stats.correctStreak ?? 0);
   const [serverIsPro, setServerIsPro] = useState(false);
   const activityStartPending = useRef<{ activityId: string; idempotencyKey: string } | null>(null);
   const activityStartInFlight = useRef(false);
@@ -454,49 +468,6 @@ function WorkspaceApp({
   const activeLearning = Boolean(
     session || podcastCards || activeGame || activeGrammar || activeCourseUnit,
   );
-
-  useEffect(() => {
-    const streak = stats.correctStreak ?? 0;
-    const previous = previousCorrectStreak.current;
-    previousCorrectStreak.current = streak;
-    if (streak <= previous || ![3, 5, 10].includes(streak)) return;
-    const amount = streak === 10 ? 3 : streak === 5 ? 2 : 1;
-    const applyReward = (nextEnergy: number, cap: number) => {
-      setEnergy((current) => ({
-        energy: Math.min(cap, Math.max(current.energy, nextEnergy)),
-        nextAt: nextEnergy >= cap ? 0 : current.nextAt,
-        version: 2,
-      }));
-      setToast(`Серия из ${streak} правильных ответов · +${amount} к энергии`);
-    };
-    if (!currentUserId) {
-      const snapshot = energySnapshot(energy);
-      applyReward(Math.min(ENERGY_CAP, snapshot.energy + amount), ENERGY_CAP);
-      return;
-    }
-    void fetch("/api/activities/start", {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        streak,
-        idempotencyKey: `streak:${localDay()}:${streak}`,
-      }),
-    })
-      .then(async (response) => {
-        const result = (await response.json().catch(() => ({}))) as {
-          energy?: number;
-          cap?: number;
-          error?: string;
-        };
-        if (!response.ok || typeof result.energy !== "number")
-          throw new Error(result.error || "Не удалось начислить бонус энергии.");
-        applyReward(result.energy, result.cap ?? serverEnergyCap);
-      })
-      .catch((error) =>
-        setToast(error instanceof Error ? error.message : "Не удалось начислить бонус энергии."),
-      );
-  }, [stats.correctStreak, currentUserId, serverEnergyCap]);
 
   useEffect(() => {
     const markInteraction = () => {
@@ -1138,6 +1109,7 @@ function WorkspaceApp({
     correct: boolean,
     rating = correct ? 2 : 1,
     confusedWith?: string,
+    telemetry?: AnswerTelemetry,
   ) => {
     if (activePathRun.current) {
       activePathRun.current.attempts += 1;
@@ -1160,9 +1132,30 @@ function WorkspaceApp({
         visibleModules.find((item) => item.id === card.moduleId)?.title ??
         study?.moduleTitle,
       activityId: game?.gameId ?? study?.id,
+      sessionId: game ? currentGameRunId.current : study?.id,
+      eventKey: crypto.randomUUID?.() ?? `${Date.now()}-${activityRound.current}`,
       itemId: card.id,
+      variantId: telemetry?.variantId ?? game?.gameId ?? session?.mode ?? "cards",
+      skill: game
+        ? (telemetry?.skill ?? skillForGame(game.gameId))
+        : session?.mode === "write"
+          ? "writing"
+          : "vocabulary",
+      topic:
+        visibleModules.find((item) => item.id === card.moduleId)?.title ?? study?.moduleTitle ?? "",
+      attemptCount: telemetry?.attemptCount ?? 1,
+      firstTryCorrect: telemetry?.firstTryCorrect ?? correct,
+      hintUsed: telemetry?.hintUsed ?? false,
+      skipped: false,
+      durationMs: telemetry?.durationMs ?? null,
+      languageCode: activeSpace.languageCode,
+      level: activeSpace.level,
       roundIndex: activityRound.current,
-      roundTotal: game?.module.cards.length ?? study?.total ?? session?.cards.length,
+      roundTotal:
+        telemetry?.sessionTotal ??
+        game?.module.cards.length ??
+        study?.total ??
+        session?.cards.length,
       prompt: german(card),
       selectedAnswer: answerCard
         ? `${german(answerCard)} — ${answerCard.translation}`
@@ -1172,47 +1165,48 @@ function WorkspaceApp({
       correctAnswer: `${german(card)} — ${card.translation}`,
       correct,
     });
-    setProgress((current) => {
-      const previous = current[card.id] ?? {
-        reps: 0,
-        level: 0,
-        stability: 0,
-        dueAt: "",
-        correct: 0,
-        wrong: 0,
-        starred: false,
-      };
-      const reps = previous.reps + 1;
-      const stability = !correct
-        ? Math.max(1, Math.min(2, previous.stability || 1))
-        : rating === 3
-          ? Math.max(7, previous.stability + 7)
-          : rating === 2
-            ? Math.max(3, previous.stability + 2)
-            : Math.max(1, previous.stability + 1);
-      const level = reps === 0 ? 0 : stability >= 21 ? 3 : stability >= 3 ? 2 : 1;
-      const interval = !correct
-        ? 1
-        : rating === 3
-          ? 7
-          : rating === 2
-            ? 3
-            : Math.max(1, Math.round(stability));
-      const dueAt = new Date(Date.now() + interval * 86_400_000).toISOString();
-      return {
-        ...current,
-        [card.id]: {
-          ...previous,
-          reps,
-          level,
-          stability,
-          dueAt,
-          correct: previous.correct + (correct ? 1 : 0),
-          wrong: previous.wrong + (correct ? 0 : 1),
-        },
-      };
-    });
-    if (!correct && confusedWith && confusedWith !== card.id)
+    if (telemetry?.recordProgress !== false)
+      setProgress((current) => {
+        const previous = current[card.id] ?? {
+          reps: 0,
+          level: 0,
+          stability: 0,
+          dueAt: "",
+          correct: 0,
+          wrong: 0,
+          starred: false,
+        };
+        const reps = previous.reps + 1;
+        const stability = !correct
+          ? Math.max(1, Math.min(2, previous.stability || 1))
+          : rating === 3
+            ? Math.max(7, previous.stability + 7)
+            : rating === 2
+              ? Math.max(3, previous.stability + 2)
+              : Math.max(1, previous.stability + 1);
+        const level = reps === 0 ? 0 : stability >= 21 ? 3 : stability >= 3 ? 2 : 1;
+        const interval = !correct
+          ? 1
+          : rating === 3
+            ? 7
+            : rating === 2
+              ? 3
+              : Math.max(1, Math.round(stability));
+        const dueAt = new Date(Date.now() + interval * 86_400_000).toISOString();
+        return {
+          ...current,
+          [card.id]: {
+            ...previous,
+            reps,
+            level,
+            stability,
+            dueAt,
+            correct: previous.correct + (correct ? 1 : 0),
+            wrong: previous.wrong + (correct ? 0 : 1),
+          },
+        };
+      });
+    if (telemetry?.recordProgress !== false && !correct && confusedWith && confusedWith !== card.id)
       setConfusions((current) => ({
         ...current,
         [card.id]: {
@@ -1297,9 +1291,11 @@ function WorkspaceApp({
       moduleTitle: selectedModule?.title,
       total: selected.length,
     };
+    currentGameRunId.current = id;
     sendActivityEvent({
       type: "practice-start",
       activityId: id,
+      sessionId: id,
       activity: title,
       moduleId: selectedModule?.id,
       moduleTitle: selectedModule?.title,
@@ -1335,16 +1331,19 @@ function WorkspaceApp({
     setGuestResultReady(false);
     if (!(await startActivityCharge(gameId))) return;
     activeStudy.current = null;
+    currentGameRunId.current = `game-${crypto.randomUUID?.() ?? Date.now()}`;
     activePathRun.current = pathNodeId ? { nodeId: pathNodeId, correct: 0, attempts: 0 } : null;
     activityRound.current = 0;
     sendActivityEvent({
       type: "game-start",
       activityId: gameId,
+      sessionId: currentGameRunId.current,
+      variantId: gameId,
       activity: GAME_LIST.find((item) => item.id === gameId)?.title ?? gameId,
       moduleId: module.id,
       moduleTitle: module.title,
       roundIndex: 0,
-      roundTotal: module.cards.length,
+      roundTotal: roundsForGame(gameId, module),
     });
     const hash = `#/${route.replace(/^#\/?/, "")}`;
     const fromDirectRoute = window.location.hash === hash;
@@ -1444,6 +1443,7 @@ function WorkspaceApp({
       sendActivityEvent({
         type: "practice-complete",
         activityId: study.id,
+        sessionId: study.id,
         activity: study.title,
         moduleId: study.moduleId,
         moduleTitle: study.moduleTitle,
@@ -1597,6 +1597,7 @@ function WorkspaceApp({
         <GameSession
           gameId={activeGame.gameId}
           module={activeGame.module}
+          avoidMicrophone={Boolean(learningPlan?.avoidMicrophone)}
           onExit={exitGame}
           onRestart={async () => {
             if (guestMode && !(await claimGuestActivity())) {
@@ -1606,27 +1607,62 @@ function WorkspaceApp({
             const started = await startActivityCharge(activeGame.gameId);
             if (started) {
               activityRound.current = 0;
+              currentGameRunId.current = `game-${crypto.randomUUID?.() ?? Date.now()}`;
+              sendActivityEvent({
+                type: "game-start",
+                activityId: activeGame.gameId,
+                sessionId: currentGameRunId.current,
+                activity:
+                  GAME_LIST.find((item) => item.id === activeGame.gameId)?.title ??
+                  activeGame.gameId,
+                moduleId: activeGame.module.id,
+                moduleTitle: activeGame.module.title,
+                roundIndex: 0,
+                roundTotal: roundsForGame(activeGame.gameId, activeGame.module),
+                variantId: activeGame.gameId,
+              });
               setGuestResultReady(false);
             }
             return started;
           }}
-          onComplete={() => {
+          onComplete={(totalRounds) => {
             completePathNode();
             sendActivityEvent({
               type: "game-complete",
               activityId: activeGame.gameId,
+              sessionId: currentGameRunId.current,
               activity:
                 GAME_LIST.find((item) => item.id === activeGame.gameId)?.title ?? activeGame.gameId,
               moduleId: activeGame.module.id,
               moduleTitle: activeGame.module.title,
               roundIndex: activityRound.current,
-              roundTotal: activeGame.module.cards.length,
+              roundTotal: totalRounds ?? roundsForGame(activeGame.gameId, activeGame.module),
             });
             if (guestMode) setGuestResultReady(true);
           }}
-          onAnswer={(card, correct, confusedWith) =>
-            recordAnswer(card, correct, correct ? 2 : 1, confusedWith)
+          onAnswer={(card, correct, confusedWith, telemetry) =>
+            recordAnswer(card, correct, correct ? 2 : 1, confusedWith, telemetry)
           }
+          onSkip={(card) => {
+            activityRound.current += 1;
+            sendActivityEvent({
+              type: "game-skip",
+              activityId: activeGame.gameId,
+              sessionId: currentGameRunId.current,
+              eventKey: crypto.randomUUID?.() ?? `${Date.now()}-${activityRound.current}`,
+              itemId: card.id,
+              variantId: activeGame.gameId,
+              skill: skillForGame(activeGame.gameId),
+              topic: activeGame.module.title,
+              languageCode: activeSpace.languageCode,
+              level: activeSpace.level,
+              roundIndex: activityRound.current,
+              roundTotal: roundsForGame(activeGame.gameId, activeGame.module),
+              attemptCount: 0,
+              hintUsed: false,
+              skipped: true,
+            });
+          }}
         />
         {guestMode && guestResultReady && (
           <div className="guest-result-save">
@@ -2703,11 +2739,7 @@ function CrystalDialog({
   onClose: () => void;
   onOpenAccount: () => void;
 }) {
-  const packages = [
-    { amount: 120, price: "1,99 €" },
-    { amount: 350, price: "4,99 €" },
-    { amount: 800, price: "9,99 €" },
-  ];
+  const packages = [{ amount: 120 }, { amount: 350 }, { amount: 800 }];
   return (
     <div
       className="modal-backdrop"
@@ -2730,16 +2762,13 @@ function CrystalDialog({
         </span>
         <p className="eyebrow">КРИСТАЛЛЫ</p>
         <h2 id="crystal-title">{crystals} в кошельке</h2>
-        <p>
-          Пакеты подготовлены для подключения к защищённой оплате. Списание не выполняется без
-          подтверждённого платёжного провайдера.
-        </p>
+        <p>Кристаллы сейчас служат только игровой статистикой. Покупка и обмен отключены.</p>
         <div className="crystal-packages">
           {packages.map((item) => (
             <article key={item.amount}>
               <Icon name="gem" size={20} />
               <strong>{item.amount}</strong>
-              <span>{item.price}</span>
+              <span>игровая награда</span>
             </article>
           ))}
         </div>

@@ -45,6 +45,8 @@ export function recommendDailyMission(
     ...(profile?.interests ?? []),
     ...(profile?.goals ?? []).flatMap((goal) => goalTerms[goal] ?? []),
   ].map(norm);
+  const preferredFormats = new Set((profile?.formats ?? []).map(norm));
+  const preferredFocus = new Set((profile?.focus ?? []).map(norm));
   const suitability = (card: VocabCard) => {
     const item = progress[card.id];
     const recency = item?.dueAt ? new Date(item.dueAt).getTime() : 0;
@@ -54,6 +56,19 @@ export function recommendDailyMission(
       `${byId.get(card.moduleId)?.title ?? ""} ${card.word} ${card.translation} ${card.exampleSentence ?? ""}`,
     );
     const topic = matchingTerms.some((term) => term && text.includes(term));
+    const hasContext = Boolean(card.exampleSentence?.trim());
+    const formatFit =
+      (hasContext && (preferredFormats.has(norm("Слушать")) || preferredFormats.has(norm("Читать")))
+        ? 4
+        : 0) +
+      (preferredFormats.has(norm("Писать")) ? (hasContext ? 3 : 1) : 0) +
+      (hasContext && preferredFormats.has(norm("Говорить")) && !profile?.avoidMicrophone ? 2 : 0);
+    const focusFit =
+      (preferredFocus.has(norm("Грамматика")) && Boolean(card.article) ? 5 : 0) +
+      (preferredFocus.has(norm("Чтение")) && hasContext ? 4 : 0) +
+      (preferredFocus.has(norm("Аудирование")) && hasContext ? 4 : 0) +
+      (preferredFocus.has(norm("Письмо")) && hasContext ? 3 : 0) +
+      (preferredFocus.has(norm("Слова")) ? 2 : 0);
     const known = item?.level ?? 0;
     const gentle =
       difficulty === "easier"
@@ -68,7 +83,15 @@ export function recommendDailyMission(
       due,
       weak,
       topic,
-      score: (due ? 100 : 0) + weak * 10 + (topic ? 5 : 0) + gentle + challenge + (item ? 0 : 1),
+      score:
+        (due ? 100 : 0) +
+        weak * 10 +
+        (topic ? 5 : 0) +
+        formatFit +
+        focusFit +
+        gentle +
+        challenge +
+        (item ? 0 : 1),
     };
   };
   const scored = unique.map(suitability);
@@ -100,13 +123,17 @@ export function recommendDailyMission(
     add(fresh);
   }
   add(scored.sort((a, b) => b.score - a.score));
-  const explanation = due.length
+  const baseExplanation = due.length
     ? `Начнём с ${Math.min(2, due.length)} карточек, которым подошло время повтора, затем добавим одну сложную тему.`
     : weak.length
       ? "Сначала укрепим слова, на которых раньше чаще ошибались, затем добавим знакомую тему."
       : topical.length
         ? `Подобрали слова по цели «${profile?.goals?.[0] ?? profile?.interests?.[0] ?? "вашему интересу"}» и добавили короткое повторение.`
         : "Короткая миссия из пяти проверенных заданий по вашему уровню.";
+  const preferredFormat = profile?.formats?.[0];
+  const explanation = preferredFormat
+    ? `${baseExplanation} Приоритет: формат «${preferredFormat.toLocaleLowerCase()}».`
+    : baseExplanation;
   return {
     cards: selected,
     title: alternate ? "Другая тема · короткая миссия" : "Рекомендовано · 5 минут",

@@ -84,17 +84,20 @@ async def has_admin_user(cookie):
     return "admin" in roles
 
 
-async def reserve_provider_quota(cookie, provider, characters):
+async def reserve_provider_quota(cookie, provider, characters, remote_ip=""):
     base_url = os.environ.get("BETTER_AUTH_URL", "").rstrip("/")
     internal_secret = os.environ.get("LINGUAPLAY_INTERNAL_TTS_SECRET", "")
     if not base_url or not internal_secret:
         return False, 503
     try:
         timeout = aiohttp.ClientTimeout(total=8)
+        headers = {"Cookie": cookie, "User-Agent": "LinguaPlay", "X-LinguaPlay-Internal": internal_secret}
+        if remote_ip:
+            headers["X-LinguaPlay-Remote-IP"] = remote_ip
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 f"{base_url}/api/tts-quota",
-                headers={"Cookie": cookie, "User-Agent": "LinguaPlay", "X-LinguaPlay-Internal": internal_secret},
+                headers=headers,
                 json={"provider": provider, "characters": characters},
                 allow_redirects=False,
             ) as response:
@@ -227,7 +230,8 @@ class handler(BaseHTTPRequestHandler):
             if not asyncio.run(has_admin_user(self.headers.get("Cookie", ""))):
                 send_json(self, 403, {"error": "Speech is temporarily unavailable."})
                 return
-            allowed, quota_status = asyncio.run(reserve_provider_quota(self.headers.get("Cookie", ""), "elevenlabs", 1))
+            remote_ip = self.headers.get("X-Vercel-Forwarded-For", "").split(",")[-1].strip()
+            allowed, quota_status = asyncio.run(reserve_provider_quota(self.headers.get("Cookie", ""), "elevenlabs", 1, remote_ip))
             if not allowed:
                 status = quota_status if quota_status in {401, 403, 429} else 503
                 send_json(self, status, {"error": "ElevenLabs voices are temporarily unavailable."})
@@ -309,8 +313,8 @@ class handler(BaseHTTPRequestHandler):
             recent.append(now)
             requests_by_ip[ip] = recent
 
-            if provider in {"azure", "elevenlabs"}:
-                allowed, quota_status = asyncio.run(reserve_provider_quota(cookie, provider, len(text.strip())))
+            if provider in {"edge", "azure", "elevenlabs"}:
+                allowed, quota_status = asyncio.run(reserve_provider_quota(cookie, provider, len(text.strip()), ip))
                 if not allowed:
                     status = quota_status if quota_status in {401, 403, 429} else 503
                     send_json(self, status, {"error": "Speech is temporarily unavailable."})

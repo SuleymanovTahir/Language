@@ -538,7 +538,6 @@ export type Preferences = {
   autoSpeak: boolean;
   highContrast: boolean;
   name: string;
-  dailyGoal: number;
 };
 
 const speechLanguages: Record<string, string> = {

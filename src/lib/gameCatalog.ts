@@ -17,7 +17,10 @@ export type GameId =
   | "datajoin"
   | "fillblank"
   | "picture"
-  | "sentenceorder";
+  | "sentenceorder"
+  | "dialogue"
+  | "quest"
+  | "error-editor";
 type GameInfo = { id: GameId; title: string; description: string; mark: string };
 
 export const GAME_LIST: GameInfo[] = [
@@ -66,6 +69,24 @@ export const GAME_LIST: GameInfo[] = [
     title: "Собери предложение",
     description: "Расставьте слова в грамматически правильном порядке",
     mark: "Aa",
+  },
+  {
+    id: "dialogue",
+    title: "Диалог в кафе или отеле",
+    description: "Ответьте собеседнику по ситуации",
+    mark: "☕",
+  },
+  {
+    id: "quest",
+    title: "Короткий квест",
+    description: "Четыре задания с разными действиями",
+    mark: "✦",
+  },
+  {
+    id: "error-editor",
+    title: "Редактор ошибок",
+    description: "Исправьте форму и прочитайте объяснение",
+    mark: "✓",
   },
 ];
 
@@ -804,7 +825,12 @@ export const GRAMMAR_TOPICS: GrammarTopic[] = [
 
 export function validateGame(id: GameId, module: VocabModule) {
   const cards = module.cards;
-  if (["articles", "train", "builder", "finalsound"].includes(id) && module.languageCode !== "de")
+  if (
+    ["articles", "train", "builder", "finalsound", "dialogue", "quest", "error-editor"].includes(
+      id,
+    ) &&
+    module.languageCode !== "de"
+  )
     return "Этот сценарий основан на правилах немецкого языка. Для другого языка выберите карточки и общий игровой формат.";
   if (
     id === "articles" &&
@@ -818,6 +844,9 @@ export function validateGame(id: GameId, module: VocabModule) {
     return "Для пар нужны хотя бы 2 разных перевода.";
   if (id === "datajoin" && new Set(cards.map((card) => card.translation.toLowerCase())).size < 2)
     return "Для Data JOIN нужны хотя бы 2 разных перевода.";
+  if (id === "quest" && cards.length < 4) return "Для короткого квеста нужны минимум 4 карточки.";
+  if (["dialogue", "error-editor"].includes(id) && cards.length < 1)
+    return "Сначала выберите карточки для игры.";
   if (
     id === "boxes" &&
     new Set(cards.map((card) => card.translation.trim().toLocaleLowerCase())).size < 4
@@ -861,6 +890,9 @@ export const germanOnlyGames = new Set<GameId>([
   "train",
   "finalsound",
   "datajoin",
+  "dialogue",
+  "quest",
+  "error-editor",
 ]);
 export const languageForms: Record<string, { adjective: string; locative: string }> = {
   de: { adjective: "немецкое", locative: "немецком" },

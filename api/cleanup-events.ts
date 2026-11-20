@@ -21,6 +21,9 @@ export async function GET(request: Request) {
     "DELETE FROM linguaplay_events WHERE created_at < now() - interval '90 days'",
   );
   await pool.query(
+    "DELETE FROM linguaplay_learning_events WHERE created_at < now() - interval '90 days'",
+  );
+  await pool.query(
     "DELETE FROM linguaplay_ai_assessments WHERE created_at < now() - interval '13 months'",
   );
   await pool.query(

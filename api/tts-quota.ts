@@ -1,10 +1,11 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import { auth, pool } from "../src/lib/auth.ts";
 import { readLimitedRequestBody } from "../src/lib/readLimitedRequestBody.ts";
 
 const json = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
-const providers = ["azure", "elevenlabs"] as const;
+const providers = ["azure", "elevenlabs", "edge"] as const;
 type Provider = (typeof providers)[number];
 
 let schemaReady: Promise<void> | null = null;
@@ -38,12 +39,6 @@ export async function POST(request: Request) {
   )
     return json({ error: "Speech is temporarily unavailable." }, 404);
   const session = await auth.api.getSession({ headers: request.headers });
-  if (!session?.user?.id) return json({ error: "Speech is temporarily unavailable." }, 401);
-  const role = await pool.query("SELECT role FROM linguaplay_user_roles WHERE user_id=$1", [
-    session.user.id,
-  ]);
-  if (role.rows[0]?.role !== "owner" || (session.user as { role?: string }).role !== "admin")
-    return json({ error: "Speech is temporarily unavailable." }, 403);
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > 1_000) return json({ error: "Invalid request." }, 413);
   let body: Record<string, unknown>;
@@ -68,9 +63,33 @@ export async function POST(request: Request) {
   )
     return json({ error: "Invalid request." }, 400);
   const providerName = provider as Provider;
+  if (providerName !== "edge") {
+    if (!session?.user?.id) return json({ error: "Speech is temporarily unavailable." }, 401);
+    const role = await pool.query("SELECT role FROM linguaplay_user_roles WHERE user_id=$1", [
+      session.user.id,
+    ]);
+    if (role.rows[0]?.role !== "owner" || (session.user as { role?: string }).role !== "admin")
+      return json({ error: "Speech is temporarily unavailable." }, 403);
+  }
+  const remoteIp = request.headers.get("x-linguaplay-remote-ip") ?? "";
+  if (providerName === "edge" && !session?.user?.id && process.env.VERCEL && !isIP(remoteIp))
+    return json({ error: "Speech is temporarily unavailable." }, 503);
+  const usageUserId = session?.user?.id
+    ? session.user.id
+    : `ip:${createHmac("sha256", internalSecret)
+        .update(isIP(remoteIp) ? remoteIp : "unknown")
+        .digest("hex")}`;
   const prefix = "LINGUAPLAY_TTS_" + providerName.toUpperCase();
-  const userDailyCap = positiveLimit(prefix + "_USER_DAILY_CHARS");
-  const projectMonthlyCap = positiveLimit(prefix + "_PROJECT_MONTHLY_CHARS");
+  const userDailyCap =
+    positiveLimit(prefix + "_USER_DAILY_CHARS") ?? (providerName === "edge" ? 50_000 : null);
+  const projectMonthlyCap =
+    positiveLimit(prefix + "_PROJECT_MONTHLY_CHARS") ??
+    (providerName === "edge" ? 2_000_000 : null);
+  const userDailyRequestCap =
+    positiveLimit(prefix + "_USER_DAILY_REQUESTS") ?? (providerName === "edge" ? 600 : null);
+  const projectMonthlyRequestCap =
+    positiveLimit(prefix + "_PROJECT_MONTHLY_REQUESTS") ??
+    (providerName === "edge" ? 100_000 : null);
   if (!userDailyCap || !projectMonthlyCap)
     return json({ error: "Speech is temporarily unavailable." }, 503);
   try {
@@ -82,8 +101,8 @@ export async function POST(request: Request) {
         providerName,
       ]);
       const usage = await client.query(
-        "SELECT period_kind,characters FROM linguaplay_provider_usage WHERE provider=$1 AND ((period_kind='day' AND period_key=to_char(now(),'YYYY-MM-DD') AND user_id=$2) OR (period_kind='month' AND period_key=to_char(now(),'YYYY-MM') AND user_id='*')) FOR UPDATE",
-        [providerName, session.user.id],
+        "SELECT period_kind,characters,requests FROM linguaplay_provider_usage WHERE provider=$1 AND ((period_kind='day' AND period_key=to_char(now(),'YYYY-MM-DD') AND user_id=$2) OR (period_kind='month' AND period_key=to_char(now(),'YYYY-MM') AND user_id='*')) FOR UPDATE",
+        [providerName, usageUserId],
       );
       const dailyUsed = Number(
         usage.rows.find((row) => row.period_kind === "day")?.characters ?? 0,
@@ -91,16 +110,24 @@ export async function POST(request: Request) {
       const projectUsed = Number(
         usage.rows.find((row) => row.period_kind === "month")?.characters ?? 0,
       );
+      const dailyRequests = Number(
+        usage.rows.find((row) => row.period_kind === "day")?.requests ?? 0,
+      );
+      const projectRequests = Number(
+        usage.rows.find((row) => row.period_kind === "month")?.requests ?? 0,
+      );
       if (
         dailyUsed + Number(characters) > userDailyCap ||
-        projectUsed + Number(characters) > projectMonthlyCap
+        projectUsed + Number(characters) > projectMonthlyCap ||
+        (userDailyRequestCap !== null && dailyRequests + 1 > userDailyRequestCap) ||
+        (projectMonthlyRequestCap !== null && projectRequests + 1 > projectMonthlyRequestCap)
       ) {
         await client.query("ROLLBACK");
         return json({ error: "Speech is temporarily unavailable." }, 429);
       }
       await client.query(
         "INSERT INTO linguaplay_provider_usage(provider,period_kind,period_key,user_id,characters,requests) VALUES($1,'day',to_char(now(),'YYYY-MM-DD'),$2,$3,1) ON CONFLICT(provider,period_kind,period_key,user_id) DO UPDATE SET characters=linguaplay_provider_usage.characters+EXCLUDED.characters,requests=linguaplay_provider_usage.requests+1,updated_at=now()",
-        [providerName, session.user.id, Number(characters)],
+        [providerName, usageUserId, Number(characters)],
       );
       await client.query(
         "INSERT INTO linguaplay_provider_usage(provider,period_kind,period_key,user_id,characters,requests) VALUES($1,'month',to_char(now(),'YYYY-MM'),'*',$2,1) ON CONFLICT(provider,period_kind,period_key,user_id) DO UPDATE SET characters=linguaplay_provider_usage.characters+EXCLUDED.characters,requests=linguaplay_provider_usage.requests+1,updated_at=now()",

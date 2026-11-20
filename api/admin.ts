@@ -7,10 +7,10 @@ const json = (data: unknown, status = 200) =>
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
   });
 const flags = ["manageContent", "manageUsers", "viewAnalytics", "manageSettings"] as const;
-const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 22);
+const configuredEnergyCap = Number(process.env.LINGUAPLAY_ENERGY_CAP ?? 5);
 const ENERGY_CAP = Number.isInteger(configuredEnergyCap)
   ? Math.max(1, Math.min(22, configuredEnergyCap))
-  : 22;
+  : 5;
 const configuredEnergyRefill = Number(process.env.LINGUAPLAY_ENERGY_REFILL_MINUTES ?? 30);
 const ENERGY_REFILL_MINUTES = Number.isInteger(configuredEnergyRefill)
   ? Math.max(1, Math.min(1440, configuredEnergyRefill))
@@ -168,14 +168,16 @@ export async function GET(request: Request) {
       u.banned,u."banReason" AS ban_reason,u."banExpires" AS ban_expires,r.role,r.permissions,
       COUNT(DISTINCT e.id)::int AS event_count, COUNT(DISTINCT e.id) FILTER (WHERE e.is_correct = false)::int AS errors,
       MAX(e.created_at) AS last_activity, MAX(s."updatedAt") AS last_login, GREATEST(MAX(e.created_at),MAX(s."updatedAt")) AS last_seen,
-      ent.status AS pro_status,ent.starts_at AS pro_starts_at,ent.ends_at AS pro_ends_at,d.data AS profile_data,COALESCE(en.energy,22) AS server_energy
+      ent.status AS pro_status,ent.starts_at AS pro_starts_at,ent.ends_at AS pro_ends_at,d.data AS profile_data,COALESCE(en.energy,5) AS server_energy
       FROM "user" u LEFT JOIN linguaplay_user_roles r ON r.user_id=u.id
       LEFT JOIN linguaplay_events e ON e.user_id=u.id LEFT JOIN "session" s ON s."userId"=u.id
       LEFT JOIN LATERAL (
         SELECT status,starts_at,ends_at FROM (
           SELECT status,starts_at,ends_at FROM linguaplay_user_entitlements WHERE user_id=u.id
           UNION ALL SELECT status,starts_at,ends_at FROM linguaplay_entitlements WHERE account_id=u.id AND feature='pro'
-        ) entitlement_rows ORDER BY ends_at DESC NULLS LAST LIMIT 1
+        ) entitlement_rows
+        ORDER BY CASE WHEN status='active' AND (starts_at IS NULL OR starts_at<=now()) AND ends_at>now() THEN 0 ELSE 1 END,
+          ends_at DESC NULLS LAST LIMIT 1
       ) ent ON true LEFT JOIN linguaplay_user_data d ON d.user_id=u.id
       LEFT JOIN linguaplay_energy_accounts en ON en.user_id=u.id
       GROUP BY u.id,r.role,r.permissions,ent.status,ent.starts_at,ent.ends_at,d.data,en.energy ORDER BY u."createdAt" DESC`),
@@ -203,6 +205,7 @@ export async function GET(request: Request) {
           row.pro_status === "active" &&
           (!proStartsAt || new Date(proStartsAt).getTime() <= now) &&
           Boolean(proEndsAt) &&
+          typeof proEndsAt === "string" &&
           new Date(proEndsAt).getTime() > now,
         last_seen: lastSeen ? new Date(lastSeen).toISOString() : null,
         dormant_days: lastSeen
@@ -217,7 +220,7 @@ export async function GET(request: Request) {
 }
 
 async function getAnalytics() {
-  const [daily, users, actions, pages, recent] = await Promise.all([
+  const [daily, users, actions, pages, recent, learning] = await Promise.all([
     pool.query(`SELECT day::date AS day, SUM(signups)::int AS signups, SUM(active_users)::int AS active_users FROM (
       SELECT date_trunc('day',u."createdAt") AS day,COUNT(*) AS signups,0 AS active_users FROM "user" u WHERE u."createdAt">=now()-interval '30 days' GROUP BY 1
       UNION ALL SELECT date_trunc('day',e.created_at) AS day,0 AS signups,COUNT(DISTINCT e.user_id) AS active_users FROM linguaplay_events e WHERE e.created_at>=now()-interval '30 days' GROUP BY 1
@@ -236,6 +239,16 @@ async function getAnalytics() {
     pool.query(
       `SELECT e.id,u.name,e.payload->>'route' AS route,e.payload->>'action' AS action,e.created_at FROM linguaplay_events e JOIN "user" u ON u.id=e.user_id WHERE e.event_type='target-action' ORDER BY e.created_at DESC LIMIT 100`,
     ),
+    pool.query(`SELECT language_code,level,skill,variant_id,COUNT(*) FILTER (WHERE NOT skipped)::int AS answers,
+        COUNT(DISTINCT session_id)::int AS sessions,
+        COUNT(*) FILTER (WHERE first_try_correct=true)::int AS first_try_correct,
+        ROUND(AVG(attempt_count) FILTER (WHERE NOT skipped)::numeric,2)::float AS average_attempts,
+        COUNT(*) FILTER (WHERE hint_used)::int AS hints_used,
+        COUNT(*) FILTER (WHERE skipped)::int AS skipped,
+        ROUND(AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL AND NOT skipped)::numeric)::int AS average_duration_ms
+      FROM linguaplay_learning_events WHERE created_at>=now()-interval '30 days'
+      GROUP BY language_code,level,skill,variant_id HAVING COUNT(*) FILTER (WHERE NOT skipped)>=5
+      ORDER BY sessions DESC,answers DESC LIMIT 40`),
   ]);
   const dormant =
     await pool.query(`WITH seen AS (SELECT u.id,u.name,u.email,u."createdAt" AS created_at,GREATEST(MAX(s."updatedAt"),MAX(e.created_at)) AS last_seen FROM "user" u LEFT JOIN "session" s ON s."userId"=u.id LEFT JOIN linguaplay_events e ON e.user_id=u.id GROUP BY u.id)
@@ -246,6 +259,7 @@ async function getAnalytics() {
     actions: actions.rows,
     pages: pages.rows,
     recent: recent.rows,
+    learning: learning.rows,
     dormant: dormant.rows,
   });
 }
@@ -313,7 +327,7 @@ export async function PATCH(request: Request) {
       );
     } else {
       await pool.query(
-        "UPDATE linguaplay_entitlements SET status='revoked',updated_by=$2,reason=$3 WHERE account_id=$1 AND feature='pro' AND status='active'",
+        "UPDATE linguaplay_entitlements SET status='revoked',updated_by=$2,reason=$3 WHERE account_id=$1 AND feature='pro' AND source='manual_grant' AND status='active'",
         [userId, gate.actor.user.id, reason],
       );
     }

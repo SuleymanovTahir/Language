@@ -116,6 +116,11 @@ export async function POST(request: Request) {
     !["month", "year", "once"].includes(String(interval))
   )
     return json({ error: "Проверьте код, название, цену, валюту и период тарифа." }, 400);
+  try {
+    new Intl.NumberFormat("en", { style: "currency", currency }).format(0);
+  } catch {
+    return json({ error: "Укажите поддерживаемую валюту в формате ISO 4217." }, 400);
+  }
   await ensureSchema();
   const features =
     body.features && typeof body.features === "object" && !Array.isArray(body.features)
@@ -126,27 +131,37 @@ export async function POST(request: Request) {
     typeof body.providerPriceId === "string"
       ? body.providerPriceId.trim().slice(0, 160) || null
       : null;
-  const old = await pool.query(
-    "SELECT code,name,amount_minor,currency,interval,active,version FROM linguaplay_plans WHERE code=$1",
-    [code],
-  );
-  const result = await pool.query(
-    `INSERT INTO linguaplay_plans(code,name,amount_minor,currency,interval,features,active,provider,provider_price_id)
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const old = await client.query(
+      "SELECT code,name,amount_minor,currency,interval,active,version FROM linguaplay_plans WHERE code=$1 FOR UPDATE",
+      [code],
+    );
+    const result = await client.query(
+      `INSERT INTO linguaplay_plans(code,name,amount_minor,currency,interval,features,active,provider,provider_price_id)
     VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9)
     ON CONFLICT(code) DO UPDATE SET name=EXCLUDED.name,amount_minor=EXCLUDED.amount_minor,currency=EXCLUDED.currency,interval=EXCLUDED.interval,features=EXCLUDED.features,active=EXCLUDED.active,provider=EXCLUDED.provider,provider_price_id=EXCLUDED.provider_price_id,version=linguaplay_plans.version+1,updated_at=now()
     RETURNING code,name,amount_minor,currency,interval,features,version,active`,
-    [code, name, amountMinor, currency, interval, features, active, provider, providerPriceId],
-  );
-  await pool.query(
-    "INSERT INTO linguaplay_billing_audit(actor_id,action,old_value,new_value,reason) VALUES($1,'plan-update',$2::jsonb,$3::jsonb,$4)",
-    [
-      user.id,
-      JSON.stringify(old.rows[0] ?? {}),
-      JSON.stringify(result.rows[0]),
-      typeof body.reason === "string"
-        ? body.reason.slice(0, 300) || "План создан или обновлён владельцем"
-        : "План создан или обновлён владельцем",
-    ],
-  );
-  return json({ plan: safePlan(result.rows[0]) });
+      [code, name, amountMinor, currency, interval, features, active, provider, providerPriceId],
+    );
+    await client.query(
+      "INSERT INTO linguaplay_billing_audit(actor_id,action,old_value,new_value,reason) VALUES($1,'plan-update',$2::jsonb,$3::jsonb,$4)",
+      [
+        user.id,
+        JSON.stringify(old.rows[0] ?? {}),
+        JSON.stringify(result.rows[0]),
+        typeof body.reason === "string"
+          ? body.reason.slice(0, 300) || "План создан или обновлён владельцем"
+          : "План создан или обновлён владельцем",
+      ],
+    );
+    await client.query("COMMIT");
+    return json({ plan: safePlan(result.rows[0]) });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
