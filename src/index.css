@@ -5277,6 +5277,15 @@ body {
   cursor: pointer;
   transition: background 0.15s, transform 0.1s, border-color 0.15s;
 }
+.game-result-pill-actions .btn-review {
+  background: #eef5ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+.game-result-pill-actions .btn-review:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
 .game-result-pill-actions .btn-restart {
   background: #2563eb;
   color: #ffffff;
@@ -5304,22 +5313,47 @@ body {
   color: #1e2c42;
   border-color: #e2e8f0;
 }
-@media (max-width: 600px) {
+@media (max-width: 680px) {
   .game-result-floating-pill {
     bottom: 12px;
-    padding: 12px;
+    padding: 12px 14px;
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
+    border-radius: 16px;
   }
   .game-result-pill-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+    width: 100%;
+  }
+  .game-result-pill-actions button {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    white-space: nowrap;
   }
   .game-result-pill-actions .btn-exit {
     grid-column: span 2;
-    text-align: center;
+  }
+}
+@media (max-width: 440px) {
+  .game-result-pill-actions button {
+    font-size: 12px;
+    padding: 6px 4px;
+    min-height: 38px;
+  }
+  .game-result-pill-title {
+    font-size: 14px;
+  }
+  .game-result-pill-subtitle {
+    font-size: 11px;
   }
 }
 .game-result h1 {
@@ -5543,12 +5577,12 @@ body {
   color: #e05f57;
 }
 .pair-game {
-  width: min(760px, calc(100% - 36px));
+  width: min(840px, calc(100% - 24px));
 }
 .pair-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(48px, 12vw, 110px);
   margin-top: 22px;
 }
 .pair-columns > div {
@@ -5770,7 +5804,7 @@ body {
     width: 16px;
   }
   .pair-columns {
-    gap: 8px;
+    gap: clamp(24px, 8vw, 42px);
   }
   .pair-columns button {
     font-size: 10px;
@@ -7861,7 +7895,7 @@ select:not([multiple]) {
 .pair-connection-layer {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 4;
   width: 100%;
   height: 100%;
   overflow: visible;

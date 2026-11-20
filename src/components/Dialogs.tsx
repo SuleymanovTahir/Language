@@ -550,7 +550,7 @@ const speechLanguages: Record<string, string> = {
   ru: "Русский",
 };
 const configuredVoices: Record<
-  Exclude<SpeechProvider, "device">,
+  Exclude<SpeechProvider, "device" | "none">,
   Record<string, [string, string][]>
 > = {
   edge: {
@@ -730,7 +730,7 @@ export function SettingsDialog({
       .join(" · "),
   ]);
   const providerVoices: [string, string][] =
-    speechDraft.provider === "device"
+    speechDraft.provider === "device" || speechDraft.provider === "none"
       ? []
       : speechDraft.provider === "elevenlabs"
         ? elevenProviderVoices
@@ -911,12 +911,35 @@ export function SettingsDialog({
         </label>
         <section className="speech-settings">
           <h3>Голос · {speechLanguages[language] ?? languageCode}</h3>
+          <label className="setting-row" style={{ margin: "4px 0 14px", padding: 0 }}>
+            <span>
+              <strong>Включить озвучку</strong>
+              <small>Отключите для экономии токенов ElevenLabs</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={speechDraft.enabled !== false && speechDraft.provider !== "none"}
+              onChange={(event) => {
+                const enabled = event.target.checked;
+                setSpeechDraft((current) => ({
+                  ...current,
+                  enabled,
+                  provider: enabled
+                    ? current.provider === "none"
+                      ? fallbackProvider
+                      : current.provider
+                    : "none",
+                }));
+              }}
+            />
+          </label>
           <label className="field-label">
             Источник
             <select
               value={speechDraft.provider}
               onChange={(event) => setProvider(event.target.value as SpeechProvider)}
             >
+              <option value="none">Без озвучки (отключено)</option>
               <option value="device">Голос устройства</option>
               <option value="edge" disabled={!configuredVoices.edge[language]}>
                 Microsoft Edge Neural
@@ -1034,7 +1057,11 @@ export function SettingsDialog({
           <div className="speech-settings-actions">
             <button
               className="secondary-button"
-              disabled={speechDraft.provider === "elevenlabs" && !voiceValue}
+              disabled={
+              speechDraft.enabled !== false &&
+              speechDraft.provider === "elevenlabs" &&
+              !voiceValue
+            }
               onClick={() =>
                 speakText(
                   selectedSpeechSample,
@@ -1105,7 +1132,11 @@ export function SettingsDialog({
           </button>
           <button
             className="primary-button"
-            disabled={speechDraft.provider === "elevenlabs" && !voiceValue}
+            disabled={
+              speechDraft.enabled !== false &&
+              speechDraft.provider === "elevenlabs" &&
+              !voiceValue
+            }
             onClick={() =>
               onSave(
                 draft,

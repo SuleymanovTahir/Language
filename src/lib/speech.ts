@@ -1,16 +1,18 @@
 import { readProfileItem } from "./profileStorage";
 
-export type SpeechProvider = "device" | "edge" | "kokoro" | "elevenlabs" | "azure";
+export type SpeechProvider = "device" | "edge" | "kokoro" | "elevenlabs" | "azure" | "none";
 export type SpeechSettings = {
   provider: SpeechProvider;
   voice: string;
   rate: number;
+  enabled?: boolean;
 };
 
 export const defaultSpeechSettings: SpeechSettings = {
   provider: "edge",
   voice: "de-DE-TanjaNeural",
   rate: 0.82,
+  enabled: true,
 };
 
 const settingsKey = "linguaplay-speech-settings";
@@ -47,6 +49,7 @@ export function defaultVoiceFor(provider: SpeechProvider, languageCode: string) 
   const language = languageCode.toLowerCase().split("-")[0];
   const defaults: Record<SpeechProvider, Record<string, string>> = {
     device: {},
+    none: {},
     edge: {
       de: "de-DE-TanjaNeural",
       en: "en-US-EmmaMultilingualNeural",
@@ -83,7 +86,7 @@ function voiceFor(provider: SpeechProvider, voice: string, languageCode: string)
   return voice;
 }
 
-const speechProviders: SpeechProvider[] = ["device", "edge", "kokoro", "elevenlabs", "azure"];
+const speechProviders: SpeechProvider[] = ["device", "edge", "kokoro", "elevenlabs", "azure", "none"];
 
 export function readSpeechSettings(): SpeechSettings {
   try {
@@ -96,6 +99,7 @@ export function readSpeechSettings(): SpeechSettings {
         : "device",
       voice: typeof saved.voice === "string" ? saved.voice : "",
       rate: typeof saved.rate === "number" ? Math.min(1.1, Math.max(0.55, saved.rate)) : 0.82,
+      enabled: saved.enabled !== false && saved.provider !== "none",
     };
   } catch {
     return defaultSpeechSettings;
@@ -203,6 +207,7 @@ export function speakText(
   stopCurrentAudio();
   window.speechSynthesis?.cancel();
   const settings = override ?? readSpeechSettings();
+  if (settings.enabled === false || settings.provider === "none") return false;
   const rate = Math.max(0.55, Math.min(1.1, settings.rate * (slow ? 0.76 : 1)));
   if (settings.provider === "device") return speakOnDevice(text, lang, slow, settings);
 

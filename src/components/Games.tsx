@@ -2666,8 +2666,20 @@ type RecognitionLike = {
 
 function useCompletionSignal(
   completed: boolean,
-  onComplete: (summary?: { score: number; total: number; timeLabel?: string }) => void,
-  summary?: { score: number; total: number; timeLabel?: string },
+  onComplete: (summary?: {
+    score: number;
+    total: number;
+    timeLabel?: string;
+    onReview?: () => void;
+    onBackToResult?: () => void;
+  }) => void,
+  summary?: {
+    score: number;
+    total: number;
+    timeLabel?: string;
+    onReview?: () => void;
+    onBackToResult?: () => void;
+  },
 ) {
   const callback = useRef(onComplete);
   const fired = useRef(false);
@@ -2724,6 +2736,9 @@ export function GameSession({
     score: number;
     total: number;
     timeLabel?: string;
+    onReview?: () => void;
+    isReviewing?: boolean;
+    onBackToResult?: () => void;
   } | null>(null);
 
   const restart = async () => {
@@ -2734,7 +2749,16 @@ export function GameSession({
   };
 
   const handleComplete = (
-    summaryOrRounds?: { score: number; total: number; timeLabel?: string } | number,
+    summaryOrRounds?:
+      | {
+          score: number;
+          total: number;
+          timeLabel?: string;
+          onReview?: () => void;
+          isReviewing?: boolean;
+          onBackToResult?: () => void;
+        }
+      | number,
   ) => {
     if (summaryOrRounds && typeof summaryOrRounds === "object") {
       setResultPill(summaryOrRounds);
@@ -2811,6 +2835,23 @@ export function GameSession({
             </div>
           </div>
           <div className="game-result-pill-actions">
+            {resultPill.onReview && (
+              <button
+                type="button"
+                className="btn-review"
+                onClick={() => {
+                  if (resultPill.isReviewing) {
+                    resultPill.onBackToResult?.();
+                    setResultPill((prev) => (prev ? { ...prev, isReviewing: false } : null));
+                  } else {
+                    resultPill.onReview?.();
+                    setResultPill((prev) => (prev ? { ...prev, isReviewing: true } : null));
+                  }
+                }}
+              >
+                {resultPill.isReviewing ? "К результату →" : "← Посмотреть ответы"}
+              </button>
+            )}
             <button type="button" className="btn-restart" onClick={restart}>
               Сыграть заново
             </button>
@@ -3032,17 +3073,6 @@ function ArticleSortGame({
             {score} из {cards.length} правильно
           </h1>
           <p>Время: {timeLabel} · результат добавлен в прогресс.</p>
-          <button className="primary-button" onClick={onRestart}>
-            Сыграть заново
-          </button>
-          {onNextGame && (
-            <button className="secondary-button" onClick={onNextGame}>
-              Следующая игра →
-            </button>
-          )}
-          <button className="secondary-button" onClick={onExit}>
-            К играм
-          </button>
         </div>
       </div>
     );
@@ -3234,7 +3264,13 @@ function PairGame({
   const group = useMemo(() => cards.slice(groupIndex, groupIndex + 5), [cards, groupIndex]);
   const done = showFinalResult;
   const timeLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
-  useCompletionSignal(done, onComplete, { score, total: cards.length, timeLabel });
+  useCompletionSignal(done, onComplete, {
+    score,
+    total: cards.length,
+    timeLabel,
+    onReview: () => showRound(Math.max(0, cards.length - 5)),
+    onBackToResult: () => setShowFinalResult(true),
+  });
   const leftGroup = useMemo(() => shuffle(group), [cards, groupIndex]);
   const rightGroup = useMemo(() => shuffle(group), [cards, groupIndex]);
   useEffect(() => {
@@ -3264,27 +3300,6 @@ function PairGame({
       const pairs = reviewPairsRef.current;
       if (index >= pairs.length) {
         window.clearInterval(timer);
-        window.setTimeout(() => {
-          const reviewed = pairs.map((pair) => ({
-            ...pair,
-            status: pair.leftId === pair.rightId ? ("correct" as const) : ("wrong" as const),
-          }));
-          setMatchedPairs(reviewed);
-          setReviewHistory((current) => ({ ...current, [groupIndex]: reviewed }));
-          setCheckedCount(reviewed.length);
-          if (groupIndex + group.length >= cards.length) {
-            setPhase("review");
-            window.setTimeout(() => setShowFinalResult(true), 900);
-          } else {
-            const nextIndex = groupIndex + group.length;
-            setFurthestRoundIndex((value) => Math.max(value, nextIndex));
-            setGroupIndex(nextIndex);
-            setMatchedPairs([]);
-            setCheckedCount(0);
-            setIntroStep(0);
-            setPhase("intro");
-          }
-        }, 750);
         return;
       }
       const pair = pairs[index];
@@ -3300,8 +3315,35 @@ function PairGame({
         ),
       );
       setCheckedCount(index + 1);
+
+      if (index === pairs.length - 1) {
+        window.clearInterval(timer);
+        window.setTimeout(() => {
+          const reviewed = pairs.map((p) => ({
+            ...p,
+            status: p.leftId === p.rightId ? ("correct" as const) : ("wrong" as const),
+          }));
+          setMatchedPairs(reviewed);
+          setReviewHistory((current) => ({ ...current, [groupIndex]: reviewed }));
+          setCheckedCount(reviewed.length);
+          if (groupIndex + group.length >= cards.length) {
+            setPhase("review");
+            window.setTimeout(() => setShowFinalResult(true), 350);
+          } else {
+            const nextIndex = groupIndex + group.length;
+            setFurthestRoundIndex((value) => Math.max(value, nextIndex));
+            setGroupIndex(nextIndex);
+            setMatchedPairs([]);
+            setCheckedCount(0);
+            setIntroStep(0);
+            setPhase("intro");
+          }
+        }, 420);
+        return;
+      }
+
       index += 1;
-    }, 650);
+    }, 420);
     return () => window.clearInterval(timer);
   }, [phase, group, groupIndex, cards.length]);
   useLayoutEffect(() => {
@@ -3412,23 +3454,6 @@ function PairGame({
             Собрано пар: {score} из {cards.length}
           </h1>
           <p>Время: {timeLabel} · пары проверялись по очереди.</p>
-          <button
-            className="secondary-button"
-            onClick={() => showRound(Math.max(0, cards.length - 5))}
-          >
-            ← Посмотреть ответы
-          </button>
-          <button className="primary-button" onClick={onRestart}>
-            Сыграть заново
-          </button>
-          {onNextGame && (
-            <button className="secondary-button" onClick={onNextGame}>
-              Следующая игра →
-            </button>
-          )}
-          <button className="secondary-button" onClick={onExit}>
-            К играм
-          </button>
         </div>
       ) : (
         <>
@@ -3978,17 +4003,6 @@ function QuestionGame({
             Новых вопросов: {rounds.length} · ошибки с первой попытки: {firstTryErrors} · повторов:{" "}
             {retryCount} · без ответа: {skippedCount}. Результат первой попытки сохранён отдельно.
           </p>
-          <button className="primary-button" onClick={onRestart}>
-            Сыграть заново
-          </button>
-          {onNextGame && (
-            <button className="secondary-button" onClick={onNextGame}>
-              Следующая игра →
-            </button>
-          )}
-          <button className="secondary-button" onClick={onExit}>
-            К играм
-          </button>
         </div>
       </div>
     );
