@@ -107,6 +107,9 @@ const CoursePath = lazy(() =>
 const CourseLesson = lazy(() =>
   import("./components/Course").then((module) => ({ default: module.CourseLesson })),
 );
+const CourseLevelExam = lazy(() =>
+  import("./components/CourseLevelExam").then((module) => ({ default: module.CourseLevelExam })),
+);
 const CourseSkillsSummary = lazy(() =>
   import("./components/Course").then((module) => ({ default: module.CourseSkillsSummary })),
 );
@@ -508,6 +511,7 @@ function WorkspaceApp({
   const [lessonDraft, setLessonDraft] = useState<{ chapter: string; lesson?: Lesson } | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [activeCourseUnit, setActiveCourseUnit] = useState<CourseUnit | null>(null);
+  const [activeCourseExam, setActiveCourseExam] = useState<CourseLevel | null>(null);
   const [spacesOpen, setSpacesOpen] = useState(false);
   const [foldersOpen, setFoldersOpen] = useState(false);
   const [editingModule, setEditingModule] = useState<VocabModule | null>(null);
@@ -521,7 +525,7 @@ function WorkspaceApp({
     [setCourseMissions],
   );
   const activeLearning = Boolean(
-    session || podcastCards || activeGame || activeGrammar || activeCourseUnit,
+    session || podcastCards || activeGame || activeGrammar || activeCourseUnit || activeCourseExam,
   );
 
   useEffect(() => {
@@ -1195,8 +1199,12 @@ function WorkspaceApp({
       const current = screenFromHash();
       const params = new URLSearchParams(window.location.hash.split("?").slice(1).join("?"));
       if (current === "path") {
+        const examParam = params.get("exam") as CourseLevel | null;
         const levelParam = params.get("level") as CourseLevel | null;
         const validLevels: CourseLevel[] = ["A0", "A1", "A2", "B1", "B2", "C1"];
+        if (examParam && validLevels.includes(examParam)) {
+          setActiveCourseExam(examParam);
+        }
         if (levelParam && validLevels.includes(levelParam)) {
           if (activeSpace.level !== levelParam) {
             selectCourseLevel(levelParam);
@@ -1803,6 +1811,44 @@ function WorkspaceApp({
     },
     [activeCourseUnit?.id, saveCourseMission],
   );
+  if (activeCourseExam)
+    return (
+      <Suspense
+        fallback={
+          <main className="account-loading">
+            <span className="account-spinner" />
+            <strong>Открываю итоговый экзамен уровня {activeCourseExam}…</strong>
+          </main>
+        }
+      >
+        <CourseLevelExam
+          level={activeCourseExam}
+          onClose={() => setActiveCourseExam(null)}
+          onComplete={(result) => {
+            if (result.passed) {
+              setCourseProgress((current) => ({
+                ...current,
+                [`exam-${activeCourseExam}`]: {
+                  vocabulary: result.percent / 100,
+                  grammar: result.percent / 100,
+                  listening: result.percent / 100,
+                  reading: result.percent / 100,
+                  speaking: result.percent / 100,
+                  writing: result.percent / 100,
+                  completedAt: result.completedAt,
+                  attempts: 1,
+                },
+              }));
+              setToast(`🏆 Поздравляем! Экзамен уровня ${activeCourseExam} сдан на ${result.percent}%!`);
+            }
+          }}
+          onNextLevel={(next) => {
+            selectCourseLevel(next);
+            setActiveCourseExam(null);
+          }}
+        />
+      </Suspense>
+    );
   if (activeCourseUnit)
     return (
       <Suspense
@@ -2298,6 +2344,7 @@ function WorkspaceApp({
                 focus={learningPlan?.focus ?? []}
                 onChooseLevel={selectCourseLevel}
                 onStart={(unit) => void startCourseUnit(unit)}
+                onStartExam={(examLevel) => setActiveCourseExam(examLevel)}
                 previewOnly={guestMode}
                 onUpgrade={() => onGuestGate?.()}
               />

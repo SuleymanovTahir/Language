@@ -122,7 +122,10 @@ function stopCurrentAudio() {
   activeAudioUrl = "";
 }
 
+let activeUtterance: SpeechSynthesisUtterance | null = null;
+
 export function stopAllSpeech() {
+  activeUtterance = null;
   stopCurrentAudio();
   if (typeof window !== "undefined") {
     try { window.speechSynthesis?.cancel(); } catch {}
@@ -344,8 +347,15 @@ export function speakTextAsync(
       const selected = matchingVoices.find((v) => v.voiceURI === settings.voice);
       utterance.voice = selected ?? matchingVoices[0] ?? null;
 
-      utterance.onend = done;
-      utterance.onerror = () => done();
+      activeUtterance = utterance;
+      utterance.onend = () => {
+        activeUtterance = null;
+        done();
+      };
+      utterance.onerror = () => {
+        activeUtterance = null;
+        done();
+      };
 
       try {
         // Ensure synthesis queue is fully empty before enqueueing new utterance
@@ -362,13 +372,37 @@ export function speakTextAsync(
     };
 
     // ── Audio element (cloud TTS blob) ───────────────────────
+    const cleanupAudioElement = () => {
+      if (activeAudio) {
+        activeAudio.pause();
+        activeAudio = null;
+      }
+      if (activeAudioUrl) {
+        URL.revokeObjectURL(activeAudioUrl);
+        activeAudioUrl = "";
+      }
+    };
+
     const playWithAudioElement = (blob: Blob) => {
       if (requestId !== audioRequestId) { done(); return; }
+      cleanupAudioElement();
       activeAudioUrl = URL.createObjectURL(blob);
-      activeAudio = new Audio(activeAudioUrl);
-      activeAudio.onended = () => { stopCurrentAudio(); done(); };
-      activeAudio.onerror = () => { stopCurrentAudio(); speakOnDeviceAsync(); };
-      activeAudio.play().catch(() => { stopCurrentAudio(); speakOnDeviceAsync(); });
+      const audio = new Audio(activeAudioUrl);
+      activeAudio = audio;
+      audio.onended = () => {
+        if (activeAudio === audio) cleanupAudioElement();
+        done();
+      };
+      audio.onerror = () => {
+        if (activeAudio === audio) cleanupAudioElement();
+        if (requestId === audioRequestId) speakOnDeviceAsync();
+        else done();
+      };
+      audio.play().catch(() => {
+        if (activeAudio === audio) cleanupAudioElement();
+        if (requestId === audioRequestId) speakOnDeviceAsync();
+        else done();
+      });
     };
 
     // ── Route: Russian words always use device voice ──────────

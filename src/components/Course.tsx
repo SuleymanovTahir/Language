@@ -11,6 +11,7 @@ import { HelpHint } from "./HelpHint";
 import { LearningTrail } from "./LearningTrail";
 import { COURSE_QUIZZES, type UnitQuizQuestion } from "../data/courseQuizzes";
 import { ProgressiveVocabTrainer } from "./ProgressiveVocabTrainer";
+import { getStoredExamResult } from "./CourseLevelExam";
 
 export type CourseSkills = {
   vocabulary: number;
@@ -56,6 +57,7 @@ export function CoursePath({
   onStart,
   previewOnly = false,
   onUpgrade,
+  onStartExam,
 }: {
   level: string;
   progress: CourseProgress;
@@ -66,12 +68,15 @@ export function CoursePath({
   onStart: (unit: CourseUnit) => void;
   previewOnly?: boolean;
   onUpgrade?: () => void;
+  onStartExam?: (level: CourseLevel) => void;
 }) {
   const normalizedLevel = level === "A1–A2" ? "A1" : level;
   const selectedLevel = levels.includes(normalizedLevel as CourseLevel)
     ? (normalizedLevel as CourseLevel)
     : "A1";
   const units = courseUnitsForLevel(selectedLevel);
+  const examResult = getStoredExamResult(selectedLevel);
+  const examPassed = Boolean(examResult?.passed);
   const demoUnit = GERMAN_COURSE.find((item) => item.id === "a0-01") ?? GERMAN_COURSE.find((item) => item.id === "a1-01") ?? GERMAN_COURSE[0];
   const goalRecommendations: Record<string, string[]> = {
     "Повседневная жизнь": ["a0-01", "a0-02", "a0-06", "a1-04", "a1-05", "a1-06", "a2-02", "a2-03", "a2-07"],
@@ -197,17 +202,35 @@ export function CoursePath({
         <img className="course-overview-mascot" src="/mascots/4.webp" alt="" aria-hidden="true" />
         <div>
           <span className="eyebrow">
-            {completed === units.length ? "УРОВЕНЬ ПРОЙДЕН" : "СЛЕДУЮЩИЙ ШАГ"} · {selectedLevel}
+            {completed === units.length
+              ? examPassed
+                ? "УРОВЕНЬ ПОДТВЕРЖДЁН"
+                : "ИТОГОВЫЙ ЭКЗАМЕН"
+              : "СЛЕДУЮЩИЙ ШАГ"}{" "}
+            · {selectedLevel}
           </span>
           <h2>
-            {completed === units.length ? "Уровень пройден" : next ? next.title : "Курс готовится"}
+            {completed === units.length
+              ? examPassed
+                ? `Уровень ${selectedLevel} подтверждён · ${examResult?.percent ?? 100}%`
+                : `Итоговый экзамен уровня ${selectedLevel}`
+              : next
+                ? next.title
+                : "Курс готовится"}
           </h2>
-          <p>{next?.outcome ?? "Выберите другой уровень курса."}</p>
+          <p>
+            {completed === units.length
+              ? examPassed
+                ? `Вы успешно сдали комплексный тест по уровню ${selectedLevel}. Вы можете пересдать его для улучшения балла или перейти к следующему уровню.`
+                : `Все ${units.length} юнитов уровня ${selectedLevel} пройдены! Пройдите итоговый комплексный тест для официального подтверждения уровня.`
+              : next?.outcome ?? "Выберите другой уровень курса."}
+          </p>
           <div className="course-overview-progress">
             <i style={{ width: `${percent}%` }} />
           </div>
           <small>
             {completed} из {units.length} юнитов · {percent}%
+            {examPassed ? ` · 🏆 Экзамен: ${examResult?.percent}%` : ""}
           </small>
           <div className="course-progress-metrics" aria-label="Прогресс уровня">
             <span>
@@ -221,7 +244,21 @@ export function CoursePath({
             </span>
           </div>
         </div>
-        {(previewOnly || next) && (
+        {completed === units.length && onStartExam ? (
+          <button
+            className="primary-button"
+            onClick={() => onStartExam(selectedLevel)}
+            style={{
+              background: examPassed
+                ? "linear-gradient(135deg, #16a34a, #15803d)"
+                : "linear-gradient(135deg, #f59e0b, #d97706)",
+              boxShadow: "0 4px 14px rgba(217, 119, 6, 0.4)",
+            }}
+          >
+            {examPassed ? "🏆 Пересдать экзамен" : "🏆 Сдать итоговый экзамен"}
+            <Icon name="arrow" />
+          </button>
+        ) : (previewOnly || next) && (
           <button
             className="primary-button"
             onClick={() => onStart(previewOnly ? demoUnit : next!)}
@@ -326,6 +363,71 @@ export function CoursePath({
               </div>
             );
           })}
+          {/* FINAL LEVEL EXAM NODE */}
+          <div className="course-trail-stop course-trail-exam-stop" key={`exam-node-${selectedLevel}`}>
+            <article
+              className={`course-unit-card course-exam-card ${examPassed ? "complete" : completed === units.length ? "recommended current" : "future"}`}
+              style={{
+                border: examPassed
+                  ? "2px solid #86efac"
+                  : completed === units.length
+                  ? "2px solid #f59e0b"
+                  : "1px dashed #cbd5e1",
+                background: examPassed
+                  ? "linear-gradient(135deg, #ffffff, #f0fdf4)"
+                  : completed === units.length
+                  ? "linear-gradient(135deg, #ffffff, #fffbeb)"
+                  : "#f8fafc",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <button
+                className="course-path-node"
+                onClick={() => onStartExam?.(selectedLevel)}
+                aria-label={`Итоговый экзамен уровня ${selectedLevel}`}
+                style={{ cursor: "pointer", width: "100%" }}
+              >
+                <span
+                  className="course-unit-number"
+                  data-trail-anchor
+                  style={{
+                    background: examPassed
+                      ? "#16a34a"
+                      : completed === units.length
+                      ? "linear-gradient(135deg, #f59e0b, #d97706)"
+                      : "#94a3b8",
+                    color: "white",
+                    fontSize: "20px",
+                  }}
+                >
+                  {examPassed ? "🥇" : "🏆"}
+                </span>
+                <span className="course-unit-copy">
+                  <small
+                    className="course-unit-kicker"
+                    style={{
+                      color: examPassed ? "#16a34a" : completed === units.length ? "#d97706" : "#64748b",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {examPassed
+                      ? `ЭКЗАМЕН СДАН · ${examResult?.percent ?? 100}%`
+                      : completed === units.length
+                      ? "ГОТОВ К СДАЧЕ · ФИНАЛ УРОВНЯ"
+                      : `ИТОГОВЫЙ ЭКЗАМЕН (${Math.max(0, units.length - completed)} юнитов до сдачи)`}
+                  </small>
+                  <strong style={{ fontSize: "16px" }}>
+                    Итоговый экзамен · Уровень {selectedLevel}
+                  </strong>
+                  <em>
+                    {examPassed
+                      ? `Владение уровнем ${selectedLevel} подтверждено (${examResult?.score}/${examResult?.total} верных). Нажмите для пересдачи или просмотра.`
+                      : `Комплексный экзамен по всем ${units.length} юнитам для официального подтверждения уровня ${selectedLevel}.`}
+                  </em>
+                </span>
+              </button>
+            </article>
+          </div>
         </LearningTrail>
       </section>
       {!previewOnly && <CourseSkillsSummary progress={progress} />}

@@ -42,6 +42,17 @@ export function AudioLoopGame({
     [currentModule.cards],
   );
 
+  // Selected cards for practice in this session (custom batch or all)
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>(() =>
+    cards.map((c) => c.id),
+  );
+
+  useEffect(() => {
+    setSelectedCardIds(cards.map((c) => c.id));
+    setCurrentIndex(0);
+    setCurrentRepeat(0);
+  }, [currentModule.id]);
+
   // Playlist Settings
   const [direction, setDirection] = useState<AudioDirection>("native_target");
   const [wordRepeats, setWordRepeats] = useState<number>(2); // 1x, 2x, 3x, 5x
@@ -68,9 +79,10 @@ export function AudioLoopGame({
 
   const [finished, setFinished] = useState(false);
 
-  // Card sequence (handles shuffle)
+  // Card sequence (handles card selection and shuffle)
   const sequence = useMemo(() => {
-    const list = [...cards];
+    const active = cards.filter((c) => selectedCardIds.includes(c.id));
+    const list = active.length > 0 ? [...active] : [...cards];
     if (shuffle) {
       for (let i = list.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -78,7 +90,7 @@ export function AudioLoopGame({
       }
     }
     return list;
-  }, [cards, shuffle]);
+  }, [cards, selectedCardIds, shuffle]);
 
   const currentCard = sequence[currentIndex] ?? sequence[0];
 
@@ -192,22 +204,78 @@ export function AudioLoopGame({
   const handleNext = () => {
     stopAllSpeech();
     setCurrentRepeat(0);
-    if (currentIndex < sequence.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-    } else {
-      setCurrentIndex(0);
-      setCycleCount((c) => c + 1);
-    }
+    stateRef.current.currentRepeat = 0;
+    setCurrentIndex((prev) => {
+      const next = prev < sequence.length - 1 ? prev + 1 : 0;
+      stateRef.current.currentIndex = next;
+      return next;
+    });
   };
 
   const handlePrev = () => {
     stopAllSpeech();
     setCurrentRepeat(0);
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
-    } else {
-      setCurrentIndex(sequence.length - 1);
+    stateRef.current.currentRepeat = 0;
+    setCurrentIndex((prev) => {
+      const prevIdx = prev > 0 ? prev - 1 : sequence.length - 1;
+      stateRef.current.currentIndex = prevIdx;
+      return prevIdx;
+    });
+  };
+
+  const selectAndPlayWord = (seqIndex: number) => {
+    stopAllSpeech();
+    setCurrentRepeat(0);
+    stateRef.current.currentRepeat = 0;
+    setCurrentIndex(seqIndex);
+    stateRef.current.currentIndex = seqIndex;
+    if (!isPlaying) {
+      startPlayback();
     }
+  };
+
+  const handleSelectAll = () => {
+    setSelectedCardIds(cards.map((c) => c.id));
+    setCurrentIndex(0);
+    setCurrentRepeat(0);
+  };
+
+  const handleSelectNone = () => {
+    if (cards[0]) {
+      setSelectedCardIds([cards[0].id]);
+    }
+    setCurrentIndex(0);
+    setCurrentRepeat(0);
+  };
+
+  const handleSelectFirstHalf = () => {
+    const half = Math.ceil(cards.length / 2);
+    setSelectedCardIds(cards.slice(0, half).map((c) => c.id));
+    setCurrentIndex(0);
+    setCurrentRepeat(0);
+  };
+
+  const handleSelectSecondHalf = () => {
+    const half = Math.ceil(cards.length / 2);
+    setSelectedCardIds(cards.slice(half).map((c) => c.id));
+    setCurrentIndex(0);
+    setCurrentRepeat(0);
+  };
+
+  const handleSelectCount = (count: number) => {
+    setSelectedCardIds(cards.slice(0, count).map((c) => c.id));
+    setCurrentIndex(0);
+    setCurrentRepeat(0);
+  };
+
+  const handleToggleCard = (cardId: string) => {
+    setSelectedCardIds((prev) => {
+      if (prev.includes(cardId)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((id) => id !== cardId);
+      }
+      return [...prev, cardId];
+    });
   };
 
   const toggleDirection = () => {
@@ -265,11 +333,17 @@ export function AudioLoopGame({
     loopRunnerActive.current = true;
 
     const runLoop = async () => {
+      let localIndex = stateRef.current.currentIndex;
+      let localRepeat = stateRef.current.currentRepeat;
+      let localCycle = stateRef.current.cycleCount;
+
       while (!isCancelled && stateRef.current.isPlaying) {
+        if (stateRef.current.currentIndex !== localIndex) {
+          localIndex = stateRef.current.currentIndex;
+          localRepeat = stateRef.current.currentRepeat;
+        }
+
         const {
-          currentIndex: idx,
-          currentRepeat: rep,
-          cycleCount: cycle,
           direction: dir,
           wordRepeats: totalReps,
           loopMode: mode,
@@ -283,10 +357,24 @@ export function AudioLoopGame({
           forceDeviceVoice: forceDev,
         } = stateRef.current;
 
-        const card = currentSeq[idx];
+        if (currentSeq.length === 0) break;
+        if (localIndex >= currentSeq.length) {
+          localIndex = 0;
+          localRepeat = 0;
+        }
+
+        const card = currentSeq[localIndex];
         if (!card) break;
 
-        const targetText = card.word.trim();
+        // Synchronize indices immediately
+        stateRef.current.currentIndex = localIndex;
+        stateRef.current.currentRepeat = localRepeat;
+        stateRef.current.cycleCount = localCycle;
+        setCurrentIndex(localIndex);
+        setCurrentRepeat(localRepeat);
+        setCycleCount(localCycle);
+
+        const targetText = (card.article ? `${card.article} ${card.word}` : card.word).trim();
         const nativeText = card.translation.trim();
         const targetLang = speechLocaleForCode(activeMod.languageCode ?? "de");
         const nativeLang = "ru-RU";
@@ -325,18 +413,28 @@ export function AudioLoopGame({
         setPhase("speaking_prompt");
         if (!isMuted && firstText) {
           await speakTextAsync(firstText, firstLang, spd < 0.85, speechOverride);
-        } else if (!firstText) {
-          // nothing to speak
         }
         if (isCancelled || !stateRef.current.isPlaying) break;
+        if (stateRef.current.currentIndex !== localIndex) {
+          localIndex = stateRef.current.currentIndex;
+          localRepeat = stateRef.current.currentRepeat;
+          continue;
+        }
 
-        // STEP 2: Pause BETWEEN first and second word (critical!)
+        // STEP 2: Pause BETWEEN first and second word (critical for hands-free recall!)
         if (secondText) {
           setPhase("waiting_recall");
-          // Always pause at least 800ms so words never overlap or collide
           const pauseMs = Math.max(800, pPrompt * 1000);
-          const ok = await sleep(pauseMs, () => isCancelled || !stateRef.current.isPlaying);
-          if (!ok) break;
+          const ok = await sleep(
+            pauseMs,
+            () => isCancelled || !stateRef.current.isPlaying || stateRef.current.currentIndex !== localIndex,
+          );
+          if (!ok) {
+            if (isCancelled || !stateRef.current.isPlaying) break;
+            localIndex = stateRef.current.currentIndex;
+            localRepeat = stateRef.current.currentRepeat;
+            continue;
+          }
 
           // STEP 3: Speak answer (Second Item)
           setPhase("speaking_answer");
@@ -344,42 +442,55 @@ export function AudioLoopGame({
             await speakTextAsync(secondText, secondLang, spd < 0.85, speechOverride);
           }
           if (isCancelled || !stateRef.current.isPlaying) break;
+          if (stateRef.current.currentIndex !== localIndex) {
+            localIndex = stateRef.current.currentIndex;
+            localRepeat = stateRef.current.currentRepeat;
+            continue;
+          }
         }
 
         // STEP 4: Pause before next repetition or next word
         setPhase("waiting_next");
-        const pauseWordMs = Math.max(600, pWord * 1000);
-        const okAfter = await sleep(pauseWordMs, () => isCancelled || !stateRef.current.isPlaying);
-        if (!okAfter) break;
+        const pauseWordMs = Math.max(800, pWord * 1000);
+        const okAfter = await sleep(
+          pauseWordMs,
+          () => isCancelled || !stateRef.current.isPlaying || stateRef.current.currentIndex !== localIndex,
+        );
+        if (!okAfter) {
+          if (isCancelled || !stateRef.current.isPlaying) break;
+          localIndex = stateRef.current.currentIndex;
+          localRepeat = stateRef.current.currentRepeat;
+          continue;
+        }
 
         // Check if we need to repeat the same word
-        if (rep + 1 < totalReps) {
-          setCurrentRepeat((r) => r + 1);
+        if (localRepeat + 1 < totalReps) {
+          localRepeat += 1;
           continue;
         }
 
         // Word repetitions done, advance to next word
-        setCurrentRepeat(0);
+        localRepeat = 0;
 
-        if (idx + 1 < currentSeq.length) {
-          setCurrentIndex((i) => i + 1);
+        if (localIndex + 1 < currentSeq.length) {
+          localIndex += 1;
         } else {
           // Deck finished!
-          const nextCycle = cycle + 1;
-          setCycleCount(nextCycle);
+          localCycle += 1;
+          localIndex = 0;
 
           const maxCycles =
             mode === "once" ? 1 : mode === "2x" ? 2 : mode === "3x" ? 3 : mode === "5x" ? 5 : Infinity;
 
-          if (nextCycle > maxCycles) {
+          if (localCycle > maxCycles) {
             if (autoNext) {
               // Automatically switch to next module in curriculum!
               const nextMod = getNextModule(activeMod.id);
               if (nextMod && nextMod.id !== activeMod.id) {
                 setCurrentModule(nextMod);
-                setCurrentIndex(0);
-                setCurrentRepeat(0);
-                setCycleCount(1);
+                localIndex = 0;
+                localRepeat = 0;
+                localCycle = 1;
                 continue;
               }
             }
@@ -394,9 +505,6 @@ export function AudioLoopGame({
               onNextGame();
             }
             break;
-          } else {
-            // Loop current list again from first word
-            setCurrentIndex(0);
           }
         }
       }
@@ -685,6 +793,236 @@ export function AudioLoopGame({
           margin-bottom: 20px;
           box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
           color: #1e293b;
+        }
+
+        /* Words Manager / Playlist Selector */
+        .audio-words-manager {
+          margin-top: 28px;
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 24px;
+          padding: 24px;
+          box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05);
+        }
+
+        .audio-words-header {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          margin-bottom: 20px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid #f1f5f9;
+        }
+
+        .audio-words-badge {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.8px;
+          color: #3b82f6;
+          text-transform: uppercase;
+          margin-bottom: 4px;
+          display: block;
+        }
+
+        .audio-words-title {
+          font-size: 19px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0 0 4px;
+        }
+
+        .audio-words-title .highlight {
+          color: #2563eb;
+        }
+
+        .audio-words-subtitle {
+          font-size: 13px;
+          color: #64748b;
+          margin: 0;
+        }
+
+        .audio-batch-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .audio-batch-btn {
+          padding: 7px 14px;
+          border-radius: 9999px;
+          font-size: 13px;
+          font-weight: 600;
+          border: 1px solid #cbd5e1;
+          background: #f8fafc;
+          color: #334155;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .audio-batch-btn:hover {
+          background: #f1f5f9;
+          border-color: #94a3b8;
+          color: #0f172a;
+        }
+
+        .audio-batch-btn.active {
+          background: #2563eb;
+          border-color: #2563eb;
+          color: #ffffff;
+        }
+
+        .audio-batch-btn.outline {
+          background: transparent;
+          border-color: #e2e8f0;
+          color: #64748b;
+        }
+
+        .audio-cards-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          max-height: 480px;
+          overflow-y: auto;
+          padding-right: 4px;
+        }
+
+        .audio-word-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 16px;
+          border-radius: 14px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .audio-word-row:hover {
+          background: #f1f5f9;
+          border-color: #cbd5e1;
+        }
+
+        .audio-word-row.is-current {
+          background: #eff6ff;
+          border-color: #3b82f6;
+          box-shadow: 0 4px 15px -2px rgba(59, 130, 246, 0.2);
+        }
+
+        .audio-word-row.is-excluded {
+          opacity: 0.55;
+          background: #fafafa;
+        }
+
+        .audio-word-checkbox {
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+        }
+
+        .audio-word-checkbox input[type="checkbox"] {
+          width: 18px;
+          height: 18px;
+          accent-color: #2563eb;
+          cursor: pointer;
+        }
+
+        .audio-word-index {
+          font-size: 13px;
+          font-weight: 700;
+          color: #94a3b8;
+          min-width: 24px;
+        }
+
+        .audio-word-texts {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .audio-word-target {
+          font-size: 16px;
+          color: #0f172a;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .audio-word-target .word-article {
+          font-size: 13px;
+          color: #3b82f6;
+          font-weight: 600;
+        }
+
+        .audio-word-native {
+          font-size: 14px;
+          color: #64748b;
+        }
+
+        .audio-playing-indicator {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 700;
+          color: #2563eb;
+          background: #dbeafe;
+          padding: 2px 8px;
+          border-radius: 9999px;
+          margin-left: 8px;
+        }
+
+        .mini-equalizer {
+          display: inline-flex;
+          align-items: flex-end;
+          gap: 2px;
+          height: 12px;
+        }
+
+        .mini-equalizer i {
+          width: 2px;
+          height: 10px;
+          background: #2563eb;
+          border-radius: 1px;
+          animation: miniEq 0.6s infinite alternate ease-in-out;
+        }
+
+        .mini-equalizer i:nth-child(2) {
+          animation-delay: 0.2s;
+          height: 6px;
+        }
+
+        .mini-equalizer i:nth-child(3) {
+          animation-delay: 0.4s;
+          height: 8px;
+        }
+
+        @keyframes miniEq {
+          0% { height: 3px; }
+          100% { height: 12px; }
+        }
+
+        .audio-mini-speak-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          border: 1px solid #e2e8f0;
+          background: #ffffff;
+          color: #64748b;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .audio-mini-speak-btn:hover {
+          background: #3b82f6;
+          border-color: #3b82f6;
+          color: #ffffff;
         }
       `}</style>
 
@@ -1376,6 +1714,144 @@ export function AudioLoopGame({
             )}
             <span className="audio-switch-tag">⇄ Сменить</span>
           </button>
+        </div>
+      </div>
+
+      {/* Words Selector & Interactive Playlist (Hands-Free Driving Companion) */}
+      <div className="audio-words-manager">
+        <div className="audio-words-header">
+          <div className="audio-words-title-box">
+            <span className="audio-words-badge">СЛОВА МОДУЛЯ · ПЛЕЙЛИСТ ДЛЯ МАШИНЫ И НАУШНИКОВ</span>
+            <h3 className="audio-words-title">
+              Выбрано для повторения: <span className="highlight">{selectedCardIds.length}</span> из {cards.length}
+            </h3>
+            <p className="audio-words-subtitle">
+              Отметьте нужную партию или отдельные слова. Плеер будет непрерывно называть слово и перевод по очереди.
+            </p>
+          </div>
+          <div className="audio-batch-actions">
+            <button
+              type="button"
+              className={`audio-batch-btn ${selectedCardIds.length === cards.length ? "active" : ""}`}
+              onClick={handleSelectAll}
+            >
+              Все ({cards.length})
+            </button>
+            {cards.length >= 4 && (
+              <>
+                <button
+                  type="button"
+                  className="audio-batch-btn"
+                  onClick={handleSelectFirstHalf}
+                >
+                  1-я половина (1–{Math.ceil(cards.length / 2)})
+                </button>
+                <button
+                  type="button"
+                  className="audio-batch-btn"
+                  onClick={handleSelectSecondHalf}
+                >
+                  2-я половина ({Math.ceil(cards.length / 2) + 1}–{cards.length})
+                </button>
+              </>
+            )}
+            {cards.length >= 10 && (
+              <button
+                type="button"
+                className="audio-batch-btn"
+                onClick={() => handleSelectCount(10)}
+              >
+                Первые 10
+              </button>
+            )}
+            {cards.length >= 20 && (
+              <button
+                type="button"
+                className="audio-batch-btn"
+                onClick={() => handleSelectCount(20)}
+              >
+                Первые 20
+              </button>
+            )}
+            <button
+              type="button"
+              className="audio-batch-btn outline"
+              onClick={handleSelectNone}
+            >
+              Сбросить
+            </button>
+          </div>
+        </div>
+
+        {/* List of cards */}
+        <div className="audio-cards-list">
+          {cards.map((card, idx) => {
+            const isSelected = selectedCardIds.includes(card.id);
+            const isCurrent = currentCard?.id === card.id;
+            const fullTargetWord = card.article ? `${card.article} ${card.word}` : card.word;
+
+            return (
+              <div
+                key={card.id}
+                className={`audio-word-row ${isCurrent ? "is-current" : ""} ${isSelected ? "is-selected" : "is-excluded"}`}
+                onClick={() => {
+                  const seqIdx = sequence.findIndex((c) => c.id === card.id);
+                  if (seqIdx >= 0) {
+                    selectAndPlayWord(seqIdx);
+                  } else {
+                    handleToggleCard(card.id);
+                  }
+                }}
+              >
+                <label
+                  className="audio-word-checkbox"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => handleToggleCard(card.id)}
+                  />
+                </label>
+
+                <span className="audio-word-index">
+                  {String(idx + 1).padStart(2, "0")}
+                </span>
+
+                <div className="audio-word-texts">
+                  <div className="audio-word-target">
+                    {card.article && <span className="word-article">{card.article}</span>}
+                    <strong>{card.word}</strong>
+                    {isCurrent && isPlaying && (
+                      <span className="audio-playing-indicator">
+                        <span className="mini-equalizer">
+                          <i /><i /><i />
+                        </span>
+                        <span>Сейчас играет</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="audio-word-native">{card.translation}</div>
+                </div>
+
+                <div className="audio-word-actions" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="audio-mini-speak-btn"
+                    onClick={() => {
+                      const targetLang = speechLocaleForCode(currentModule.languageCode ?? "de");
+                      void speakTextAsync(fullTargetWord, targetLang);
+                    }}
+                    title="Прослушать"
+                  >
+                    <Icon name="volume" size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
