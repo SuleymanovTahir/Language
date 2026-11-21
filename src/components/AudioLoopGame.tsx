@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { VocabCard, VocabModule } from "../lib/vocab";
-import { speakTextAsync, stopAllSpeech, detectSpeechLanguage } from "../lib/speech";
+import { modules as allVocabModules, type VocabCard, type VocabModule } from "../lib/vocab";
+import {
+  speakTextAsync,
+  stopAllSpeech,
+  speechLocaleForCode,
+  type SpeechProvider,
+  readSpeechSettings,
+} from "../lib/speech";
 import { Icon } from "./Icon";
 import { GameRatingBar } from "./GameRatingBar";
 
 export type AudioDirection = "native_target" | "target_native" | "target_only";
-export type LoopMode = "once" | "3x" | "infinite";
+export type LoopMode = "once" | "2x" | "3x" | "5x" | "infinite";
 
 export function AudioLoopGame({
-  module,
+  module: initialModule,
   onExit,
   onRestart,
   onComplete,
@@ -24,18 +30,32 @@ export function AudioLoopGame({
   muted?: boolean;
   onToggleMute?: () => void;
 }) {
-  const cards = useMemo(() => module.cards.filter((c) => c.word && c.translation), [module.cards]);
+  // Current active module (supports playlist switching and auto-next)
+  const [currentModule, setCurrentModule] = useState<VocabModule>(initialModule);
+
+  useEffect(() => {
+    setCurrentModule(initialModule);
+  }, [initialModule]);
+
+  const cards = useMemo(
+    () => currentModule.cards.filter((c) => c.word && c.translation),
+    [currentModule.cards],
+  );
 
   // Playlist Settings
   const [direction, setDirection] = useState<AudioDirection>("native_target");
-  const [wordRepeats, setWordRepeats] = useState<number>(2); // 1x, 2x, 3x
-  const [loopMode, setLoopMode] = useState<LoopMode>("infinite"); // once, 3x, infinite
-  const [autoNextModule, setAutoNextModule] = useState(false);
-  const [pausePromptSec, setPausePromptSec] = useState<number>(1.5);
-  const [pauseWordSec, setPauseWordSec] = useState<number>(1.8);
+  const [wordRepeats, setWordRepeats] = useState<number>(2); // 1x, 2x, 3x, 5x
+  const [loopMode, setLoopMode] = useState<LoopMode>("infinite"); // once, 2x, 3x, 5x, infinite
+  const [autoNextModule, setAutoNextModule] = useState(true);
+  const [pausePromptSec, setPausePromptSec] = useState<number>(0.9);
+  const [pauseWordSec, setPauseWordSec] = useState<number>(1.2);
   const [speed, setSpeed] = useState<number>(0.9);
   const [shuffle, setShuffle] = useState(false);
+  const [forceDeviceVoice, setForceDeviceVoice] = useState(false);
+
+  // Panels
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
 
   // Playback State
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -77,6 +97,8 @@ export function AudioLoopGame({
     speed,
     muted,
     sequence,
+    currentModule,
+    forceDeviceVoice,
   });
 
   useEffect(() => {
@@ -94,6 +116,8 @@ export function AudioLoopGame({
       speed,
       muted,
       sequence,
+      currentModule,
+      forceDeviceVoice,
     };
   }, [
     isPlaying,
@@ -109,6 +133,8 @@ export function AudioLoopGame({
     speed,
     muted,
     sequence,
+    currentModule,
+    forceDeviceVoice,
   ]);
 
   // Cancel speech on unmount
@@ -121,7 +147,7 @@ export function AudioLoopGame({
   // Sleep helper that can be aborted
   const sleep = (ms: number, abortCheck: () => boolean): Promise<boolean> => {
     return new Promise((resolve) => {
-      const step = 50;
+      const step = 40;
       let elapsed = 0;
       const interval = setInterval(() => {
         elapsed += step;
@@ -184,16 +210,43 @@ export function AudioLoopGame({
     }
   };
 
+  const toggleDirection = () => {
+    setDirection((prev) => {
+      if (prev === "native_target") return "target_native";
+      if (prev === "target_native") return "target_only";
+      return "native_target";
+    });
+  };
+
+  const cycleLoopMode = () => {
+    setLoopMode((prev) => {
+      if (prev === "infinite") return "once";
+      if (prev === "once") return "2x";
+      if (prev === "2x") return "3x";
+      if (prev === "3x") return "5x";
+      return "infinite";
+    });
+  };
+
+  // Helper to find next module in curriculum
+  const getNextModule = (modId: number): VocabModule | null => {
+    const idx = allVocabModules.findIndex((m) => m.id === modId);
+    if (idx >= 0 && idx < allVocabModules.length - 1) {
+      return allVocabModules[idx + 1];
+    }
+    return allVocabModules[0] ?? null;
+  };
+
   // MediaSession API for lock screen and bluetooth headphones
   useEffect(() => {
     if (typeof window === "undefined" || !("mediaSession" in navigator) || !currentCard) return;
 
     try {
-      const targetLang = module.languageCode?.toUpperCase() ?? "DE";
+      const targetLang = currentModule.languageCode?.toUpperCase() ?? "DE";
       navigator.mediaSession.metadata = new MediaMetadata({
         title: `${currentCard.word} — ${currentCard.translation}`,
         artist: `ClickLing · Повтор ${currentRepeat + 1}/${wordRepeats} (Цикл ${cycleCount})`,
-        album: `${module.title} [${targetLang}]`,
+        album: `${currentModule.title} [${targetLang}]`,
       });
 
       navigator.mediaSession.setActionHandler("play", () => startPlayback());
@@ -201,7 +254,7 @@ export function AudioLoopGame({
       navigator.mediaSession.setActionHandler("nexttrack", () => handleNext());
       navigator.mediaSession.setActionHandler("previoustrack", () => handlePrev());
     } catch {}
-  }, [currentCard, currentRepeat, wordRepeats, cycleCount, module.title, module.languageCode]);
+  }, [currentCard, currentRepeat, wordRepeats, cycleCount, currentModule.title, currentModule.languageCode]);
 
   // Main playback loop effect
   useEffect(() => {
@@ -226,6 +279,8 @@ export function AudioLoopGame({
           speed: spd,
           muted: isMuted,
           sequence: currentSeq,
+          currentModule: activeMod,
+          forceDeviceVoice: forceDev,
         } = stateRef.current;
 
         const card = currentSeq[idx];
@@ -233,8 +288,8 @@ export function AudioLoopGame({
 
         const targetText = card.word.trim();
         const nativeText = card.translation.trim();
-        const targetLang = module.languageCode ?? "de";
-        const nativeLang = "ru";
+        const targetLang = speechLocaleForCode(activeMod.languageCode ?? "de");
+        const nativeLang = "ru-RU";
 
         // Determine First and Second speech items
         let firstText = "";
@@ -243,31 +298,37 @@ export function AudioLoopGame({
         let secondLang = "";
 
         if (dir === "native_target") {
+          // "Я - iht, Ты - Du и так далее по списку"
           firstText = nativeText;
           firstLang = nativeLang;
           secondText = targetText;
           secondLang = targetLang;
         } else if (dir === "target_native") {
+          // "Iht - Я и т.д"
           firstText = targetText;
           firstLang = targetLang;
           secondText = nativeText;
           secondLang = nativeLang;
         } else {
-          // target_only
+          // target_only: "ich", "du"
           firstText = targetText;
           firstLang = targetLang;
           secondText = "";
           secondLang = "";
         }
 
+        const speechOverride = forceDev
+          ? { provider: "device" as SpeechProvider, voice: "", rate: 0.85, enabled: true }
+          : undefined;
+
         // STEP 1: Speak prompt (First Item)
         setPhase("speaking_prompt");
         if (!isMuted && firstText) {
-          await speakTextAsync(firstText, firstLang, spd < 0.85);
+          await speakTextAsync(firstText, firstLang, spd < 0.85, speechOverride);
         }
         if (isCancelled || !stateRef.current.isPlaying) break;
 
-        // STEP 2: Pause for cognitive recall (user recalls translation)
+        // STEP 2: Pause for natural audio recall / assimilation
         if (secondText) {
           setPhase("waiting_recall");
           const ok = await sleep(pPrompt * 1000, () => isCancelled || !stateRef.current.isPlaying);
@@ -276,12 +337,12 @@ export function AudioLoopGame({
           // STEP 3: Speak answer (Second Item)
           setPhase("speaking_answer");
           if (!isMuted) {
-            await speakTextAsync(secondText, secondLang, spd < 0.85);
+            await speakTextAsync(secondText, secondLang, spd < 0.85, speechOverride);
           }
           if (isCancelled || !stateRef.current.isPlaying) break;
         }
 
-        // STEP 4: Pause before next repeat or next card
+        // STEP 4: Pause before next repetition or next word
         setPhase("waiting_next");
         const okAfter = await sleep(pWord * 1000, () => isCancelled || !stateRef.current.isPlaying);
         if (!okAfter) break;
@@ -302,8 +363,23 @@ export function AudioLoopGame({
           const nextCycle = cycle + 1;
           setCycleCount(nextCycle);
 
-          if (mode === "once" || (mode === "3x" && nextCycle > 3)) {
-            // Reached completion
+          const maxCycles =
+            mode === "once" ? 1 : mode === "2x" ? 2 : mode === "3x" ? 3 : mode === "5x" ? 5 : Infinity;
+
+          if (nextCycle > maxCycles) {
+            if (autoNext) {
+              // Automatically switch to next module in curriculum!
+              const nextMod = getNextModule(activeMod.id);
+              if (nextMod && nextMod.id !== activeMod.id) {
+                setCurrentModule(nextMod);
+                setCurrentIndex(0);
+                setCurrentRepeat(0);
+                setCycleCount(1);
+                continue;
+              }
+            }
+
+            // Completion reached
             setIsPlaying(false);
             setPhase("idle");
             setFinished(true);
@@ -314,7 +390,7 @@ export function AudioLoopGame({
             }
             break;
           } else {
-            // Loop again from first word
+            // Loop current list again from first word
             setCurrentIndex(0);
           }
         }
@@ -330,291 +406,667 @@ export function AudioLoopGame({
       loopRunnerActive.current = false;
       stopAllSpeech();
     };
-  }, [isPlaying, sequence.length, module.languageCode, onComplete, onNextGame]);
+  }, [isPlaying, sequence.length, currentModule.id, onComplete, onNextGame]);
 
-  const targetLangLabel = module.languageCode?.toUpperCase() === "EN" ? "Английский" : "Немецкий";
+  const targetLangLabel = currentModule.languageCode?.toUpperCase() === "EN" ? "Английский" : "Немецкий";
+
+  // Target word active highlight
+  const isTargetSpeaking =
+    (direction === "native_target" && phase === "speaking_answer") ||
+    (direction === "target_native" && phase === "speaking_prompt") ||
+    (direction === "target_only" && phase === "speaking_prompt");
+
+  const isNativeSpeaking =
+    (direction === "native_target" && phase === "speaking_prompt") ||
+    (direction === "target_native" && phase === "speaking_answer");
 
   return (
-    <div
-      className="audio-loop-container"
-      style={{ maxWidth: 680, margin: "0 auto", padding: "16px" }}
-    >
+    <div className="audio-loop-player-wrapper">
+      <style>{`
+        .audio-loop-player-wrapper {
+          max-width: 680px;
+          margin: 0 auto;
+          padding: 16px;
+          font-family: inherit;
+        }
+
+        /* Top Bar Buttons */
+        .audio-top-bar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+
+        .audio-btn {
+          height: 42px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 0 16px;
+          border-radius: 12px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          border: 1px solid rgba(226, 232, 240, 0.8);
+          background: #ffffff;
+          color: #1e293b;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+          user-select: none;
+        }
+
+        .audio-btn:hover {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .audio-btn:active {
+          transform: translateY(0);
+        }
+
+        .audio-btn.icon-only {
+          width: 42px;
+          padding: 0;
+        }
+
+        .audio-btn.active {
+          background: #eff6ff;
+          border-color: #3b82f6;
+          color: #1d4ed8;
+        }
+
+        .audio-btn.danger {
+          background: #fef2f2;
+          border-color: #fca5a5;
+          color: #dc2626;
+        }
+
+        .audio-back-btn {
+          color: #2563eb;
+          border-color: #bfdbfe;
+          background: #ffffff;
+        }
+
+        .audio-back-btn:hover {
+          background: #eff6ff;
+          border-color: #93c5fd;
+        }
+
+        /* Main Player Card */
+        .audio-main-card {
+          background: linear-gradient(180deg, #0d1527 0%, #080d1a 100%);
+          border: 1px solid rgba(59, 130, 246, 0.35);
+          border-radius: 28px;
+          padding: 32px 24px;
+          text-align: center;
+          box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.5), 0 0 30px rgba(59, 130, 246, 0.12);
+          position: relative;
+          overflow: hidden;
+          color: #f8fafc;
+        }
+
+        /* Equalizer Animation */
+        .audio-eq-container {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          height: 18px;
+          margin-right: 6px;
+        }
+
+        .audio-eq-bar {
+          width: 3px;
+          border-radius: 2px;
+          background: currentColor;
+          height: 6px;
+          transition: height 0.15s ease;
+        }
+
+        .audio-eq-bar.animating-1 { animation: eqBounce1 0.65s infinite ease-in-out; }
+        .audio-eq-bar.animating-2 { animation: eqBounce2 0.55s infinite ease-in-out; }
+        .audio-eq-bar.animating-3 { animation: eqBounce3 0.75s infinite ease-in-out; }
+        .audio-eq-bar.animating-4 { animation: eqBounce2 0.6s infinite ease-in-out; }
+        .audio-eq-bar.animating-5 { animation: eqBounce1 0.7s infinite ease-in-out; }
+
+        @keyframes eqBounce1 {
+          0%, 100% { height: 4px; }
+          50% { height: 18px; }
+        }
+        @keyframes eqBounce2 {
+          0%, 100% { height: 16px; }
+          50% { height: 6px; }
+        }
+        @keyframes eqBounce3 {
+          0%, 100% { height: 8px; }
+          50% { height: 20px; }
+        }
+
+        /* Large Player Controls */
+        .audio-controls-row {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 16px;
+          margin-top: 24px;
+        }
+
+        .audio-ctrl-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.08);
+          color: #f8fafc;
+          cursor: pointer;
+          transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+          user-select: none;
+        }
+
+        .audio-ctrl-btn:hover {
+          background: rgba(255, 255, 255, 0.16);
+          border-color: rgba(255, 255, 255, 0.25);
+          transform: scale(1.06);
+        }
+
+        .audio-ctrl-btn:active {
+          transform: scale(0.96);
+        }
+
+        .audio-ctrl-btn.secondary {
+          width: 52px;
+          height: 52px;
+        }
+
+        .audio-ctrl-btn.aux {
+          width: 42px;
+          height: 42px;
+          font-size: 13px;
+          font-weight: 700;
+        }
+
+        .audio-ctrl-btn.aux.active {
+          background: rgba(59, 130, 246, 0.25);
+          border-color: #3b82f6;
+          color: #60a5fa;
+        }
+
+        .audio-ctrl-btn.primary-play {
+          width: 76px;
+          height: 76px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+          border: 2px solid rgba(255, 255, 255, 0.2);
+          color: #ffffff;
+          box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45);
+        }
+
+        .audio-ctrl-btn.primary-play.is-playing {
+          box-shadow: 0 0 35px rgba(59, 130, 246, 0.65), 0 8px 24px rgba(37, 99, 235, 0.45);
+        }
+
+        .audio-ctrl-btn.primary-play:hover {
+          transform: scale(1.08);
+          background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+        }
+
+        /* Direction Switcher Banner (Bottom) */
+        .audio-direction-bar {
+          margin-top: 28px;
+          display: flex;
+          justify-content: center;
+        }
+
+        .audio-direction-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 20px;
+          border-radius: 9999px;
+          background: rgba(30, 41, 59, 0.85);
+          border: 1px solid rgba(59, 130, 246, 0.4);
+          color: #f8fafc;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+          transition: all 0.2s ease;
+        }
+
+        .audio-direction-pill:hover {
+          background: rgba(51, 65, 85, 0.95);
+          border-color: #60a5fa;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
+        }
+
+        .audio-direction-pill:active {
+          transform: translateY(0);
+        }
+
+        .audio-flag {
+          font-size: 18px;
+          line-height: 1;
+        }
+
+        .audio-arrow-icon {
+          color: #38bdf8;
+          font-weight: 800;
+          font-size: 16px;
+        }
+
+        .audio-switch-tag {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          background: rgba(59, 130, 246, 0.2);
+          color: #93c5fd;
+          padding: 2px 7px;
+          border-radius: 6px;
+          margin-left: 4px;
+        }
+
+        /* Settings Drawer Panel */
+        .audio-panel-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 20px;
+          padding: 20px;
+          margin-bottom: 20px;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+          color: #1e293b;
+        }
+      `}</style>
+
       {/* Top Bar Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-        }}
-      >
+      <div className="audio-top-bar">
+        {/* Back button with arrow pointing LEFT */}
         <button
           type="button"
-          className="secondary-button compact"
+          className="audio-btn audio-back-btn"
           onClick={() => {
             pausePlayback();
             onExit();
           }}
-          aria-label="Выйти"
+          aria-label="Назад к играм"
         >
-          <Icon name="arrow" size={16} /> Назад к играм
+          <Icon name="arrowLeft" size={18} />
+          <span>Назад к играм</span>
         </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Playlist / Modules Selector button */}
+          <button
+            type="button"
+            className={`audio-btn ${playlistOpen ? "active" : ""}`}
+            onClick={() => {
+              setPlaylistOpen((prev) => !prev);
+              setSettingsOpen(false);
+            }}
+            title="Выбрать список слов"
+          >
+            <Icon name="folder" size={16} />
+            <span>Списки</span>
+          </button>
+
+          {/* Mute button */}
           {onToggleMute && (
             <button
               type="button"
-              className={`secondary-button compact ${muted ? "danger" : ""}`}
+              className={`audio-btn icon-only ${muted ? "danger" : ""}`}
               onClick={onToggleMute}
               title={muted ? "Включить звук" : "Выключить звук"}
+              aria-label="Переключить звук"
             >
-              <Icon name="volume" size={16} />
+              <Icon name="volume" size={18} />
             </button>
           )}
 
+          {/* Settings button */}
           <button
             type="button"
-            className={`secondary-button compact ${settingsOpen ? "active" : ""}`}
-            onClick={() => setSettingsOpen((prev) => !prev)}
-            title="Настройки плейлиста"
+            className={`audio-btn ${settingsOpen ? "active" : ""}`}
+            onClick={() => {
+              setSettingsOpen((prev) => !prev);
+              setPlaylistOpen(false);
+            }}
+            title="Настройки воспроизведения"
           >
-            <Icon name="settings" size={16} /> Настройки
+            <Icon name="settings" size={16} />
+            <span>Настройки</span>
           </button>
         </div>
       </div>
 
-      {/* Settings Panel Drawer */}
-      {settingsOpen && (
-        <div
-          style={{
-            background: "var(--surface-color, #1e293b)",
-            border: "1px solid var(--border-color, #334155)",
-            borderRadius: 16,
-            padding: 16,
-            marginBottom: 20,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
-          <h3 style={{ margin: 0, fontSize: 16, display: "flex", alignItems: "center", gap: 8 }}>
-            <Icon name="settings" size={18} /> Настройки воспроизведения
-          </h3>
-
-          {/* Direction */}
-          <div>
-            <label style={{ fontSize: 13, opacity: 0.8, display: "block", marginBottom: 6 }}>
-              Порядок языков:
-            </label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className={`secondary-button compact ${direction === "native_target" ? "active" : ""}`}
-                onClick={() => setDirection("native_target")}
-              >
-                🇷🇺 Русский ➔ 🇩🇪 {targetLangLabel}
-              </button>
-              <button
-                type="button"
-                className={`secondary-button compact ${direction === "target_native" ? "active" : ""}`}
-                onClick={() => setDirection("target_native")}
-              >
-                🇩🇪 {targetLangLabel} ➔ 🇷🇺 Русский
-              </button>
-              <button
-                type="button"
-                className={`secondary-button compact ${direction === "target_only" ? "active" : ""}`}
-                onClick={() => setDirection("target_only")}
-              >
-                🇩🇪 Только {targetLangLabel}
-              </button>
-            </div>
-          </div>
-
-          {/* Word repeats & Cycle Mode */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 13, opacity: 0.8, display: "block", marginBottom: 6 }}>
-                Повторов каждого слова:
-              </label>
-              <div style={{ display: "flex", gap: 6 }}>
-                {([1, 2, 3] as const).map((count) => (
-                  <button
-                    key={count}
-                    type="button"
-                    className={`secondary-button compact ${wordRepeats === count ? "active" : ""}`}
-                    onClick={() => setWordRepeats(count)}
-                    style={{ flex: 1 }}
-                  >
-                    {count}×
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label style={{ fontSize: 13, opacity: 0.8, display: "block", marginBottom: 6 }}>
-                Повтор всего списка:
-              </label>
-              <div style={{ display: "flex", gap: 6 }}>
-                {(
-                  [
-                    ["infinite", "∞ Бесконечно"],
-                    ["once", "1 раз"],
-                    ["3x", "3 раза"],
-                  ] as const
-                ).map(([mode, label]) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className={`secondary-button compact ${loopMode === mode ? "active" : ""}`}
-                    onClick={() => setLoopMode(mode)}
-                    style={{ flex: 1, fontSize: 12 }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Pauses */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 13, opacity: 0.8, display: "block", marginBottom: 6 }}>
-                Пауза на размышление: {pausePromptSec} сек
-              </label>
-              <input
-                type="range"
-                min="0.8"
-                max="4.0"
-                step="0.2"
-                value={pausePromptSec}
-                onChange={(e) => setPausePromptSec(parseFloat(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: 13, opacity: 0.8, display: "block", marginBottom: 6 }}>
-                Пауза между словами: {pauseWordSec} сек
-              </label>
-              <input
-                type="range"
-                min="0.8"
-                max="4.0"
-                step="0.2"
-                value={pauseWordSec}
-                onChange={(e) => setPauseWordSec(parseFloat(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </div>
-          </div>
-
-          {/* Speed & Auto Next */}
+      {/* Playlist Selector Drawer */}
+      {playlistOpen && (
+        <div className="audio-panel-card">
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              flexWrap: "wrap",
-              gap: 12,
+              marginBottom: 14,
             }}
           >
-            <label
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+              <Icon name="folder" size={18} /> Выберите список слов
+            </h3>
+            <button
+              type="button"
+              className="audio-btn icon-only"
+              style={{ width: 28, height: 28, border: "none", background: "transparent" }}
+              onClick={() => setPlaylistOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
+          <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+            {allVocabModules.map((m) => {
+              const isActive = m.id === currentModule.id;
+              const cardCount = m.cards.filter((c) => c.word && c.translation).length;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    stopAllSpeech();
+                    setCurrentModule(m);
+                    setCurrentIndex(0);
+                    setCurrentRepeat(0);
+                    setCycleCount(1);
+                    setPlaylistOpen(false);
+                  }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    border: isActive ? "1.5px solid #3b82f6" : "1px solid #e2e8f0",
+                    background: isActive ? "#eff6ff" : "#ffffff",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    color: isActive ? "#1d4ed8" : "#1e293b",
+                    fontWeight: isActive ? 700 : 500,
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span style={{ fontSize: 14 }}>
+                    {isActive ? "▶ " : ""}
+                    {m.title}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      padding: "2px 8px",
+                      borderRadius: 10,
+                      background: isActive ? "#3b82f6" : "#f1f5f9",
+                      color: isActive ? "#ffffff" : "#64748b",
+                    }}
+                  >
+                    {cardCount} слов
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Settings Panel Drawer */}
+      {settingsOpen && (
+        <div className="audio-panel-card">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+              <Icon name="settings" size={18} /> Настройки hands-free плейлиста
+            </h3>
+            <button
+              type="button"
+              className="audio-btn icon-only"
+              style={{ width: 28, height: 28, border: "none", background: "transparent" }}
+              onClick={() => setSettingsOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Direction */}
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 6 }}>
+                Порядок языков:
+              </label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`audio-btn ${direction === "native_target" ? "active" : ""}`}
+                  onClick={() => setDirection("native_target")}
+                  style={{ flex: 1, minWidth: 160 }}
+                >
+                  🇷🇺 Русский ➔ 🇩🇪 {targetLangLabel}
+                </button>
+                <button
+                  type="button"
+                  className={`audio-btn ${direction === "target_native" ? "active" : ""}`}
+                  onClick={() => setDirection("target_native")}
+                  style={{ flex: 1, minWidth: 160 }}
+                >
+                  🇩🇪 {targetLangLabel} ➔ 🇷🇺 Русский
+                </button>
+                <button
+                  type="button"
+                  className={`audio-btn ${direction === "target_only" ? "active" : ""}`}
+                  onClick={() => setDirection("target_only")}
+                  style={{ flex: 1, minWidth: 140 }}
+                >
+                  🇩🇪 Только {targetLangLabel}
+                </button>
+              </div>
+            </div>
+
+            {/* Word Repeats & Playlist Loop Mode */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 6 }}>
+                  Повторов каждого слова:
+                </label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {([1, 2, 3, 5] as const).map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      className={`audio-btn ${wordRepeats === count ? "active" : ""}`}
+                      onClick={() => setWordRepeats(count)}
+                      style={{ flex: 1, padding: 0 }}
+                    >
+                      {count}×
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 6 }}>
+                  Повтор всего списка:
+                </label>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {(
+                    [
+                      ["infinite", "∞ Бесконечно"],
+                      ["once", "1 раз"],
+                      ["2x", "2 раза"],
+                      ["3x", "3 раза"],
+                    ] as const
+                  ).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`audio-btn ${loopMode === mode ? "active" : ""}`}
+                      onClick={() => setLoopMode(mode as LoopMode)}
+                      style={{ flex: 1, padding: "0 4px", fontSize: 12 }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Auto Next Module Switcher */}
+            <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
-                cursor: "pointer",
-                fontSize: 14,
+                justifyContent: "space-between",
+                padding: "12px 14px",
+                borderRadius: 12,
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
               }}
             >
+              <div>
+                <strong style={{ fontSize: 14, color: "#1e293b", display: "block" }}>
+                  Автопереход к следующему списку
+                </strong>
+                <span style={{ fontSize: 12, color: "#64748b" }}>
+                  По окончании списка автоматически перейти к следующей теме курса
+                </span>
+              </div>
               <input
                 type="checkbox"
                 checked={autoNextModule}
                 onChange={(e) => setAutoNextModule(e.target.checked)}
+                style={{ width: 18, height: 18, cursor: "pointer" }}
               />
-              Автопереход к следующему набору по завершении
-            </label>
+            </div>
 
-            <label
+            {/* Pauses Configuration */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 6 }}>
+                  Пауза на перевод: {pausePromptSec} сек
+                </label>
+                <input
+                  type="range"
+                  min="0.4"
+                  max="3.0"
+                  step="0.1"
+                  value={pausePromptSec}
+                  onChange={(e) => setPausePromptSec(parseFloat(e.target.value))}
+                  style={{ width: "100%", accentColor: "#3b82f6" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 6 }}>
+                  Пауза между словами: {pauseWordSec} сек
+                </label>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="3.5"
+                  step="0.1"
+                  value={pauseWordSec}
+                  onChange={(e) => setPauseWordSec(parseFloat(e.target.value))}
+                  style={{ width: "100%", accentColor: "#3b82f6" }}
+                />
+              </div>
+            </div>
+
+            {/* Voice Provider preference */}
+            <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
-                cursor: "pointer",
-                fontSize: 14,
+                justifyContent: "space-between",
+                padding: "10px 14px",
+                borderRadius: 12,
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
               }}
             >
+              <div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", display: "block" }}>
+                  Использовать голос устройства для всех слов
+                </span>
+                <span style={{ fontSize: 11, color: "#64748b" }}>
+                  Бесплатно, без задержек сети. Русские слова всегда произносятся голосом устройства.
+                </span>
+              </div>
               <input
                 type="checkbox"
-                checked={shuffle}
-                onChange={(e) => {
-                  setShuffle(e.target.checked);
-                  setCurrentIndex(0);
-                  setCurrentRepeat(0);
-                }}
+                checked={forceDeviceVoice}
+                onChange={(e) => setForceDeviceVoice(e.target.checked)}
+                style={{ width: 18, height: 18, cursor: "pointer" }}
               />
-              Случайный порядок
-            </label>
+            </div>
           </div>
         </div>
       )}
 
       {/* Main Player Display Card */}
-      <div
-        style={{
-          background: "var(--card-bg, #0f172a)",
-          border: "2px solid var(--accent-color, #3b82f6)",
-          borderRadius: 24,
-          padding: "32px 24px",
-          textAlign: "center",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        {/* Module Title & Progress */}
+      <div className="audio-main-card">
+        {/* Module Title & Progress Header */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 20,
+            marginBottom: 16,
           }}
         >
-          <span
+          <div
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
               fontSize: 13,
-              color: "var(--text-muted, #94a3b8)",
+              fontWeight: 700,
+              color: "#93c5fd",
               textTransform: "uppercase",
-              letterSpacing: 1,
+              letterSpacing: 0.8,
             }}
           >
-            {module.title}
-          </span>
-          <span
+            <Icon name="headphones" size={16} />
+            <span>{currentModule.title}</span>
+          </div>
+
+          <div
             style={{
               fontSize: 12,
-              padding: "4px 10px",
+              padding: "4px 12px",
               borderRadius: 20,
-              background: "rgba(59, 130, 246, 0.15)",
-              color: "#60a5fa",
-              fontWeight: 600,
+              background: "rgba(59, 130, 246, 0.2)",
+              color: "#93c5fd",
+              fontWeight: 700,
+              border: "1px solid rgba(59, 130, 246, 0.3)",
             }}
           >
             Слово {currentIndex + 1} из {sequence.length} · Цикл {cycleCount}
-          </span>
+            {loopMode !== "infinite" ? `/${loopMode}` : ""}
+          </div>
         </div>
 
         {/* Progress Bar */}
         <div
           style={{
             height: 6,
-            borderRadius: 3,
-            background: "rgba(255,255,255,0.1)",
-            marginBottom: 28,
+            borderRadius: 9999,
+            background: "rgba(255, 255, 255, 0.12)",
+            marginBottom: 24,
             overflow: "hidden",
           }}
         >
@@ -622,106 +1074,148 @@ export function AudioLoopGame({
             style={{
               height: "100%",
               width: `${((currentIndex + 1) / sequence.length) * 100}%`,
-              background: "var(--accent-color, #3b82f6)",
-              transition: "width 0.3s ease",
+              background: "linear-gradient(90deg, #3b82f6, #06b6d4)",
+              borderRadius: 9999,
+              transition: "width 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
             }}
           />
         </div>
 
-        {/* Status Indicator Pill */}
-        <div style={{ minHeight: 32, marginBottom: 20, display: "flex", justifyContent: "center" }}>
-          {phase === "speaking_prompt" && (
+        {/* Live Audio Equalizer & Phase Indicator Pill */}
+        <div style={{ minHeight: 36, marginBottom: 20, display: "flex", justifyContent: "center" }}>
+          {isNativeSpeaking && (
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 8,
-                padding: "6px 14px",
+                padding: "6px 16px",
                 borderRadius: 20,
                 background: "rgba(59, 130, 246, 0.2)",
                 color: "#93c5fd",
                 fontSize: 13,
-                fontWeight: 500,
+                fontWeight: 600,
+                border: "1px solid rgba(59, 130, 246, 0.4)",
               }}
             >
-              <span
-                className="pulse-dot"
-                style={{ width: 8, height: 8, borderRadius: "50%", background: "#60a5fa" }}
-              />
-              🔊 Произносим: {direction === "native_target" ? "Русский" : targetLangLabel}
+              <div className="audio-eq-container">
+                <span className="audio-eq-bar animating-1" />
+                <span className="audio-eq-bar animating-2" />
+                <span className="audio-eq-bar animating-3" />
+                <span className="audio-eq-bar animating-4" />
+                <span className="audio-eq-bar animating-5" />
+              </div>
+              <span>🇷🇺 Произносим: {currentCard?.translation}</span>
             </div>
           )}
+
           {phase === "waiting_recall" && (
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 8,
-                padding: "6px 14px",
+                padding: "6px 16px",
                 borderRadius: 20,
                 background: "rgba(234, 179, 8, 0.2)",
                 color: "#fde047",
                 fontSize: 13,
-                fontWeight: 500,
+                fontWeight: 600,
+                border: "1px solid rgba(234, 179, 8, 0.4)",
               }}
             >
-              ⏳ Вспомните перевод...
+              <span>⏳ Вспомните перевод...</span>
             </div>
           )}
-          {phase === "speaking_answer" && (
+
+          {isTargetSpeaking && (
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 8,
-                padding: "6px 14px",
+                padding: "6px 16px",
                 borderRadius: 20,
-                background: "rgba(34, 197, 94, 0.2)",
-                color: "#86efac",
+                background: "rgba(16, 185, 129, 0.2)",
+                color: "#6ee7b7",
                 fontSize: 13,
-                fontWeight: 500,
+                fontWeight: 600,
+                border: "1px solid rgba(16, 185, 129, 0.4)",
               }}
             >
-              <span
-                className="pulse-dot"
-                style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e" }}
-              />
-              ✓ Ответ: {direction === "native_target" ? targetLangLabel : "Русский"}
+              <div className="audio-eq-container">
+                <span className="audio-eq-bar animating-1" />
+                <span className="audio-eq-bar animating-2" />
+                <span className="audio-eq-bar animating-3" />
+                <span className="audio-eq-bar animating-4" />
+                <span className="audio-eq-bar animating-5" />
+              </div>
+              <span>🇩🇪 Ответ: {currentCard?.word}</span>
             </div>
           )}
+
           {phase === "waiting_next" && (
-            <div style={{ fontSize: 13, opacity: 0.6 }}>Готовим следующее слово...</div>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 14px",
+                borderRadius: 20,
+                background: "rgba(255, 255, 255, 0.08)",
+                color: "#cbd5e1",
+                fontSize: 13,
+              }}
+            >
+              <span>Готовим следующее слово...</span>
+            </div>
           )}
+
           {phase === "idle" && (
-            <div style={{ fontSize: 13, opacity: 0.6 }}>
-              {isPlaying ? "Воспроизведение..." : "Нажмите Плей для запуска hands-free режима"}
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 14px",
+                borderRadius: 20,
+                background: "rgba(255, 255, 255, 0.06)",
+                color: "#94a3b8",
+                fontSize: 13,
+              }}
+            >
+              <span>Нажмите Play для воспроизведения</span>
             </div>
           )}
         </div>
 
         {/* Active Word & Translation Cards */}
         {currentCard ? (
-          <div style={{ margin: "24px 0" }}>
-            {/* Word in Target Language */}
+          <div style={{ margin: "20px 0" }}>
+            {/* Foreign / Target Word */}
             <div
               style={{
-                fontSize: 34,
+                fontSize: 40,
                 fontWeight: 800,
-                marginBottom: 12,
-                color: "var(--text-color, #f8fafc)",
+                marginBottom: 10,
+                color: isTargetSpeaking ? "#67e8f9" : "#ffffff",
                 letterSpacing: "-0.02em",
+                textShadow: isTargetSpeaking ? "0 0 25px rgba(6, 182, 212, 0.5)" : "none",
+                transition: "all 0.2s ease",
               }}
             >
               {currentCard.word}
             </div>
 
-            {/* Translation */}
+            {/* Translation in Russian */}
             <div
               style={{
-                fontSize: 22,
-                color: "var(--text-muted, #94a3b8)",
+                fontSize: 24,
+                color: isNativeSpeaking ? "#93c5fd" : "#cbd5e1",
+                fontWeight: 600,
                 marginBottom: 16,
-                fontWeight: 500,
+                textShadow: isNativeSpeaking ? "0 0 20px rgba(59, 130, 246, 0.5)" : "none",
+                transition: "all 0.2s ease",
               }}
             >
               {currentCard.translation}
@@ -733,12 +1227,14 @@ export function AudioLoopGame({
                 style={{
                   fontSize: 14,
                   fontStyle: "italic",
-                  opacity: 0.75,
+                  color: "#cbd5e1",
+                  opacity: 0.85,
                   maxWidth: 440,
                   margin: "12px auto 0",
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  background: "rgba(255,255,255,0.04)",
+                  padding: "8px 14px",
+                  borderRadius: 10,
+                  background: "rgba(255, 255, 255, 0.06)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
                 }}
               >
                 «{currentCard.exampleSentence}»
@@ -750,82 +1246,138 @@ export function AudioLoopGame({
         )}
 
         {/* Repetition Indicator */}
-        <div style={{ marginTop: 20, marginBottom: 24, fontSize: 13, opacity: 0.7 }}>
-          Повтор слова: <strong>{currentRepeat + 1}</strong> из <strong>{wordRepeats}</strong>
-        </div>
-
-        {/* Big Player Controls */}
         <div
           style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 20,
             marginTop: 16,
+            marginBottom: 20,
+            fontSize: 13,
+            color: "#94a3b8",
           }}
         >
+          Повтор слова: <strong style={{ color: "#f8fafc" }}>{currentRepeat + 1}</strong> из{" "}
+          <strong style={{ color: "#f8fafc" }}>{wordRepeats}</strong>
+        </div>
+
+        {/* Big Modern Player Controls */}
+        <div className="audio-controls-row">
+          {/* Shuffle Toggle */}
+          <button
+            type="button"
+            className={`audio-ctrl-btn aux ${shuffle ? "active" : ""}`}
+            onClick={() => {
+              setShuffle((prev) => !prev);
+              setCurrentIndex(0);
+              setCurrentRepeat(0);
+            }}
+            title={shuffle ? "Случайный порядок включен" : "Включить случайный порядок"}
+            aria-label="Случайный порядок"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16 3h5v5" />
+              <path d="M4 20L21 3" />
+              <path d="M21 16v5h-5" />
+              <path d="M15 15l6 6" />
+              <path d="M4 4l5 5" />
+            </svg>
+          </button>
+
           {/* Previous Track */}
           <button
             type="button"
-            className="secondary-button"
+            className="audio-ctrl-btn secondary"
             onClick={handlePrev}
             aria-label="Предыдущее слово"
-            style={{ width: 52, height: 52, borderRadius: "50%", padding: 0 }}
+            title="Предыдущее слово"
           >
-            <span style={{ display: "inline-block", transform: "rotate(180deg)" }}>
-              <Icon name="arrow" size={20} />
-            </span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="19 20 9 12 19 4 19 20" />
+              <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
           </button>
 
-          {/* Big Play / Pause Button */}
+          {/* Big Play / Pause Button with SVG */}
           <button
             type="button"
-            className="primary-button"
+            className={`audio-ctrl-btn primary-play ${isPlaying ? "is-playing" : ""}`}
             onClick={togglePlay}
             aria-label={isPlaying ? "Пауза" : "Воспроизведение"}
-            style={{
-              width: 76,
-              height: 76,
-              borderRadius: "50%",
-              padding: 0,
-              fontSize: 24,
-              boxShadow: isPlaying
-                ? "0 0 25px rgba(59, 130, 246, 0.5)"
-                : "0 6px 20px rgba(0,0,0,0.3)",
-              transform: "scale(1)",
-              transition: "transform 0.15s ease, box-shadow 0.2s ease",
-            }}
+            title={isPlaying ? "Пауза" : "Воспроизведение"}
           >
             {isPlaying ? (
-              <span style={{ fontSize: 26, lineHeight: 1 }}>⏸</span>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="5" width="4" height="14" rx="1.5" />
+                <rect x="14" y="5" width="4" height="14" rx="1.5" />
+              </svg>
             ) : (
-              <span style={{ fontSize: 28, marginLeft: 4, lineHeight: 1 }}>▶</span>
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: 3 }}>
+                <path d="M7 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L8.5 4.64A1 1 0 0 0 7 5.5z" />
+              </svg>
             )}
           </button>
 
           {/* Next Track */}
           <button
             type="button"
-            className="secondary-button"
+            className="audio-ctrl-btn secondary"
             onClick={handleNext}
             aria-label="Следующее слово"
-            style={{ width: 52, height: 52, borderRadius: "50%", padding: 0 }}
+            title="Следующее слово"
           >
-            <Icon name="arrow" size={20} />
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 4 15 12 5 20 5 4" />
+              <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          {/* Repeat / Loop Mode Toggle */}
+          <button
+            type="button"
+            className={`audio-ctrl-btn aux ${loopMode !== "once" ? "active" : ""}`}
+            onClick={cycleLoopMode}
+            title={`Режим цикла: ${loopMode === "infinite" ? "Бесконечно" : loopMode}`}
+            aria-label="Режим цикла"
+          >
+            {loopMode === "infinite" ? (
+              <span style={{ fontSize: 18, lineHeight: 1 }}>∞</span>
+            ) : (
+              <span>{loopMode}</span>
+            )}
           </button>
         </div>
 
-        {/* Quick Mode Indicator Switcher */}
-        <div style={{ marginTop: 24, display: "flex", justifyContent: "center", gap: 12 }}>
+        {/* High-Contrast Direction Pill Switcher (Fixes invisible flags!) */}
+        <div className="audio-direction-bar">
           <button
             type="button"
-            className="ghost-button compact"
-            style={{ fontSize: 12, opacity: 0.8 }}
-            onClick={() =>
-              setDirection((d) => (d === "native_target" ? "target_native" : "native_target"))
-            }
+            className="audio-direction-pill"
+            onClick={toggleDirection}
+            title="Нажмите, чтобы переключить порядок языков"
           >
-            🔄 Направление: {direction === "native_target" ? "🇷🇺 ➔ 🇩🇪" : "🇩🇪 ➔ 🇷🇺"}
+            {direction === "native_target" && (
+              <>
+                <span className="audio-flag">🇷🇺</span>
+                <span>Русский</span>
+                <span className="audio-arrow-icon">➔</span>
+                <span className="audio-flag">🇩🇪</span>
+                <span>{targetLangLabel}</span>
+              </>
+            )}
+            {direction === "target_native" && (
+              <>
+                <span className="audio-flag">🇩🇪</span>
+                <span>{targetLangLabel}</span>
+                <span className="audio-arrow-icon">➔</span>
+                <span className="audio-flag">🇷🇺</span>
+                <span>Русский</span>
+              </>
+            )}
+            {direction === "target_only" && (
+              <>
+                <span className="audio-flag">🇩🇪</span>
+                <span>Только {targetLangLabel}</span>
+              </>
+            )}
+            <span className="audio-switch-tag">⇄ Сменить</span>
           </button>
         </div>
       </div>
@@ -835,21 +1387,24 @@ export function AudioLoopGame({
         <div
           style={{
             marginTop: 20,
-            padding: 20,
-            borderRadius: 16,
-            background: "rgba(34, 197, 94, 0.1)",
-            border: "1px solid rgba(34, 197, 94, 0.3)",
+            padding: 24,
+            borderRadius: 20,
+            background: "#ffffff",
+            border: "1px solid #bbf7d0",
+            boxShadow: "0 10px 25px -5px rgba(34, 197, 94, 0.15)",
             textAlign: "center",
           }}
         >
-          <h4 style={{ margin: "0 0 8px", color: "#86efac", fontSize: 18 }}>🎉 Список пройден!</h4>
-          <p style={{ margin: "0 0 16px", fontSize: 14, opacity: 0.8 }}>
-            Вы прослушали все {sequence.length} слов модуля.
+          <h4 style={{ margin: "0 0 8px", color: "#16a34a", fontSize: 20, fontWeight: 700 }}>
+            🎉 Список успешно пройден!
+          </h4>
+          <p style={{ margin: "0 0 16px", fontSize: 14, color: "#475569" }}>
+            Вы прослушали все {sequence.length} слов модуля «{currentModule.title}».
           </p>
           <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
             <button
               type="button"
-              className="primary-button compact"
+              className="audio-btn active"
               onClick={() => {
                 setFinished(false);
                 setCurrentIndex(0);
@@ -860,8 +1415,8 @@ export function AudioLoopGame({
               Повторить сначала
             </button>
             {onNextGame && (
-              <button type="button" className="secondary-button compact" onClick={onNextGame}>
-                Следующая активность
+              <button type="button" className="audio-btn" onClick={onNextGame}>
+                Следующая игра
               </button>
             )}
           </div>
@@ -870,7 +1425,7 @@ export function AudioLoopGame({
 
       {/* Rating bar at the bottom */}
       <div style={{ marginTop: 24 }}>
-        <GameRatingBar gameId="audioloop" moduleId={module.id} />
+        <GameRatingBar gameId="audioloop" moduleId={currentModule.id} />
       </div>
     </div>
   );
