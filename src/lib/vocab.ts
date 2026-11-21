@@ -121,7 +121,7 @@ export function parseVocabulary(
 }
 
 export function moduleLevelForId(id: number): string {
-  if (id === 90 || id === 91 || id === 92) return "A0";
+  if ([90, 91, 92, 93, 94].includes(id)) return "A0";
   if ([1, 2, 3, 5, 6, 9, 13, 14, 15].includes(id)) return "A1";
   if ([7, 8, 10, 11, 12, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 32, 33, 34].includes(id)) return "A2";
   if ([4, 23, 27, 28, 30, 31, 200, 201, 202, 203].includes(id)) return "B1";
@@ -166,7 +166,39 @@ export const a0Modules: VocabModule[] = [
       ["wer", "кто", "___ ist das?", "Вопросительное слово о человеке."],
       ["wie", "как", "___ geht's?", "Вопросительное слово об образе действия."],
       ["super", "супер", "Mir geht es ___!", "Отличное настроение."],
-      ["prima", "отлично / здорово", "Das ist einfach ___!", "Замечательно."],
+      ["prima", "отлично / здорово", "Das ist просто ___!", "Замечательно."],
+    ],
+    "A0",
+  ),
+  scenarioModule(
+    93,
+    "Числа 1–10 и счёт",
+    [
+      ["eins", "один", "___, zwei, drei!", "Число 1."],
+      ["zwei", "два", "___ Tassen Kaffee, bitte.", "Число 2."],
+      ["drei", "три", "Aller guten Dinge sind ___.", "Число 3."],
+      ["vier", "четыре", "Das Auto hat ___ Räder.", "Число 4."],
+      ["fünf", "пять", "Noch ___ Minuten.", "Число 5."],
+      ["sechs", "шесть", "Ich habe ___ Bücher.", "Число 6."],
+      ["sieben", "семь", "Es ist ___ Uhr.", "Число 7."],
+      ["acht", "восемь", "Die Arbeit beginnt um ___.", "Число 8."],
+      ["neun", "девять", "Zimmer Nummer ___.", "Число 9."],
+      ["zehn", "десять", "Ich zähle bis ___.", "Число 10."],
+    ],
+    "A0",
+  ),
+  scenarioModule(
+    94,
+    "Семья и цвета",
+    [
+      ["die Familie", "семья", "Das ist meine ___.", "Семья, родные."],
+      ["der Vater", "папа / отец", "Mein ___ heißt Thomas.", "Отец."],
+      ["die Mutter", "мама / мать", "Meine ___ kocht gern.", "Мать."],
+      ["das Kind", "ребёнок", "Das ___ spielt im Garten.", "Ребёнок."],
+      ["rot", "красный", "Der Apfel ist ___.", "Красный цвет."],
+      ["blau", "синий / голубой", "Der Himmel ist ___.", "Синий цвет."],
+      ["grün", "зелёный", "Das Gras ist ___.", "Зелёный цвет."],
+      ["schön", "красиво / прекрасно", "Das ist sehr ___!", "Красивый, прекрасный."],
     ],
     "A0",
   ),

@@ -684,11 +684,23 @@ function WorkspaceApp({
   useEffect(() => {
     const currentScreen = screenFromHash();
     if (currentScreen !== screen) return;
-    const query = window.location.hash.split("?").slice(1).join("?");
+    let query = window.location.hash.split("?").slice(1).join("?");
+    if (!query) {
+      if (screen === "path" && activeSpace.level) {
+        query = `level=${activeSpace.level}`;
+      } else if (screen === "games" && preferredGameModuleId) {
+        query = `module=${preferredGameModuleId}`;
+      } else if (screen === "library") {
+        try {
+          const savedMod = localStorage.getItem("clickling-last-library-module");
+          if (savedMod) query = `module=${savedMod}`;
+        } catch {}
+      }
+    }
     const route = `#/${screen}${query ? `?${query}` : ""}`;
     if (window.location.hash !== route)
       window.history.replaceState(window.history.state, "", route);
-  }, [screen]);
+  }, [screen, activeSpace.level, preferredGameModuleId]);
 
   useEffect(() => {
     if (user && (!preferences.name || preferences.name === "Анна" || preferences.name === "Ученик"))
@@ -891,10 +903,16 @@ function WorkspaceApp({
     );
     return priorityCards.length >= 3 ? priorityCards.slice(0, 8) : allCardsInModules.slice(0, 8);
   }, [activeCourseUnit, orderedModules]);
-  const canManageContent = user ? Boolean(user.permissions?.manageContent) : !guestMode;
-  const canManageSpeechProviders = import.meta.env.DEV || user?.role === "owner";
+  const canManageContent =
+    user?.role === "owner" ||
+    user?.role === "admin" ||
+    Boolean(user?.permissions?.manageContent) ||
+    (!user && !guestMode);
+  const canManageSpeechProviders = import.meta.env.DEV || user?.role === "owner" || user?.role === "admin";
   const canManageUsers =
-    user?.role === "owner" || (user?.role === "admin" && Boolean(user?.permissions?.manageUsers));
+    user?.role === "owner" ||
+    user?.role === "admin" ||
+    Boolean(user?.permissions?.manageUsers);
   const isScreenPermitted = isScreenAllowed(
     screen,
     user,
@@ -1150,6 +1168,9 @@ function WorkspaceApp({
   };
 
   const selectCourseLevel = (level: CourseLevel) => {
+    try {
+      localStorage.setItem("clickling-last-course-level", level);
+    } catch {}
     const exact = spaces.find((space) => space.languageCode === "de" && space.level === level);
     const legacyA1 =
       level === "A1" ? spaces.find((space) => space.id === defaultSpace.id) : undefined;
@@ -1163,7 +1184,66 @@ function WorkspaceApp({
       setActiveSpaceId(next.id);
     }
     setScreen("path");
+    const targetRoute = `#/path?level=${level}`;
+    if (window.location.hash !== targetRoute) {
+      window.history.replaceState(window.history.state, "", targetRoute);
+    }
   };
+
+  useEffect(() => {
+    const handleRouteLevelAndModule = () => {
+      const current = screenFromHash();
+      const params = new URLSearchParams(window.location.hash.split("?").slice(1).join("?"));
+      if (current === "path") {
+        const levelParam = params.get("level") as CourseLevel | null;
+        const validLevels: CourseLevel[] = ["A0", "A1", "A2", "B1", "B2", "C1"];
+        if (levelParam && validLevels.includes(levelParam)) {
+          if (activeSpace.level !== levelParam) {
+            selectCourseLevel(levelParam);
+          }
+        } else {
+          try {
+            const saved = localStorage.getItem("clickling-last-course-level") as CourseLevel | null;
+            if (saved && validLevels.includes(saved)) {
+              if (activeSpace.level !== saved) {
+                selectCourseLevel(saved);
+              } else {
+                const targetRoute = `#/path?level=${saved}`;
+                if (window.location.hash !== targetRoute) {
+                  window.history.replaceState(window.history.state, "", targetRoute);
+                }
+              }
+            } else if (activeSpace.level) {
+              const targetRoute = `#/path?level=${activeSpace.level}`;
+              if (window.location.hash !== targetRoute) {
+                window.history.replaceState(window.history.state, "", targetRoute);
+              }
+            }
+          } catch {}
+        }
+      } else if (current === "games") {
+        const moduleParam = Number(params.get("module"));
+        if (moduleParam && moduleParam !== preferredGameModuleId) {
+          setPreferredGameModuleId(moduleParam);
+        } else if (!moduleParam && !params.has("template") && !params.has("activity") && !params.has("audio")) {
+          try {
+            const savedModule = localStorage.getItem("clickling-last-games-module");
+            const mod = savedModule ? Number(savedModule) : (preferredGameModuleId || 1);
+            if (mod) {
+              setPreferredGameModuleId(mod);
+              const targetRoute = `#/games?module=${mod}`;
+              if (window.location.hash !== targetRoute) {
+                window.history.replaceState(window.history.state, "", targetRoute);
+              }
+            }
+          } catch {}
+        }
+      }
+    };
+    handleRouteLevelAndModule();
+    window.addEventListener("hashchange", handleRouteLevelAndModule);
+    return () => window.removeEventListener("hashchange", handleRouteLevelAndModule);
+  }, [activeSpace.level, preferredGameModuleId]);
 
   const startCourseUnit = async (unit: CourseUnit) => {
     if (guestMode) {
@@ -2397,7 +2477,7 @@ function WorkspaceApp({
             />
           </Suspense>
         )}
-        {screen === "analytics" && user?.role === "owner" && (
+        {screen === "analytics" && canManageUsers && (
           <Suspense fallback={<div className="lazy-section-loading">Загружаю аналитику…</div>}>
             <AdminAnalyticsScreen />
           </Suspense>
@@ -2665,7 +2745,11 @@ const sessionBootstrapCacheKey = "clickling-session-bootstrap-v1";
 const sessionBootstrapCacheTtlMs = 12 * 60 * 60 * 1000;
 type SessionBootstrapCache =
   | { kind: "guest"; savedAt: number; guestPrompt: boolean }
-  | { kind: "user"; savedAt: number; user: Pick<AccountUser, "id" | "name" | "email" | "image"> };
+  | {
+      kind: "user";
+      savedAt: number;
+      user: Pick<AccountUser, "id" | "name" | "email" | "image" | "role" | "permissions">;
+    };
 
 function readSessionBootstrapCache(): SessionBootstrapCache | null {
   try {
@@ -2703,7 +2787,10 @@ function readSessionBootstrapCache(): SessionBootstrapCache | null {
 function saveSessionBootstrapCache(
   cache:
     | { kind: "guest"; guestPrompt: boolean }
-    | { kind: "user"; user: Pick<AccountUser, "id" | "name" | "email" | "image"> },
+    | {
+        kind: "user";
+        user: Pick<AccountUser, "id" | "name" | "email" | "image" | "role" | "permissions">;
+      },
 ) {
   try {
     window.sessionStorage.setItem(
@@ -2811,6 +2898,8 @@ function AppContent() {
               name: sessionUser.name,
               email: sessionUser.email,
               image: sessionUser.image,
+              role: sessionUser.role,
+              permissions: sessionUser.permissions,
             },
           });
           const profilePromise = fetch("/api/profile", {
@@ -2832,9 +2921,22 @@ function AppContent() {
                 "role" | "permissions" | "isPro" | "proStartsAt" | "proEndsAt"
               >;
               if (alive)
-                setUser((current) =>
-                  current?.id === sessionUser.id ? { ...current, ...profile } : current,
-                );
+                setUser((current) => {
+                  if (current?.id !== sessionUser.id) return current;
+                  const merged = { ...current, ...profile };
+                  saveSessionBootstrapCache({
+                    kind: "user",
+                    user: {
+                      id: merged.id,
+                      name: merged.name,
+                      email: merged.email,
+                      image: merged.image,
+                      role: merged.role,
+                      permissions: merged.permissions,
+                    },
+                  });
+                  return merged;
+                });
             })
             .catch(reportBootstrapSyncError);
         } else if (alive) {
@@ -3891,7 +3993,43 @@ function Library({
   const [search, setSearch] = useState("");
   const [openMenu, setOpenMenu] = useState<number | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "learned">("all");
-  const [selectedModuleId, setSelectedModuleId] = useState<number | "all">("all");
+  const [selectedModuleId, setSelectedModuleId] = useState<number | "all">(() => {
+    const params = new URLSearchParams(window.location.hash.split("?").slice(1).join("?"));
+    const modParam = Number(params.get("module"));
+    if (modParam && !Number.isNaN(modParam) && modules.some((m) => m.id === modParam)) {
+      return modParam;
+    }
+    try {
+      const saved = Number(localStorage.getItem("clickling-last-library-module"));
+      if (saved && !Number.isNaN(saved) && modules.some((m) => m.id === saved)) {
+        return saved;
+      }
+    } catch {}
+    return "all";
+  });
+
+  useEffect(() => {
+    if (selectedModuleId !== "all") {
+      try {
+        localStorage.setItem("clickling-last-library-module", String(selectedModuleId));
+      } catch {}
+      const targetRoute = `#/library?module=${selectedModuleId}`;
+      if (window.location.hash !== targetRoute) {
+        window.history.replaceState(window.history.state, "", targetRoute);
+      }
+      const el =
+        document.getElementById(`library-module-${selectedModuleId}`) ||
+        document.querySelector(".module-detail-view");
+      if (el) {
+        el.scrollIntoView({ behavior: "instant", block: "start" });
+      }
+    } else {
+      const hash = window.location.hash.replace(/^#\/?/, "");
+      if (hash.startsWith("library")) {
+        window.history.replaceState(window.history.state, "", "#/library");
+      }
+    }
+  }, [selectedModuleId]);
   const [cardSearch, setCardSearch] = useState("");
   const [sortBy, setSortBy] = useState<"manual" | "module" | "title" | "cards" | "progress">(
     "manual",
@@ -3967,7 +4105,7 @@ function Library({
   const changePage = (next: number) => {
     setPage(Math.max(1, Math.min(next, pageCount)));
     setOpenMenu(null);
-    libraryTop.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    libraryTop.current?.scrollIntoView({ behavior: "instant", block: "start" });
   };
   return (
     <div className="page library-page" ref={libraryTop}>

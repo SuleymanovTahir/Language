@@ -520,8 +520,24 @@ export function GameHub({
   onAudioQuizzesChange: React.Dispatch<React.SetStateAction<AudioQuiz[]>>;
   canManageContent?: boolean;
 }) {
-  const preferred = modules.find((module) => module.id === 1) ?? modules[0];
-  const [moduleId, setModuleId] = useState(preferred?.id ?? 0);
+  const [moduleId, setModuleId] = useState(() => {
+    if (preferredModuleId !== null && modules.some((module) => module.id === preferredModuleId)) {
+      return preferredModuleId;
+    }
+    const params = new URLSearchParams(window.location.hash.split("?").slice(1).join("?"));
+    const modParam = Number(params.get("module"));
+    if (modParam && modules.some((module) => module.id === modParam)) {
+      return modParam;
+    }
+    try {
+      const saved = Number(localStorage.getItem("clickling-last-games-module"));
+      if (saved && modules.some((module) => module.id === saved)) {
+        return saved;
+      }
+    } catch {}
+    const preferred = modules.find((module) => module.id === 1) ?? modules[0];
+    return preferred?.id ?? 0;
+  });
   const [notice, setNotice] = useState("");
   const [activeTab, setActiveTab] = useState<"games" | "grammar">("games");
   const [gameFilter, setGameFilter] = useState<
@@ -552,7 +568,9 @@ export function GameHub({
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [activityTitle, setActivityTitle] = useState("");
   const [activityGame, setActivityGame] = useState<GameId>("pairs");
-  const [builderModuleId, setBuilderModuleId] = useState<number>(preferred?.id ?? 0);
+  const [builderModuleId, setBuilderModuleId] = useState<number>(
+    preferredModuleId ?? modules[0]?.id ?? 0,
+  );
   const [activityCards, setActivityCards] = useState<VocabCard[]>([]);
   const [cardPreset, setCardPreset] = useState<"all" | "pronoun" | "noun" | "verb">("all");
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
@@ -614,6 +632,26 @@ export function GameHub({
     if (preferredModuleId !== null && modules.some((module) => module.id === preferredModuleId))
       setModuleId(preferredModuleId);
   }, [preferredModuleId]);
+  useEffect(() => {
+    if (moduleId) {
+      try {
+        localStorage.setItem("clickling-last-games-module", String(moduleId));
+      } catch {}
+      const hash = window.location.hash.replace(/^#\/?/, "");
+      const params = new URLSearchParams(hash.split("?").slice(1).join("?"));
+      if (
+        hash.startsWith("games") &&
+        !params.has("template") &&
+        !params.has("activity") &&
+        !params.has("audio")
+      ) {
+        const targetRoute = `#/games?module=${moduleId}`;
+        if (window.location.hash !== targetRoute) {
+          window.history.replaceState(window.history.state, "", targetRoute);
+        }
+      }
+    }
+  }, [moduleId]);
   useEffect(() => {
     if (!modules.some((module) => module.id === moduleId)) setModuleId(modules[0]?.id ?? 0);
   }, [modules, moduleId]);

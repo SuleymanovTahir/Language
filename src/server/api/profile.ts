@@ -7,8 +7,8 @@ const json = (data: unknown, status = 200) =>
   });
 const defaultPermissions = (role: string) => ({
   manageContent: role === "owner" || role === "admin",
-  manageUsers: role === "owner",
-  viewAnalytics: role === "owner",
+  manageUsers: role === "owner" || role === "admin",
+  viewAnalytics: role === "owner" || role === "admin",
   manageSettings: role === "owner",
 });
 
@@ -32,10 +32,10 @@ export async function GET(request: Request) {
       : {};
   const permissions = { ...defaultPermissions(role), ...rawPerms };
   permissions.manageContent = role === "owner" || role === "admin";
-  permissions.manageUsers = role === "owner" || (role === "admin" && Boolean(rawPerms.manageUsers));
+  permissions.manageUsers = role === "owner" || role === "admin" || Boolean(rawPerms.manageUsers);
   permissions.manageSettings = role === "owner";
   permissions.viewAnalytics =
-    role === "owner" || (role === "admin" && Boolean(rawPerms.viewAnalytics));
+    role === "owner" || role === "admin" || Boolean(rawPerms.viewAnalytics);
   const entitlement = await pool.query(
     `SELECT status,starts_at,ends_at,source FROM (
     SELECT status,starts_at,ends_at,'manual_grant'::text AS source FROM linguaplay_user_entitlements WHERE user_id=$1

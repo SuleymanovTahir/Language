@@ -110,6 +110,20 @@ export function CoursePath({
     B2: "Уверенная аргументация по широкому кругу тем.",
     C1: "Точность и гибкость в учёбе, работе и обществе.",
   };
+
+  useEffect(() => {
+    // Instant snap to level without visible scroll
+    const scrollTarget = () => {
+      const el = document.getElementById(`course-level-${selectedLevel}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "instant", block: "start" });
+      }
+    };
+    scrollTarget();
+    const frame = requestAnimationFrame(scrollTarget);
+    return () => cancelAnimationFrame(frame);
+  }, [selectedLevel]);
+
   return (
     <div className="page course-home">
       <div className="page-heading">
@@ -131,7 +145,7 @@ export function CoursePath({
                 onChooseLevel(item);
                 document
                   .getElementById(`course-level-${item}`)
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  ?.scrollIntoView({ behavior: "instant", block: "start" });
               }}
             >
               {item}
@@ -146,7 +160,7 @@ export function CoursePath({
               onChooseLevel(event.target.value as CourseLevel);
               document
                 .getElementById(`course-level-${event.target.value}`)
-                ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                ?.scrollIntoView({ behavior: "instant", block: "start" });
             }}
           >
             {levels.map((item) => (

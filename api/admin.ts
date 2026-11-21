@@ -23,8 +23,8 @@ const ENERGY_REFILL_MINUTES = Number.isInteger(configuredEnergyRefill)
 type Permission = (typeof flags)[number];
 const defaults = (role: string): Record<Permission, boolean> => ({
   manageContent: ["owner", "admin"].includes(role),
-  manageUsers: role === "owner",
-  viewAnalytics: role === "owner",
+  manageUsers: ["owner", "admin"].includes(role),
+  viewAnalytics: ["owner", "admin"].includes(role),
   manageSettings: role === "owner",
 });
 const text = (value: unknown, max = 300) =>
@@ -49,10 +49,10 @@ async function actorFor(request: Request) {
   const rawPerms = parseJson(row?.permissions);
   const permissions = { ...defaults(role), ...rawPerms } as Record<Permission, boolean>;
   permissions.manageContent = ["owner", "admin"].includes(role);
-  permissions.manageUsers = role === "owner" || (role === "admin" && Boolean(rawPerms.manageUsers));
+  permissions.manageUsers = ["owner", "admin"].includes(role) || Boolean(rawPerms.manageUsers);
   permissions.manageSettings = role === "owner";
   permissions.viewAnalytics =
-    role === "owner" || (role === "admin" && Boolean(rawPerms.viewAnalytics));
+    ["owner", "admin"].includes(role) || Boolean(rawPerms.viewAnalytics);
   return { user: session.user, role, permissions };
 }
 

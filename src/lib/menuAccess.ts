@@ -82,8 +82,8 @@ export function isScreenAllowed(
 ): boolean {
   if (targetScreen === "404") return true;
 
-  // Owners and admin users with user management permissions see all
-  if (canManageUsers) return true;
+  // Owners and admin users see all
+  if (canManageUsers || user?.role === "owner" || user?.role === "admin") return true;
 
   // 1. Staff-only sections
   if (config.staffOnlySections.includes(targetScreen)) {
