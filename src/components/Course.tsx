@@ -74,14 +74,14 @@ export function CoursePath({
   const units = courseUnitsForLevel(selectedLevel);
   const demoUnit = GERMAN_COURSE.find((item) => item.id === "a0-01") ?? GERMAN_COURSE.find((item) => item.id === "a1-01") ?? GERMAN_COURSE[0];
   const goalRecommendations: Record<string, string[]> = {
-    "Повседневная жизнь": ["a1-04", "a1-05", "a1-06", "a2-02", "a2-03", "a2-07"],
-    Переезд: ["a1-02", "a1-06", "a1-07", "a2-02", "b1-03", "b1-07"],
-    Работа: ["a1-02", "a2-04", "b1-03", "b1-07", "b2-03", "c1-03"],
+    "Повседневная жизнь": ["a0-01", "a0-02", "a0-06", "a1-04", "a1-05", "a1-06", "a2-02", "a2-03", "a2-07"],
+    Переезд: ["a0-01", "a0-08", "a1-02", "a1-06", "a1-07", "a2-02", "b1-03", "b1-07"],
+    Работа: ["a0-08", "a1-02", "a2-04", "b1-03", "b1-07", "b2-03", "c1-03"],
     IT: ["b1-04", "b2-05", "c1-01", "c1-06"],
     Учёба: ["a2-04", "b1-06", "b2-05", "c1-01", "c1-04"],
-    Экзамен: ["a1-08", "a2-08", "b1-08", "b2-07", "c1-06"],
-    Путешествия: ["a1-05", "a1-06", "a2-05", "a2-08"],
-    "Для себя": ["a1-01", "a1-03", "a1-04"],
+    Экзамен: ["a0-08", "a1-08", "a2-08", "b1-08", "b2-07", "c1-06"],
+    Путешествия: ["a0-01", "a0-02", "a0-08", "a1-05", "a1-06", "a2-05", "a2-08"],
+    "Для себя": ["a0-01", "a0-02", "a0-03", "a1-01", "a1-03", "a1-04"],
   };
   const recommendedIds = new Set(goals.flatMap((goal) => goalRecommendations[goal] ?? []));
   const completed = units.filter((item) => progress[item.id]?.completedAt).length;

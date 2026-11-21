@@ -108,6 +108,206 @@ export const COURSE_QUIZZES: Record<string, UnitQuizQuestion[]> = {
       explanation: "С местоимением *du* глагол sein принимает форму *bist* (*du bist*).",
     },
   ],
+  "a0-04": [
+    {
+      question: "Как сказать по-немецки число 3?",
+      options: ["drei", "zwei", "vier", "eins"],
+      answer: 0,
+      explanation: "*drei* — число 3 в немецком языке (*eins, zwei, drei*).",
+    },
+    {
+      question: "Переведите фразу заказа: «Zwei Kaffee, bitte.»",
+      options: [
+        "Два кофе, пожалуйста.",
+        "Три чая, спасибо.",
+        "Один кофе, пожалуйста.",
+        "Четыре напитка.",
+      ],
+      answer: 0,
+      explanation: "*Zwei* — два, *Kaffee* — кофе, *bitte* — пожалуйста.",
+    },
+    {
+      question: "Что означает вопрос: «Wie viel kostet das?»",
+      options: [
+        "Сколько это стоит?",
+        "Где это находится?",
+        "Кто это продает?",
+        "Когда это будет?",
+      ],
+      answer: 0,
+      explanation: "*Wie viel* — «сколько», *kostet* — «стоит». Вопрос о цене.",
+    },
+    {
+      question: "Какое число следует за «vier» (4)?",
+      options: ["fünf (5)", "drei (3)", "sechs (6)", "zwei (2)"],
+      answer: 0,
+      explanation: "Счёт по порядку: *eins (1), zwei (2), drei (3), vier (4), fünf (5)*.",
+    },
+    {
+      question: "Как переводится немецкое слово «eins»?",
+      options: ["один", "два", "три", "пять"],
+      answer: 0,
+      explanation: "*eins* — число 1.",
+    },
+  ],
+  "a0-05": [
+    {
+      question: "Какой артикль имеет слово «Brot» (хлеб)?",
+      options: ["das (das Brot)", "der (der Brot)", "die (die Brot)", "den"],
+      answer: 0,
+      explanation: "Слово *das Brot* в немецком среднего рода.",
+    },
+    {
+      question: "Как переводится популярное слово «lecker»?",
+      options: ["вкусный / аппетитный", "дорогой", "горячий", "свежий"],
+      answer: 0,
+      explanation: "*lecker* переводится как «вкусный». *Das ist lecker* — «Это вкусно».",
+    },
+    {
+      question: "Какое слово означает «сыр» в немецком языке?",
+      options: ["der Käse", "das Brot", "die Milch", "der Apfel"],
+      answer: 0,
+      explanation: "*der Käse* — сыр (мужской род).",
+    },
+    {
+      question: "Что означает предложение: «Ich esse einen Apfel.»?",
+      options: [
+        "Я ем яблоко.",
+        "Я покупаю хлеб.",
+        "Я пью молоко.",
+        "Я люблю сыр.",
+      ],
+      answer: 0,
+      explanation: "*essen* — есть/кушать, *der Apfel* — яблоко.",
+    },
+    {
+      question: "Какого рода слово «die Milch» (молоко)?",
+      options: ["Женского (die)", "Мужского (der)", "Среднего (das)", "Не имеет рода"],
+      answer: 0,
+      explanation: "*die Milch* в немецком языке женского рода (*die*).",
+    },
+  ],
+  "a0-06": [
+    {
+      question: "Как пожелать доброго утра по-немецки?",
+      options: ["Guten Morgen!", "Guten Abend!", "Gute Nacht!", "Guten Tag!"],
+      answer: 0,
+      explanation: "*Guten Morgen!* — приветствие утром до полудня.",
+    },
+    {
+      question: "Почему перед сном говорят «Gute Nacht», а не «Guten Nacht»?",
+      options: [
+        "Слово Nacht женского рода (die Nacht)",
+        "Слово Nacht мужского рода",
+        "Это исключение без правила",
+        "Потому что это вопрос",
+      ],
+      answer: 0,
+      explanation: "*die Nacht* женского рода, поэтому окончание *-e*: *Gute Nacht!*",
+    },
+    {
+      question: "Что означает слово «heute»?",
+      options: ["сегодня", "вчера", "завтра", "всегда"],
+      answer: 0,
+      explanation: "*heute* переводится как «сегодня». *Heute ist gut* — «Сегодня всё хорошо».",
+    },
+    {
+      question: "Как переводится вечернее приветствие: «Guten Abend!»?",
+      options: ["Добрый вечер!", "Доброе утро!", "Добрый день!", "Спокойной ночи!"],
+      answer: 0,
+      explanation: "*der Abend* — вечер, *Guten Abend!* — «Добрый вечер!».",
+    },
+    {
+      question: "В какое время суток уместно сказать «Guten Tag!»?",
+      options: [
+        "Днем (в течение дня)",
+        "Только глубокой ночью",
+        "Только на рассвете",
+        "Перед сном",
+      ],
+      answer: 0,
+      explanation: "*Guten Tag!* — универсальное дневное приветствие.",
+    },
+  ],
+  "a0-07": [
+    {
+      question: "Как сказать «моя мама» по-немецки?",
+      options: ["meine Mutter", "mein Mutter", "meinen Mutter", "meines Mutter"],
+      answer: 0,
+      explanation: "Слова женского рода требуют окончания *-e*: *meine Mutter*.",
+    },
+    {
+      question: "Как сказать «мой папа» по-немецки?",
+      options: ["mein Vater", "meine Vater", "meiner Vater", "meinen Vater"],
+      answer: 0,
+      explanation: "Слова мужского рода в именительном падеже: *mein Vater*.",
+    },
+    {
+      question: "Что означает слово «das Kind»?",
+      options: ["ребёнок", "брат", "сестра", "родитель"],
+      answer: 0,
+      explanation: "*das Kind* — ребёнок (средний род). Во множественном числе: *die Kinder*.",
+    },
+    {
+      question: "Переведите фразу: «Das ist meine Familie.»",
+      options: [
+        "Это моя семья.",
+        "Где моя семья?",
+        "Моя семья большая.",
+        "Я люблю семью.",
+      ],
+      answer: 0,
+      explanation: "*Das ist* — «Это есть», *meine Familie* — «моя семья».",
+    },
+    {
+      question: "Какое притяжательное слово означает «твой» для мужского рода?",
+      options: ["dein", "deine", "mein", "meine"],
+      answer: 0,
+      explanation: "*dein* — «твой» (для мужского и среднего рода). *deine* — для женского.",
+    },
+  ],
+  "a0-08": [
+    {
+      question: "Переведите фразу: «Ich spreche ein bisschen Deutsch.»",
+      options: [
+        "Я говорю немного по-немецки.",
+        "Я учу немецкий в школе.",
+        "Я свободно говорю по-немецки.",
+        "Я не говорю по-немецки.",
+      ],
+      answer: 0,
+      explanation: "*sprechen* — говорить, *ein bisschen* — немного, *Deutsch* — немецкий.",
+    },
+    {
+      question: "Как сказать собеседнику «Я не понимаю»?",
+      options: ["Ich verstehe nicht.", "Ich spreche nicht.", "Ich komme nicht.", "Ich bin nicht."],
+      answer: 0,
+      explanation: "*verstehen* — понимать, отрицание *nicht* ставится в конце: *Ich verstehe nicht*.",
+    },
+    {
+      question: "Как переводится словосочетание «ein bisschen»?",
+      options: ["чуть-чуть / немного", "очень много", "никогда", "совсем нет"],
+      answer: 0,
+      explanation: "*ein bisschen* означает «немного / чуть-чуть».",
+    },
+    {
+      question: "Как вежливо спросить: «Вы говорите по-немецки?»",
+      options: [
+        "Sprechen Sie Deutsch?",
+        "Sprichst du Deutsch?",
+        "Verstehen Sie Englisch?",
+        "Bist du Deutsch?",
+      ],
+      answer: 0,
+      explanation: "Вежливая форма с *Sie*: *Sprechen Sie Deutsch?*",
+    },
+    {
+      question: "Что означает слово «auch» в предложении «Ich lerne auch Deutsch»?",
+      options: ["тоже / также", "только", "уже", "еще"],
+      answer: 0,
+      explanation: "*auch* переводится как «тоже / также».",
+    },
+  ],
   "a1-01": [
     {
       question: "Как переводится глагол «говорить» на немецкий язык?",
