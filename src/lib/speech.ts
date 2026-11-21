@@ -125,9 +125,12 @@ function stopCurrentAudio() {
 export function stopAllSpeech() {
   stopCurrentAudio();
   if (typeof window !== "undefined") {
-    window.speechSynthesis?.cancel();
+    try { window.speechSynthesis?.cancel(); } catch {}
   }
 }
+
+// Global flag to serialise device-voice calls so they never overlap
+let deviceVoiceResolve: (() => void) | null = null;
 
 function speakOnDevice(text: string, lang: string, slow: boolean, settings: SpeechSettings) {
   if (!("speechSynthesis" in window)) return false;
@@ -292,7 +295,11 @@ export function speakTextAsync(
       resolve();
       return;
     }
+
+    // ── Stop everything currently playing FIRST, then speak ──
     stopCurrentAudio();
+    try { window.speechSynthesis?.cancel(); } catch {}
+
     const settings = override ?? readSpeechSettings();
     if (settings.enabled === false || settings.provider === "none") {
       resolve();
@@ -302,16 +309,15 @@ export function speakTextAsync(
     const rate = Math.max(0.55, Math.min(1.1, settings.rate * (slow ? 0.76 : 1)));
     const requestId = ++audioRequestId;
     let finished = false;
+
     const finish = () => {
       if (finished) return;
       finished = true;
-      if (requestId === audioRequestId) {
-        stopCurrentAudio();
-      }
       resolve();
     };
 
-    const maxDurationMs = Math.max(3000, text.length * 250 + 2000);
+    // Safety timeout: if speech engine never fires onend, resolve anyway
+    const maxDurationMs = Math.max(4000, text.length * 300 + 2500);
     const fallbackTimer = window.setTimeout(finish, maxDurationMs);
 
     const done = () => {
@@ -319,115 +325,89 @@ export function speakTextAsync(
       finish();
     };
 
-    const fallbackDevice = () => {
-      if (!("speechSynthesis" in window)) {
-        done();
-        return;
-      }
+    // ── Device voice (SpeechSynthesis) ───────────────────────
+    const speakOnDeviceAsync = () => {
+      if (!("speechSynthesis" in window)) { done(); return; }
+
       const normalizedLocale = speechLocaleForCode(lang);
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = normalizedLocale;
       utterance.rate = rate;
+
       const language = normalizedLocale.toLowerCase().split("-")[0];
       const voices = window.speechSynthesis.getVoices();
       const matchingVoices = voices.filter(
-        (voice) =>
-          voice.lang.toLowerCase() === normalizedLocale.toLowerCase() ||
-          voice.lang.toLowerCase().replace("_", "-").startsWith(`${language}-`),
+        (v) =>
+          v.lang.toLowerCase() === normalizedLocale.toLowerCase() ||
+          v.lang.toLowerCase().replace("_", "-").startsWith(`${language}-`),
       );
-      const selected = matchingVoices.find((voice) => voice.voiceURI === settings.voice);
+      const selected = matchingVoices.find((v) => v.voiceURI === settings.voice);
       utterance.voice = selected ?? matchingVoices[0] ?? null;
+
       utterance.onend = done;
-      utterance.onerror = () => {
-        done();
-      };
+      utterance.onerror = () => done();
+
       try {
-        if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-          window.speechSynthesis.cancel();
-        }
-        window.speechSynthesis.resume?.();
-        window.speechSynthesis.speak(utterance);
-      } catch {
-        done();
-      }
+        // Ensure synthesis queue is fully empty before enqueueing new utterance
+        window.speechSynthesis.cancel();
+        // Small defer so cancel fully propagates before speak() is called
+        window.setTimeout(() => {
+          if (requestId !== audioRequestId) { done(); return; }
+          try {
+            window.speechSynthesis.resume?.();
+            window.speechSynthesis.speak(utterance);
+          } catch { done(); }
+        }, 60);
+      } catch { done(); }
     };
 
+    // ── Audio element (cloud TTS blob) ───────────────────────
     const playWithAudioElement = (blob: Blob) => {
-      if (requestId !== audioRequestId) {
-        done();
-        return;
-      }
+      if (requestId !== audioRequestId) { done(); return; }
       activeAudioUrl = URL.createObjectURL(blob);
       activeAudio = new Audio(activeAudioUrl);
-      activeAudio.onended = () => {
-        stopCurrentAudio();
-        done();
-      };
-      activeAudio.onerror = () => {
-        stopCurrentAudio();
-        if (requestId === audioRequestId) {
-          fallbackDevice();
-        } else {
-          done();
-        }
-      };
-      activeAudio.play().catch(() => {
-        stopCurrentAudio();
-        if (requestId === audioRequestId) {
-          fallbackDevice();
-        } else {
-          done();
-        }
-      });
+      activeAudio.onended = () => { stopCurrentAudio(); done(); };
+      activeAudio.onerror = () => { stopCurrentAudio(); speakOnDeviceAsync(); };
+      activeAudio.play().catch(() => { stopCurrentAudio(); speakOnDeviceAsync(); });
     };
 
-    // User requirement: "для русских слов пусть использует бесплатный голос устройства"
+    // ── Route: Russian words always use device voice ──────────
     const isRussian =
       lang.toLowerCase().startsWith("ru") || detectSpeechLanguage(text) === "ru-RU";
     if (isRussian || settings.provider === "device") {
-      fallbackDevice();
+      speakOnDeviceAsync();
       return;
     }
 
     const normalizedLocale = speechLocaleForCode(lang);
     const language = normalizedLocale.toLowerCase().split("-")[0];
+
     if (settings.provider === "kokoro") {
-      if (!defaultVoiceFor("kokoro", lang) && !settings.voice) {
-        fallbackDevice();
-        return;
-      }
+      if (!defaultVoiceFor("kokoro", lang) && !settings.voice) { speakOnDeviceAsync(); return; }
       synthesizeWithKokoro(text, lang, voiceFor("kokoro", settings.voice, lang), rate)
         .then((blob) => playWithAudioElement(blob))
-        .catch(() => fallbackDevice());
+        .catch(() => speakOnDeviceAsync());
       return;
     }
 
-    const endpoint = "/api/tts";
     const voice = voiceFor(settings.provider, settings.voice || "", language);
-    if (!voice) {
-      fallbackDevice();
-      return;
-    }
-    fetch(endpoint, {
+    if (!voice) { speakOnDeviceAsync(); return; }
+
+    fetch("/api/tts", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: settings.provider, text, voice, rate }),
     })
       .then(async (response) => {
-        if (!response.ok) throw new Error("Cloud speech is unavailable");
-        const contentType = response.headers.get("content-type") || "";
-        if (!contentType.includes("audio")) {
-          throw new Error("Cloud speech returned non-audio response");
-        }
+        if (!response.ok) throw new Error("Cloud speech unavailable");
+        const ct = response.headers.get("content-type") || "";
+        if (!ct.includes("audio")) throw new Error("Non-audio response");
         playWithAudioElement(await response.blob());
       })
       .catch(() => {
-        if (requestId === audioRequestId) {
-          fallbackDevice();
-        } else {
-          done();
-        }
+        if (requestId === audioRequestId) speakOnDeviceAsync();
+        else done();
       });
   });
 }

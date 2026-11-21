@@ -325,13 +325,17 @@ export function AudioLoopGame({
         setPhase("speaking_prompt");
         if (!isMuted && firstText) {
           await speakTextAsync(firstText, firstLang, spd < 0.85, speechOverride);
+        } else if (!firstText) {
+          // nothing to speak
         }
         if (isCancelled || !stateRef.current.isPlaying) break;
 
-        // STEP 2: Pause for natural audio recall / assimilation
+        // STEP 2: Pause BETWEEN first and second word (critical!)
         if (secondText) {
           setPhase("waiting_recall");
-          const ok = await sleep(pPrompt * 1000, () => isCancelled || !stateRef.current.isPlaying);
+          // Always pause at least 400ms even when pPrompt is 0, so words don't overlap
+          const pauseMs = Math.max(400, pPrompt * 1000);
+          const ok = await sleep(pauseMs, () => isCancelled || !stateRef.current.isPlaying);
           if (!ok) break;
 
           // STEP 3: Speak answer (Second Item)
@@ -1272,13 +1276,7 @@ export function AudioLoopGame({
             title={shuffle ? "Случайный порядок включен" : "Включить случайный порядок"}
             aria-label="Случайный порядок"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 3h5v5" />
-              <path d="M4 20L21 3" />
-              <path d="M21 16v5h-5" />
-              <path d="M15 15l6 6" />
-              <path d="M4 4l5 5" />
-            </svg>
+            <Icon name="refresh" size={17} />
           </button>
 
           {/* Previous Track */}
@@ -1289,10 +1287,7 @@ export function AudioLoopGame({
             aria-label="Предыдущее слово"
             title="Предыдущее слово"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="19 20 9 12 19 4 19 20" />
-              <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
+            <Icon name="arrowLeft" size={20} />
           </button>
 
           {/* Big Play / Pause Button with SVG */}
@@ -1304,13 +1299,13 @@ export function AudioLoopGame({
             title={isPlaying ? "Пауза" : "Воспроизведение"}
           >
             {isPlaying ? (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="5" width="4" height="14" rx="1.5" />
-                <rect x="14" y="5" width="4" height="14" rx="1.5" />
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" rx="1" />
+                <rect x="14" y="4" width="4" height="16" rx="1" />
               </svg>
             ) : (
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: 3 }}>
-                <path d="M7 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L8.5 4.64A1 1 0 0 0 7 5.5z" />
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: 3 }}>
+                <path d="M8 5v14l11-7z" />
               </svg>
             )}
           </button>
@@ -1323,10 +1318,7 @@ export function AudioLoopGame({
             aria-label="Следующее слово"
             title="Следующее слово"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="5 4 15 12 5 20 5 4" />
-              <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
+            <Icon name="arrow" size={20} />
           </button>
 
           {/* Repeat / Loop Mode Toggle */}
@@ -1340,7 +1332,7 @@ export function AudioLoopGame({
             {loopMode === "infinite" ? (
               <span style={{ fontSize: 18, lineHeight: 1 }}>∞</span>
             ) : (
-              <span>{loopMode}</span>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{loopMode}</span>
             )}
           </button>
         </div>
