@@ -4475,6 +4475,7 @@ function Library({
                     </div>
                   )}
                   <article
+                    id={`library-module-${module.id}`}
                     className="module-card-shell"
                     draggable
                     onDragStart={(event) => {

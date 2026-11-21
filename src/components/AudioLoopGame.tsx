@@ -333,8 +333,8 @@ export function AudioLoopGame({
         // STEP 2: Pause BETWEEN first and second word (critical!)
         if (secondText) {
           setPhase("waiting_recall");
-          // Always pause at least 400ms even when pPrompt is 0, so words don't overlap
-          const pauseMs = Math.max(400, pPrompt * 1000);
+          // Always pause at least 800ms so words never overlap or collide
+          const pauseMs = Math.max(800, pPrompt * 1000);
           const ok = await sleep(pauseMs, () => isCancelled || !stateRef.current.isPlaying);
           if (!ok) break;
 
@@ -348,7 +348,8 @@ export function AudioLoopGame({
 
         // STEP 4: Pause before next repetition or next word
         setPhase("waiting_next");
-        const okAfter = await sleep(pWord * 1000, () => isCancelled || !stateRef.current.isPlaying);
+        const pauseWordMs = Math.max(600, pWord * 1000);
+        const okAfter = await sleep(pauseWordMs, () => isCancelled || !stateRef.current.isPlaying);
         if (!okAfter) break;
 
         // Check if we need to repeat the same word
@@ -1287,7 +1288,9 @@ export function AudioLoopGame({
             aria-label="Предыдущее слово"
             title="Предыдущее слово"
           >
-            <Icon name="arrowLeft" size={20} />
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" />
+            </svg>
           </button>
 
           {/* Big Play / Pause Button with SVG */}
@@ -1318,7 +1321,9 @@ export function AudioLoopGame({
             aria-label="Следующее слово"
             title="Следующее слово"
           >
-            <Icon name="arrow" size={20} />
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <path d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+            </svg>
           </button>
 
           {/* Repeat / Loop Mode Toggle */}
