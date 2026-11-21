@@ -123,17 +123,25 @@ function stopCurrentAudio() {
 }
 
 let activeUtterance: SpeechSynthesisUtterance | null = null;
+// Generation counter — incremented every time we stop/cancel.
+// Each utterance captures its own generation; onerror/onend only resolve
+// if the generation still matches (i.e. the utterance was never superseded).
+let speechGeneration = 0;
+// Registered cancellation callbacks for in-flight speakTextAsync promises
+const speechCancelCallbacks = new Set<() => void>();
 
 export function stopAllSpeech() {
+  speechGeneration += 1;        // invalidate any in-flight utterance callbacks
   activeUtterance = null;
   stopCurrentAudio();
   if (typeof window !== "undefined") {
     try { window.speechSynthesis?.cancel(); } catch {}
   }
+  // Immediately resolve all awaiting promises so the loop can proceed
+  for (const cb of speechCancelCallbacks) cb();
+  speechCancelCallbacks.clear();
 }
 
-// Global flag to serialise device-voice calls so they never overlap
-let deviceVoiceResolve: (() => void) | null = null;
 
 function speakOnDevice(text: string, lang: string, slow: boolean, settings: SpeechSettings) {
   if (!("speechSynthesis" in window)) return false;
@@ -300,7 +308,11 @@ export function speakTextAsync(
     }
 
     // ── Stop everything currently playing FIRST, then speak ──
+    // Increment generation BEFORE cancel so previous utterance onerror/onend
+    // know they've been superseded and must NOT resolve our new promise.
     stopCurrentAudio();
+    speechGeneration += 1;
+    const myGeneration = speechGeneration;
     try { window.speechSynthesis?.cancel(); } catch {}
 
     const settings = override ?? readSpeechSettings();
@@ -316,6 +328,7 @@ export function speakTextAsync(
     const finish = () => {
       if (finished) return;
       finished = true;
+      speechCancelCallbacks.delete(cancelMe);
       resolve();
     };
 
@@ -327,6 +340,13 @@ export function speakTextAsync(
       window.clearTimeout(fallbackTimer);
       finish();
     };
+
+    // Register cancellation so stopAllSpeech() can immediately resolve us
+    const cancelMe = () => {
+      window.clearTimeout(fallbackTimer);
+      finish();
+    };
+    speechCancelCallbacks.add(cancelMe);
 
     // ── Device voice (SpeechSynthesis) ───────────────────────
     const speakOnDeviceAsync = () => {
@@ -348,21 +368,23 @@ export function speakTextAsync(
       utterance.voice = selected ?? matchingVoices[0] ?? null;
 
       activeUtterance = utterance;
+      // Guard with myGeneration: if stopAllSpeech() was called for a newer
+      // request, the cancel() will fire onerror here — we must ignore it.
       utterance.onend = () => {
+        if (speechGeneration !== myGeneration) return;
         activeUtterance = null;
         done();
       };
       utterance.onerror = () => {
+        if (speechGeneration !== myGeneration) return;
         activeUtterance = null;
         done();
       };
 
       try {
-        // Ensure synthesis queue is fully empty before enqueueing new utterance
-        window.speechSynthesis.cancel();
         // Small defer so cancel fully propagates before speak() is called
         window.setTimeout(() => {
-          if (requestId !== audioRequestId) { done(); return; }
+          if (speechGeneration !== myGeneration) { done(); return; }
           try {
             window.speechSynthesis.resume?.();
             window.speechSynthesis.speak(utterance);
@@ -384,23 +406,24 @@ export function speakTextAsync(
     };
 
     const playWithAudioElement = (blob: Blob) => {
-      if (requestId !== audioRequestId) { done(); return; }
+      if (speechGeneration !== myGeneration) { done(); return; }
       cleanupAudioElement();
       activeAudioUrl = URL.createObjectURL(blob);
       const audio = new Audio(activeAudioUrl);
       activeAudio = audio;
       audio.onended = () => {
         if (activeAudio === audio) cleanupAudioElement();
+        if (speechGeneration !== myGeneration) return;
         done();
       };
       audio.onerror = () => {
         if (activeAudio === audio) cleanupAudioElement();
-        if (requestId === audioRequestId) speakOnDeviceAsync();
+        if (speechGeneration === myGeneration) speakOnDeviceAsync();
         else done();
       };
       audio.play().catch(() => {
         if (activeAudio === audio) cleanupAudioElement();
-        if (requestId === audioRequestId) speakOnDeviceAsync();
+        if (speechGeneration === myGeneration) speakOnDeviceAsync();
         else done();
       });
     };
@@ -420,7 +443,7 @@ export function speakTextAsync(
       if (!defaultVoiceFor("kokoro", lang) && !settings.voice) { speakOnDeviceAsync(); return; }
       synthesizeWithKokoro(text, lang, voiceFor("kokoro", settings.voice, lang), rate)
         .then((blob) => playWithAudioElement(blob))
-        .catch(() => speakOnDeviceAsync());
+        .catch(() => { if (speechGeneration === myGeneration) speakOnDeviceAsync(); else done(); });
       return;
     }
 
@@ -440,7 +463,7 @@ export function speakTextAsync(
         playWithAudioElement(await response.blob());
       })
       .catch(() => {
-        if (requestId === audioRequestId) speakOnDeviceAsync();
+        if (speechGeneration === myGeneration) speakOnDeviceAsync();
         else done();
       });
   });
