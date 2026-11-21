@@ -18,9 +18,56 @@ export const defaultSpeechSettings: SpeechSettings = {
 const settingsKey = "linguaplay-speech-settings";
 let activeAudio: HTMLAudioElement | null = null;
 let activeAudioUrl = "";
+let sharedAudio: HTMLAudioElement | null = null;
 let audioRequestId = 0;
 let kokoroPromise: ReturnType<(typeof import("kokoro-js"))["KokoroTTS"]["from_pretrained"]> | null =
   null;
+
+// In-memory cache for cloud TTS audio blobs to eliminate network delay
+const ttsBlobCache = new Map<string, Blob>();
+
+export function unlockAudio() {
+  if (typeof window === "undefined") return;
+  try {
+    if (!sharedAudio) {
+      sharedAudio = new Audio();
+    }
+    // Prime the audio element on user gesture so subsequent async plays are never blocked
+    sharedAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+    const p = sharedAudio.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => {
+        sharedAudio?.pause();
+      }).catch(() => {});
+    }
+  } catch {}
+}
+
+export async function prefetchTtsAudio(text: string, lang = "de"): Promise<void> {
+  if (typeof window === "undefined" || !text.trim()) return;
+  const isRussian = lang.toLowerCase().startsWith("ru") || detectSpeechLanguage(text) === "ru-RU";
+  if (isRussian) return; // Russian uses device voice, no network needed
+  const settings = readSpeechSettings();
+  if (settings.provider === "device" || settings.enabled === false) return;
+  const language = speechLocaleForCode(lang).toLowerCase().split("-")[0];
+  const voice = voiceFor(settings.provider, settings.voice || "", language);
+  if (!voice) return;
+  const cacheKey = `${settings.provider}:${voice}:${text}`;
+  if (ttsBlobCache.has(cacheKey)) return;
+
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: settings.provider, text, voice, rate: settings.rate ?? 0.85 }),
+    });
+    if (res.ok && (res.headers.get("content-type") || "").includes("audio")) {
+      const blob = await res.blob();
+      ttsBlobCache.set(cacheKey, blob);
+    }
+  } catch {}
+}
 
 export function detectSpeechLanguage(text: string) {
   if (/[\u0400-\u04ff]/.test(text)) return "ru-RU";
@@ -396,7 +443,11 @@ export function speakTextAsync(
     // ── Audio element (cloud TTS blob) ───────────────────────
     const cleanupAudioElement = () => {
       if (activeAudio) {
-        activeAudio.pause();
+        try {
+          activeAudio.pause();
+          activeAudio.onended = null;
+          activeAudio.onerror = null;
+        } catch {}
         activeAudio = null;
       }
       if (activeAudioUrl) {
@@ -409,20 +460,24 @@ export function speakTextAsync(
       if (speechGeneration !== myGeneration) { done(); return; }
       cleanupAudioElement();
       activeAudioUrl = URL.createObjectURL(blob);
-      const audio = new Audio(activeAudioUrl);
+      if (!sharedAudio) {
+        sharedAudio = new Audio();
+      }
+      const audio = sharedAudio;
       activeAudio = audio;
+      audio.src = activeAudioUrl;
       audio.onended = () => {
-        if (activeAudio === audio) cleanupAudioElement();
+        cleanupAudioElement();
         if (speechGeneration !== myGeneration) return;
         done();
       };
       audio.onerror = () => {
-        if (activeAudio === audio) cleanupAudioElement();
+        cleanupAudioElement();
         if (speechGeneration === myGeneration) speakOnDeviceAsync();
         else done();
       };
       audio.play().catch(() => {
-        if (activeAudio === audio) cleanupAudioElement();
+        cleanupAudioElement();
         if (speechGeneration === myGeneration) speakOnDeviceAsync();
         else done();
       });
@@ -450,6 +505,13 @@ export function speakTextAsync(
     const voice = voiceFor(settings.provider, settings.voice || "", language);
     if (!voice) { speakOnDeviceAsync(); return; }
 
+    const cacheKey = `${settings.provider}:${voice}:${text}`;
+    const cached = ttsBlobCache.get(cacheKey);
+    if (cached) {
+      playWithAudioElement(cached);
+      return;
+    }
+
     fetch("/api/tts", {
       method: "POST",
       credentials: "include",
@@ -460,7 +522,9 @@ export function speakTextAsync(
         if (!response.ok) throw new Error("Cloud speech unavailable");
         const ct = response.headers.get("content-type") || "";
         if (!ct.includes("audio")) throw new Error("Non-audio response");
-        playWithAudioElement(await response.blob());
+        const blob = await response.blob();
+        ttsBlobCache.set(cacheKey, blob);
+        playWithAudioElement(blob);
       })
       .catch(() => {
         if (speechGeneration === myGeneration) speakOnDeviceAsync();

@@ -6,6 +6,8 @@ import {
   speechLocaleForCode,
   type SpeechProvider,
   readSpeechSettings,
+  unlockAudio,
+  prefetchTtsAudio,
 } from "../lib/speech";
 import { Icon } from "./Icon";
 import { GameRatingBar } from "./GameRatingBar";
@@ -55,7 +57,7 @@ export function AudioLoopGame({
 
   // Playlist Settings
   const [direction, setDirection] = useState<AudioDirection>("native_target");
-  const [wordRepeats, setWordRepeats] = useState<number>(2); // 1x, 2x, 3x, 5x
+  const [wordRepeats, setWordRepeats] = useState<number>(1); // 1x by default, 2x, 3x, 5x
   const [loopMode, setLoopMode] = useState<LoopMode>("infinite"); // once, 2x, 3x, 5x, infinite
   const [autoNextModule, setAutoNextModule] = useState(true);
   const [pausePromptSec, setPausePromptSec] = useState<number>(0.9);
@@ -94,12 +96,28 @@ export function AudioLoopGame({
 
   const currentCard = sequence[currentIndex] ?? sequence[0];
 
-  // Ref to track latest state inside loop async runner
-  const stateRef = useRef({
-    isPlaying,
-    currentIndex,
-    currentRepeat,
-    cycleCount,
+  // Active refs to eliminate React re-render closure lag and race conditions
+  const currentIndexRef = useRef(currentIndex);
+  currentIndexRef.current = currentIndex;
+
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+
+  const sequenceRef = useRef(sequence);
+  sequenceRef.current = sequence;
+
+  const manualJumpRef = useRef<{ index: number; repeat: number } | null>(null);
+
+  const currentModuleRef = useRef(currentModule);
+  currentModuleRef.current = currentModule;
+
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  const onNextGameRef = useRef(onNextGame);
+  onNextGameRef.current = onNextGame;
+
+  const configRef = useRef({
     direction,
     wordRepeats,
     loopMode,
@@ -108,34 +126,9 @@ export function AudioLoopGame({
     pauseWordSec,
     speed,
     muted,
-    sequence,
-    currentModule,
     forceDeviceVoice,
   });
-
-  useEffect(() => {
-    stateRef.current = {
-      isPlaying,
-      currentIndex,
-      currentRepeat,
-      cycleCount,
-      direction,
-      wordRepeats,
-      loopMode,
-      autoNextModule,
-      pausePromptSec,
-      pauseWordSec,
-      speed,
-      muted,
-      sequence,
-      currentModule,
-      forceDeviceVoice,
-    };
-  }, [
-    isPlaying,
-    currentIndex,
-    currentRepeat,
-    cycleCount,
+  configRef.current = {
     direction,
     wordRepeats,
     loopMode,
@@ -144,10 +137,8 @@ export function AudioLoopGame({
     pauseWordSec,
     speed,
     muted,
-    sequence,
-    currentModule,
     forceDeviceVoice,
-  ]);
+  };
 
   // Cancel speech on unmount
   useEffect(() => {
@@ -178,8 +169,10 @@ export function AudioLoopGame({
   const loopRunnerActive = useRef(false);
 
   const startPlayback = () => {
+    unlockAudio();
     if (finished) {
       setFinished(false);
+      currentIndexRef.current = 0;
       setCurrentIndex(0);
       setCurrentRepeat(0);
       setCycleCount(1);
@@ -202,33 +195,31 @@ export function AudioLoopGame({
   };
 
   const handleNext = () => {
-    stopAllSpeech();
+    const len = sequenceRef.current.length || 1;
+    const next = (currentIndexRef.current + 1) % len;
+    manualJumpRef.current = { index: next, repeat: 0 };
+    currentIndexRef.current = next;
+    setCurrentIndex(next);
     setCurrentRepeat(0);
-    stateRef.current.currentRepeat = 0;
-    setCurrentIndex((prev) => {
-      const next = prev < sequence.length - 1 ? prev + 1 : 0;
-      stateRef.current.currentIndex = next;
-      return next;
-    });
+    stopAllSpeech();
   };
 
   const handlePrev = () => {
-    stopAllSpeech();
+    const len = sequenceRef.current.length || 1;
+    const prev = (currentIndexRef.current - 1 + len) % len;
+    manualJumpRef.current = { index: prev, repeat: 0 };
+    currentIndexRef.current = prev;
+    setCurrentIndex(prev);
     setCurrentRepeat(0);
-    stateRef.current.currentRepeat = 0;
-    setCurrentIndex((prev) => {
-      const prevIdx = prev > 0 ? prev - 1 : sequence.length - 1;
-      stateRef.current.currentIndex = prevIdx;
-      return prevIdx;
-    });
+    stopAllSpeech();
   };
 
   const selectAndPlayWord = (seqIndex: number) => {
-    stopAllSpeech();
-    setCurrentRepeat(0);
-    stateRef.current.currentRepeat = 0;
+    manualJumpRef.current = { index: seqIndex, repeat: 0 };
+    currentIndexRef.current = seqIndex;
     setCurrentIndex(seqIndex);
-    stateRef.current.currentIndex = seqIndex;
+    setCurrentRepeat(0);
+    stopAllSpeech();
     if (!isPlaying) {
       startPlayback();
     }
@@ -236,6 +227,8 @@ export function AudioLoopGame({
 
   const handleSelectAll = () => {
     setSelectedCardIds(cards.map((c) => c.id));
+    manualJumpRef.current = { index: 0, repeat: 0 };
+    currentIndexRef.current = 0;
     setCurrentIndex(0);
     setCurrentRepeat(0);
   };
@@ -244,6 +237,8 @@ export function AudioLoopGame({
     if (cards[0]) {
       setSelectedCardIds([cards[0].id]);
     }
+    manualJumpRef.current = { index: 0, repeat: 0 };
+    currentIndexRef.current = 0;
     setCurrentIndex(0);
     setCurrentRepeat(0);
   };
@@ -251,6 +246,8 @@ export function AudioLoopGame({
   const handleSelectFirstHalf = () => {
     const half = Math.ceil(cards.length / 2);
     setSelectedCardIds(cards.slice(0, half).map((c) => c.id));
+    manualJumpRef.current = { index: 0, repeat: 0 };
+    currentIndexRef.current = 0;
     setCurrentIndex(0);
     setCurrentRepeat(0);
   };
@@ -258,12 +255,24 @@ export function AudioLoopGame({
   const handleSelectSecondHalf = () => {
     const half = Math.ceil(cards.length / 2);
     setSelectedCardIds(cards.slice(half).map((c) => c.id));
+    manualJumpRef.current = { index: 0, repeat: 0 };
+    currentIndexRef.current = 0;
     setCurrentIndex(0);
     setCurrentRepeat(0);
   };
 
   const handleSelectCount = (count: number) => {
     setSelectedCardIds(cards.slice(0, count).map((c) => c.id));
+    manualJumpRef.current = { index: 0, repeat: 0 };
+    currentIndexRef.current = 0;
+    setCurrentIndex(0);
+    setCurrentRepeat(0);
+  };
+
+  const handleSelectSecond10 = () => {
+    setSelectedCardIds(cards.slice(10, 20).map((c) => c.id));
+    manualJumpRef.current = { index: 0, repeat: 0 };
+    currentIndexRef.current = 0;
     setCurrentIndex(0);
     setCurrentRepeat(0);
   };
@@ -324,23 +333,48 @@ export function AudioLoopGame({
     } catch {}
   }, [currentCard, currentRepeat, wordRepeats, cycleCount, currentModule.title, currentModule.languageCode]);
 
-  // Main playback loop effect
+  // Main playback loop effect (runs smoothly without restarting on re-render)
   useEffect(() => {
     if (!isPlaying || sequence.length === 0) return;
     if (loopRunnerActive.current) return;
 
     let isCancelled = false;
     loopRunnerActive.current = true;
+    unlockAudio();
 
     const runLoop = async () => {
-      let localIndex = stateRef.current.currentIndex;
-      let localRepeat = stateRef.current.currentRepeat;
-      let localCycle = stateRef.current.cycleCount;
+      let localIndex = currentIndexRef.current;
+      let localRepeat = 0;
+      let localCycle = 1;
 
-      while (!isCancelled && stateRef.current.isPlaying) {
-        if (stateRef.current.currentIndex !== localIndex) {
-          localIndex = stateRef.current.currentIndex;
-          localRepeat = stateRef.current.currentRepeat;
+      while (!isCancelled && isPlayingRef.current) {
+        if (manualJumpRef.current) {
+          localIndex = manualJumpRef.current.index;
+          localRepeat = manualJumpRef.current.repeat;
+          manualJumpRef.current = null;
+        }
+
+        const currentSeq = sequenceRef.current;
+        if (currentSeq.length === 0) break;
+        if (localIndex >= currentSeq.length) {
+          localIndex = 0;
+          localRepeat = 0;
+        }
+
+        const card = currentSeq[localIndex];
+        if (!card) break;
+
+        // Synchronize indices immediately
+        currentIndexRef.current = localIndex;
+        setCurrentIndex(localIndex);
+        setCurrentRepeat(localRepeat);
+        setCycleCount(localCycle);
+
+        // Pre-fetch next card audio in background for seamless transitions
+        const nextCard = currentSeq[(localIndex + 1) % currentSeq.length];
+        if (nextCard) {
+          const nextTarget = (nextCard.article ? `${nextCard.article} ${nextCard.word}` : nextCard.word).trim();
+          void prefetchTtsAudio(nextTarget, currentModuleRef.current.languageCode ?? "de");
         }
 
         const {
@@ -352,31 +386,12 @@ export function AudioLoopGame({
           pauseWordSec: pWord,
           speed: spd,
           muted: isMuted,
-          sequence: currentSeq,
-          currentModule: activeMod,
           forceDeviceVoice: forceDev,
-        } = stateRef.current;
-
-        if (currentSeq.length === 0) break;
-        if (localIndex >= currentSeq.length) {
-          localIndex = 0;
-          localRepeat = 0;
-        }
-
-        const card = currentSeq[localIndex];
-        if (!card) break;
-
-        // Synchronize indices immediately
-        stateRef.current.currentIndex = localIndex;
-        stateRef.current.currentRepeat = localRepeat;
-        stateRef.current.cycleCount = localCycle;
-        setCurrentIndex(localIndex);
-        setCurrentRepeat(localRepeat);
-        setCycleCount(localCycle);
+        } = configRef.current;
 
         const targetText = (card.article ? `${card.article} ${card.word}` : card.word).trim();
         const nativeText = card.translation.trim();
-        const targetLang = speechLocaleForCode(activeMod.languageCode ?? "de");
+        const targetLang = speechLocaleForCode(currentModuleRef.current.languageCode ?? "de");
         const nativeLang = "ru-RU";
 
         // Determine First and Second speech items
@@ -386,19 +401,19 @@ export function AudioLoopGame({
         let secondLang = "";
 
         if (dir === "native_target") {
-          // "Я - iht, Ты - Du и так далее по списку"
+          // "Я -> ich, Ты -> du..."
           firstText = nativeText;
           firstLang = nativeLang;
           secondText = targetText;
           secondLang = targetLang;
         } else if (dir === "target_native") {
-          // "Iht - Я и т.д"
+          // "ich -> я, du -> ты..."
           firstText = targetText;
           firstLang = targetLang;
           secondText = nativeText;
           secondLang = nativeLang;
         } else {
-          // target_only: "ich", "du"
+          // "ich, du..."
           firstText = targetText;
           firstLang = targetLang;
           secondText = "";
@@ -409,102 +424,85 @@ export function AudioLoopGame({
           ? { provider: "device" as SpeechProvider, voice: "", rate: 0.85, enabled: true }
           : undefined;
 
-        // STEP 1: Speak prompt (First Item)
+        // STEP 1: Speak prompt (First Item, e.g. Russian)
         setPhase("speaking_prompt");
         if (!isMuted && firstText) {
           await speakTextAsync(firstText, firstLang, spd < 0.85, speechOverride);
         }
-        if (isCancelled || !stateRef.current.isPlaying) break;
-        if (stateRef.current.currentIndex !== localIndex) {
-          localIndex = stateRef.current.currentIndex;
-          localRepeat = stateRef.current.currentRepeat;
-          continue;
-        }
+        if (isCancelled || !isPlayingRef.current) break;
+        if (manualJumpRef.current) continue;
 
         // STEP 2: Pause BETWEEN first and second word (critical for hands-free recall!)
         if (secondText) {
           setPhase("waiting_recall");
           const pauseMs = Math.max(800, pPrompt * 1000);
-          const ok = await sleep(
+          await sleep(
             pauseMs,
-            () => isCancelled || !stateRef.current.isPlaying || stateRef.current.currentIndex !== localIndex,
+            () => isCancelled || !isPlayingRef.current || manualJumpRef.current !== null,
           );
-          if (!ok) {
-            if (isCancelled || !stateRef.current.isPlaying) break;
-            localIndex = stateRef.current.currentIndex;
-            localRepeat = stateRef.current.currentRepeat;
-            continue;
-          }
+          if (isCancelled || !isPlayingRef.current) break;
+          if (manualJumpRef.current) continue;
 
-          // STEP 3: Speak answer (Second Item)
+          // STEP 3: Speak answer (Second Item, e.g. German translation)
           setPhase("speaking_answer");
           if (!isMuted) {
             await speakTextAsync(secondText, secondLang, spd < 0.85, speechOverride);
           }
-          if (isCancelled || !stateRef.current.isPlaying) break;
-          if (stateRef.current.currentIndex !== localIndex) {
-            localIndex = stateRef.current.currentIndex;
-            localRepeat = stateRef.current.currentRepeat;
-            continue;
-          }
+          if (isCancelled || !isPlayingRef.current) break;
+          if (manualJumpRef.current) continue;
         }
 
         // STEP 4: Pause before next repetition or next word
         setPhase("waiting_next");
         const pauseWordMs = Math.max(800, pWord * 1000);
-        const okAfter = await sleep(
+        await sleep(
           pauseWordMs,
-          () => isCancelled || !stateRef.current.isPlaying || stateRef.current.currentIndex !== localIndex,
+          () => isCancelled || !isPlayingRef.current || manualJumpRef.current !== null,
         );
-        if (!okAfter) {
-          if (isCancelled || !stateRef.current.isPlaying) break;
-          localIndex = stateRef.current.currentIndex;
-          localRepeat = stateRef.current.currentRepeat;
-          continue;
-        }
+        if (isCancelled || !isPlayingRef.current) break;
+        if (manualJumpRef.current) continue;
 
         // Check if we need to repeat the same word
         if (localRepeat + 1 < totalReps) {
           localRepeat += 1;
-          continue;
-        }
-
-        // Word repetitions done, advance to next word
-        localRepeat = 0;
-
-        if (localIndex + 1 < currentSeq.length) {
-          localIndex += 1;
         } else {
-          // Deck finished!
-          localCycle += 1;
-          localIndex = 0;
+          // Word repetitions done, advance to next word
+          localRepeat = 0;
 
-          const maxCycles =
-            mode === "once" ? 1 : mode === "2x" ? 2 : mode === "3x" ? 3 : mode === "5x" ? 5 : Infinity;
+          if (localIndex + 1 < currentSeq.length) {
+            localIndex += 1;
+          } else {
+            // Deck finished!
+            localCycle += 1;
+            localIndex = 0;
 
-          if (localCycle > maxCycles) {
-            if (autoNext) {
-              // Automatically switch to next module in curriculum!
-              const nextMod = getNextModule(activeMod.id);
-              if (nextMod && nextMod.id !== activeMod.id) {
-                setCurrentModule(nextMod);
-                localIndex = 0;
-                localRepeat = 0;
-                localCycle = 1;
-                continue;
+            const maxCycles =
+              mode === "once" ? 1 : mode === "2x" ? 2 : mode === "3x" ? 3 : mode === "5x" ? 5 : Infinity;
+
+            if (localCycle > maxCycles) {
+              if (autoNext) {
+                // Automatically switch to next module in curriculum!
+                const nextMod = getNextModule(currentModuleRef.current.id);
+                if (nextMod && nextMod.id !== currentModuleRef.current.id) {
+                  setCurrentModule(nextMod);
+                  localIndex = 0;
+                  localRepeat = 0;
+                  localCycle = 1;
+                  continue;
+                }
               }
-            }
 
-            // Completion reached
-            setIsPlaying(false);
-            setPhase("idle");
-            setFinished(true);
-            onComplete?.({ score: currentSeq.length, total: currentSeq.length });
+              // Completion reached
+              setIsPlaying(false);
+              setPhase("idle");
+              setFinished(true);
+              onCompleteRef.current?.({ score: currentSeq.length, total: currentSeq.length });
 
-            if (autoNext && onNextGame) {
-              onNextGame();
+              if (autoNext && onNextGameRef.current) {
+                onNextGameRef.current();
+              }
+              break;
             }
-            break;
           }
         }
       }
@@ -519,7 +517,7 @@ export function AudioLoopGame({
       loopRunnerActive.current = false;
       stopAllSpeech();
     };
-  }, [isPlaying, sequence.length, currentModule.id, onComplete, onNextGame]);
+  }, [isPlaying]);
 
   const targetLangLabel = currentModule.languageCode?.toUpperCase() === "EN" ? "Английский" : "Немецкий";
 
@@ -1535,25 +1533,59 @@ export function AudioLoopGame({
         {/* Active Word & Translation Cards */}
         {currentCard ? (
           <div style={{ margin: "20px 0" }}>
-            {/* Foreign / Target Word */}
+            {/* Foreign / Target Word with Article */}
             <div
               style={{
-                fontSize: 40,
+                fontSize: 42,
                 fontWeight: 800,
-                marginBottom: 10,
+                marginBottom: 6,
                 color: isTargetSpeaking ? "#67e8f9" : "#ffffff",
                 letterSpacing: "-0.02em",
                 textShadow: isTargetSpeaking ? "0 0 25px rgba(6, 182, 212, 0.5)" : "none",
                 transition: "all 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 12,
               }}
             >
-              {currentCard.word}
+              {currentCard.article && (
+                <span
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 600,
+                    padding: "3px 12px",
+                    borderRadius: 8,
+                    background: "rgba(59, 130, 246, 0.25)",
+                    color: "#93c5fd",
+                    border: "1px solid rgba(59, 130, 246, 0.4)",
+                  }}
+                >
+                  {currentCard.article}
+                </span>
+              )}
+              <span>{currentCard.word}</span>
             </div>
+
+            {/* Phonetic Transcription in brackets if available */}
+            {currentCard.transcription && (
+              <div
+                style={{
+                  fontSize: 16,
+                  color: "#94a3b8",
+                  marginBottom: 10,
+                  letterSpacing: 0.5,
+                  fontWeight: 500,
+                }}
+              >
+                [{currentCard.transcription}]
+              </div>
+            )}
 
             {/* Translation in Russian */}
             <div
               style={{
-                fontSize: 24,
+                fontSize: 26,
                 color: isNativeSpeaking ? "#93c5fd" : "#cbd5e1",
                 fontWeight: 600,
                 marginBottom: 16,
@@ -1765,13 +1797,22 @@ export function AudioLoopGame({
               </button>
             )}
             {cards.length >= 20 && (
-              <button
-                type="button"
-                className="audio-batch-btn"
-                onClick={() => handleSelectCount(20)}
-              >
-                Первые 20
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="audio-batch-btn"
+                  onClick={handleSelectSecond10}
+                >
+                  Вторые 10 (11–20)
+                </button>
+                <button
+                  type="button"
+                  className="audio-batch-btn"
+                  onClick={() => handleSelectCount(20)}
+                >
+                  Первые 20
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -1780,6 +1821,38 @@ export function AudioLoopGame({
             >
               Сбросить
             </button>
+
+            {/* Explicit Order Toggles */}
+            <div style={{ display: "inline-flex", gap: 6, marginLeft: 8, borderLeft: "1px solid rgba(255,255,255,0.15)", paddingLeft: 8 }}>
+              <button
+                type="button"
+                className={`audio-batch-btn ${!shuffle ? "active" : ""}`}
+                onClick={() => {
+                  setShuffle(false);
+                  manualJumpRef.current = { index: 0, repeat: 0 };
+                  currentIndexRef.current = 0;
+                  setCurrentIndex(0);
+                  setCurrentRepeat(0);
+                }}
+                title="Воспроизводить по порядку (1, 2, 3...)"
+              >
+                ➔ По порядку
+              </button>
+              <button
+                type="button"
+                className={`audio-batch-btn ${shuffle ? "active" : ""}`}
+                onClick={() => {
+                  setShuffle(true);
+                  manualJumpRef.current = { index: 0, repeat: 0 };
+                  currentIndexRef.current = 0;
+                  setCurrentIndex(0);
+                  setCurrentRepeat(0);
+                }}
+                title="Случайный порядок слов"
+              >
+                🔀 Перемешать
+              </button>
+            </div>
           </div>
         </div>
 

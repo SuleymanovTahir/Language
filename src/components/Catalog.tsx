@@ -469,45 +469,15 @@ function UnitsTab({
           <div className="empty-state">Нет юнитов для уровня {level}</div>
         )}
         {units.map((unit, i) => (
-          <div key={unit.id} className="unit-row">
-            <div className="unit-row-move">
-              <button
-                className="move-btn"
-                onClick={() => moveUnit(unit.id, -1)}
-                disabled={i === 0}
-                title="Вверх"
-              >▲</button>
-              <button
-                className="move-btn"
-                onClick={() => moveUnit(unit.id, 1)}
-                disabled={i === units.length - 1}
-                title="Вниз"
-              >▼</button>
-            </div>
-            <div className="unit-row-id">
-              <span className="unit-id-pill" style={{ background: LEVEL_COLORS[unit.level] }}>
-                {unit.id}
-              </span>
-            </div>
-            <div className="unit-row-info">
-              <div className="unit-row-title">{unit.title}</div>
-              <div className="unit-row-outcome">{unit.outcome || <em>Нет описания</em>}</div>
-            </div>
-            <div className="unit-row-actions">
-              <button
-                className="secondary-button small"
-                onClick={() => setEditingUnit({ ...unit })}
-              >
-                <Icon name="spark" size={13} /> Изменить
-              </button>
-              <button
-                className="secondary-button small danger"
-                onClick={() => deleteUnit(unit.id)}
-              >
-                <Icon name="close" size={13} /> Удалить
-              </button>
-            </div>
-          </div>
+          <UnitCard
+            key={unit.id}
+            unit={unit}
+            index={i}
+            total={units.length}
+            onEdit={() => setEditingUnit({ ...unit })}
+            onDelete={() => deleteUnit(unit.id)}
+            onMove={(dir) => moveUnit(unit.id, dir)}
+          />
         ))}
       </div>
 
