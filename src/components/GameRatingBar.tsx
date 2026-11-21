@@ -67,9 +67,7 @@ export function GameRatingBar({
       aria-label="Оцените игру"
     >
       <div className="rating-bar-content">
-        <span className="rating-bar-label">
-          {rating > 0 ? "Ваша оценка:" : "Оценить игру:"}
-        </span>
+        <span className="rating-bar-label">{rating > 0 ? "Ваша оценка:" : "Оценить игру:"}</span>
 
         <div className="rating-stars-row" role="radiogroup" aria-label="Оценка от 1 до 5 звёзд">
           {[1, 2, 3, 4, 5].map((star) => (

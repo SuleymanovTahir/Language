@@ -1058,10 +1058,10 @@ export function SettingsDialog({
             <button
               className="secondary-button"
               disabled={
-              speechDraft.enabled !== false &&
-              speechDraft.provider === "elevenlabs" &&
-              !voiceValue
-            }
+                speechDraft.enabled !== false &&
+                speechDraft.provider === "elevenlabs" &&
+                !voiceValue
+              }
               onClick={() =>
                 speakText(
                   selectedSpeechSample,
@@ -1133,9 +1133,7 @@ export function SettingsDialog({
           <button
             className="primary-button"
             disabled={
-              speechDraft.enabled !== false &&
-              speechDraft.provider === "elevenlabs" &&
-              !voiceValue
+              speechDraft.enabled !== false && speechDraft.provider === "elevenlabs" && !voiceValue
             }
             onClick={() =>
               onSave(

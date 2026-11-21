@@ -25,7 +25,8 @@ export type GameId =
   | "oddone"
   | "memory"
   | "speed"
-  | "syllables";
+  | "syllables"
+  | "audioloop";
 type GameInfo = { id: GameId; title: string; description: string; mark: string };
 
 export const GAME_LIST: GameInfo[] = [
@@ -122,6 +123,12 @@ export const GAME_LIST: GameInfo[] = [
     title: "Слоги в слово",
     description: "Соберите слово из коротких частей",
     mark: "··",
+  },
+  {
+    id: "audioloop",
+    title: "Аудио-запоминалка",
+    description: "Hands-Free режим: слушайте пары слов без рук с паузами и повторами",
+    mark: "🎧",
   },
 ];
 
@@ -913,8 +920,9 @@ export function validateGame(id: GameId, module: VocabModule) {
     return "Добавьте минимум 2 предложения с пропуском и разными правильными ответами.";
   if (id === "picture" && cards.some((card) => !card.image?.id))
     return "Добавьте изображение к каждому выбранному слову в редакторе игры.";
-  if (id === "sentenceorder" && cards.length < 3)
-    return "Для игры нужно хотя бы 3 слова в наборе.";
+  if (id === "sentenceorder" && cards.length < 3) return "Для игры нужно хотя бы 3 слова в наборе.";
+  if (id === "audioloop" && cards.length < 1)
+    return "Для аудио-запоминалки нужна хотя бы одна карточка со словом и переводом.";
   if (!cards.length) return "Сначала выберите карточки для игры.";
   return null;
 }

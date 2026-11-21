@@ -54,7 +54,10 @@ export async function POST(request: Request) {
     return json({ error: "Unsupported event." }, 400);
 
   if (event.analyticsConsent !== true)
-    return json({ error: "События аналитики сохраняются только после согласия на аналитику." }, 403);
+    return json(
+      { error: "События аналитики сохраняются только после согласия на аналитику." },
+      403,
+    );
 
   const actor = getAnalyticsActor(request);
   const allowedRoutes = [
@@ -84,7 +87,8 @@ export async function POST(request: Request) {
       "SELECT COUNT(*)::int AS count FROM linguaplay_analytics_events WHERE visitor_id=$1 AND created_at >= date_trunc('day', now())",
       [actor.visitorId],
     );
-    if (daily.rows[0]?.count >= 1000) return json({ error: "Daily activity event limit reached." }, 429);
+    if (daily.rows[0]?.count >= 1000)
+      return json({ error: "Daily activity event limit reached." }, 429);
     const guestAllowedTypes = new Set([
       "page-view",
       "target-action",
@@ -101,17 +105,15 @@ export async function POST(request: Request) {
     ]);
     if (!guestAllowedTypes.has(type)) return json({ error: "Unsupported guest event." }, 400);
     try {
-      await saveAnalyticsEvent(
-        {
-          userId: null,
-          actor,
-          type,
-          route: trim(event.route, 40),
-          action: trim(event.action, 80),
-          activity: trim(event.activity, 180),
-          payload: analyticsPayload(event),
-        },
-      );
+      await saveAnalyticsEvent({
+        userId: null,
+        actor,
+        type,
+        route: trim(event.route, 40),
+        action: trim(event.action, 80),
+        activity: trim(event.activity, 180),
+        payload: analyticsPayload(event),
+      });
       return withVisitorCookie(json({ saved: true }), actor);
     } catch {
       return json({ error: "Unable to save analytics event." }, 503);

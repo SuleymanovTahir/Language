@@ -149,7 +149,9 @@ export function getAnalyticsActor(request: Request): AnalyticsActor {
   } catch {}
   return {
     visitorId: digest(`visitor:${token}`),
-    cookie: valid ? null : `${cookieName}=${token}; Path=/; Max-Age=315360000; HttpOnly; SameSite=Lax${new URL(request.url).protocol === "https:" ? "; Secure" : ""}`,
+    cookie: valid
+      ? null
+      : `${cookieName}=${token}; Path=/; Max-Age=315360000; HttpOnly; SameSite=Lax${new URL(request.url).protocol === "https:" ? "; Secure" : ""}`,
     country: request.headers.get("x-vercel-ip-country")?.slice(0, 8) || null,
     region: request.headers.get("x-vercel-ip-country-region")?.slice(0, 80) || null,
     ipHash: requestIp(request) ? digest(`ip:${requestIp(request)}`) : null,
@@ -161,24 +163,23 @@ export function getAnalyticsActor(request: Request): AnalyticsActor {
   };
 }
 
-export function withVisitorCookie(
-  response: Response,
-  actor: AnalyticsActor,
-  enabled = true,
-) {
+export function withVisitorCookie(response: Response, actor: AnalyticsActor, enabled = true) {
   if (enabled && actor.cookie) response.headers.append("Set-Cookie", actor.cookie);
   return response;
 }
 
-export async function saveAnalyticsEvent(args: {
-  userId: string | null;
-  actor: AnalyticsActor;
-  type: string;
-  route?: string | null;
-  action?: string | null;
-  activity?: string | null;
-  payload?: Record<string, unknown>;
-}, executor: { query: (sql: string, values?: unknown[]) => Promise<unknown> } = pool) {
+export async function saveAnalyticsEvent(
+  args: {
+    userId: string | null;
+    actor: AnalyticsActor;
+    type: string;
+    route?: string | null;
+    action?: string | null;
+    activity?: string | null;
+    payload?: Record<string, unknown>;
+  },
+  executor: { query: (sql: string, values?: unknown[]) => Promise<unknown> } = pool,
+) {
   await executor.query(
     `INSERT INTO linguaplay_analytics_events
       (user_id,visitor_id,event_type,route,action,activity,country,region,ip_hash,device_type,browser,os,locale,referrer_host,payload)

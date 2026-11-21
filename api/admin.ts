@@ -47,14 +47,12 @@ async function actorFor(request: Request) {
   const row = result.rows[0];
   const role = row?.role ?? "student";
   const rawPerms = parseJson(row?.permissions);
-  const permissions = { ...defaults(role), ...rawPerms } as Record<
-    Permission,
-    boolean
-  >;
+  const permissions = { ...defaults(role), ...rawPerms } as Record<Permission, boolean>;
   permissions.manageContent = ["owner", "admin"].includes(role);
   permissions.manageUsers = role === "owner" || (role === "admin" && Boolean(rawPerms.manageUsers));
   permissions.manageSettings = role === "owner";
-  permissions.viewAnalytics = role === "owner" || (role === "admin" && Boolean(rawPerms.viewAnalytics));
+  permissions.viewAnalytics =
+    role === "owner" || (role === "admin" && Boolean(rawPerms.viewAnalytics));
   return { user: session.user, role, permissions };
 }
 
@@ -137,6 +135,20 @@ export async function POST(request: Request) {
     return json({ error: "Invalid JSON payload." }, 400);
   }
 
+  if (body.action === "save-menu-settings") {
+    const gate = await userAdminFor(request);
+    if ("response" in gate) return gate.response;
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS clickling_site_settings(key text PRIMARY KEY, value jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`,
+    );
+    await pool.query(
+      `INSERT INTO clickling_site_settings(key, value, updated_at) VALUES('menu_visibility', $1::jsonb, now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [JSON.stringify(body.settings)],
+    );
+    return json({ saved: true });
+  }
+
   if (body.action === "create-user") {
     const gate = await userAdminFor(request);
     if ("response" in gate) return gate.response;
@@ -147,8 +159,7 @@ export async function POST(request: Request) {
     const role = text(body.role, 20) || "student";
     const isOwner = gate.actor.role === "owner";
 
-    if (name.length < 2)
-      return json({ error: "Имя должно содержать не менее 2 символов." }, 400);
+    if (name.length < 2) return json({ error: "Имя должно содержать не менее 2 символов." }, 400);
 
     const hasAt = email.includes("@");
     if (!hasAt) {
@@ -364,6 +375,19 @@ async function getAdminData(request: Request) {
     active: active.rows,
     subscriptions: subscriptions.rows,
     actor: { id: gate.actor.user.id, role: gate.actor.role },
+    menuSettings: await (async () => {
+      try {
+        await pool.query(
+          `CREATE TABLE IF NOT EXISTS clickling_site_settings(key text PRIMARY KEY, value jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`,
+        );
+        const r = await pool.query(
+          "SELECT value FROM clickling_site_settings WHERE key='menu_visibility'",
+        );
+        return r.rows[0]?.value ?? null;
+      } catch {
+        return null;
+      }
+    })(),
   });
 }
 
@@ -373,7 +397,20 @@ async function getAnalytics() {
   await ensureBillingSchema();
   await ensureLearningEvents();
   await captureDailyAnalyticsSnapshot();
-  const [daily, users, actions, pages, recent, actors, devices, locations, retention, commerce, snapshots, learning] = await Promise.all([
+  const [
+    daily,
+    users,
+    actions,
+    pages,
+    recent,
+    actors,
+    devices,
+    locations,
+    retention,
+    commerce,
+    snapshots,
+    learning,
+  ] = await Promise.all([
     pool.query(`WITH activity AS NOT MATERIALIZED (
         SELECT date_trunc('day',created_at AT TIME ZONE 'UTC') AS day,'u:'||user_id AS identity FROM linguaplay_events WHERE created_at>=now()-interval '30 days'
         UNION ALL SELECT date_trunc('day',created_at AT TIME ZONE 'UTC'),COALESCE('u:'||user_id,'v:'||visitor_id) FROM linguaplay_analytics_events WHERE created_at>=now()-interval '30 days'
@@ -485,7 +522,9 @@ async function getAnalytics() {
           (SELECT COUNT(*)::int FROM linguaplay_payments WHERE lower(status) IN ('failed','declined','canceled','cancelled') AND created_at>=now()-interval '30 days') AS failed_payments_30d,
           (SELECT COUNT(*)::int FROM "user") AS total_accounts
         FROM subs`),
-    pool.query(`SELECT snapshot_day,metrics FROM linguaplay_analytics_daily_snapshots ORDER BY snapshot_day DESC LIMIT 3650`),
+    pool.query(
+      `SELECT snapshot_day,metrics FROM linguaplay_analytics_daily_snapshots ORDER BY snapshot_day DESC LIMIT 3650`,
+    ),
     pool.query(`SELECT language_code,level,skill,variant_id,COUNT(*) FILTER (WHERE NOT skipped)::int AS answers,
         COUNT(DISTINCT session_id)::int AS sessions,
         COUNT(*) FILTER (WHERE first_try_correct=true)::int AS first_try_correct,
@@ -506,7 +545,8 @@ async function getAnalytics() {
     ) SELECT id,name,email,created_at,last_seen FROM seen
       WHERE last_seen<now()-interval '14 days' OR (last_seen IS NULL AND created_at<now()-interval '14 days')
       ORDER BY last_seen ASC NULLS FIRST LIMIT 100`);
-  const feedback = await pool.query(`SELECT f.id,f.rating,f.choice,f.text,f.created_at,f.country,f.region,f.ip_hash,f.metadata,f.visitor_id,
+  const feedback =
+    await pool.query(`SELECT f.id,f.rating,f.choice,f.text,f.created_at,f.country,f.region,f.ip_hash,f.metadata,f.visitor_id,
       u.id AS user_id,u.name,u.email,
       CASE WHEN f.user_id IS NOT NULL THEN COALESCE(u.name,'Пользователь') ELSE 'Гость · '||left(f.visitor_id,10) END AS author
       FROM clickling_feedback f LEFT JOIN "user" u ON u.id=f.user_id ORDER BY f.created_at DESC LIMIT 200`);
@@ -620,16 +660,12 @@ export async function PATCH(request: Request) {
     let email = text(body.email, 254).toLowerCase();
     const isOwner = gate.actor.role === "owner";
 
-    if (name.length < 2)
-      return json({ error: "Имя должно содержать не менее 2 символов." }, 400);
+    if (name.length < 2) return json({ error: "Имя должно содержать не менее 2 символов." }, 400);
 
     const hasAt = email.includes("@");
     if (!hasAt) {
       if (!isOwner) {
-        return json(
-          { error: "Только владелец сайта может задавать логин без @." },
-          403,
-        );
+        return json({ error: "Только владелец сайта может задавать логин без @." }, 403);
       }
       if (!/^[a-zA-Z0-9._-]{2,50}$/.test(email)) {
         return json(
@@ -644,10 +680,10 @@ export async function PATCH(request: Request) {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: "Укажите корректный адрес почты (логин)." }, 400);
     }
-    const emailTaken = await pool.query(
-      'SELECT id FROM "user" WHERE lower(email)=$1 AND id<>$2',
-      [email, userId],
-    );
+    const emailTaken = await pool.query('SELECT id FROM "user" WHERE lower(email)=$1 AND id<>$2', [
+      email,
+      userId,
+    ]);
     if (emailTaken.rowCount && emailTaken.rowCount > 0)
       return json({ error: "Этот email (логин) уже занят другим аккаунтом." }, 400);
     try {
@@ -840,8 +876,7 @@ export async function PUT(request: Request) {
       (role === "admin" && gate.actor.role === "owner"
         ? Boolean(supplied.manageUsers)
         : Boolean(supplied.manageUsers && gate.actor.permissions.manageUsers)),
-    viewAnalytics:
-      role === "owner" || (role === "admin" && Boolean(supplied.viewAnalytics)),
+    viewAnalytics: role === "owner" || (role === "admin" && Boolean(supplied.viewAnalytics)),
     manageSettings: role === "owner",
   };
   const allowedSections = ["today", "library", "catalog", "path", "materials", "games", "stats"];

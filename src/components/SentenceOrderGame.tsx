@@ -248,10 +248,16 @@ export function SentenceOrderGame({
 
     // The user's assembled sentence tokens
     const assembledClean = placedTiles.map((t) =>
-      t.text.replace(/[.,!?;:]+$/u, "").trim().toLowerCase(),
+      t.text
+        .replace(/[.,!?;:]+$/u, "")
+        .trim()
+        .toLowerCase(),
     );
     const expectedClean = challenge.targetWords.map((w) =>
-      w.replace(/[.,!?;:]+$/u, "").trim().toLowerCase(),
+      w
+        .replace(/[.,!?;:]+$/u, "")
+        .trim()
+        .toLowerCase(),
     );
 
     const isCorrect =
@@ -332,7 +338,10 @@ export function SentenceOrderGame({
           </button>
         </div>
 
-        <div className="topbar-right-controls" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          className="topbar-right-controls"
+          style={{ display: "flex", alignItems: "center", gap: 10 }}
+        >
           <span className="game-round-pill">
             {roundIndex + 1} / {rounds.length}
           </span>
@@ -354,10 +363,11 @@ export function SentenceOrderGame({
       <div className="sentence-builder-card">
         {/* Kicker badge with 50/50 distractor indicator */}
         <div className="sentence-header-row">
-          <p className="question-kicker">
-            Соберите предложение · {module.languageName}
-          </p>
-          <span className="distractor-ratio-badge" title="Ровно 50% слов из предложения, 50% лишних">
+          <p className="question-kicker">Соберите предложение · {module.languageName}</p>
+          <span
+            className="distractor-ratio-badge"
+            title="Ровно 50% слов из предложения, 50% лишних"
+          >
             ⚖️ 50/50: {correctCount} верных · {distractorCount} лишних
           </span>
         </div>
@@ -484,7 +494,9 @@ export function SentenceOrderGame({
               <div className="feedback-message">
                 {feedback === "correct" ? (
                   <>
-                    <strong className="correct-title">✨ Отлично! Предложение собрано верно!</strong>
+                    <strong className="correct-title">
+                      ✨ Отлично! Предложение собрано верно!
+                    </strong>
                     <div className="feedback-pronounce-row">
                       <span className="feedback-german-text">
                         {challenge.targetWords.join(" ")}
@@ -503,8 +515,7 @@ export function SentenceOrderGame({
                   <>
                     <strong className="wrong-title">❌ Не совсем так</strong>
                     <p className="wrong-explanation">
-                      Правильный порядок слов:{" "}
-                      <b>{challenge.targetWords.join(" ")}</b>
+                      Правильный порядок слов: <b>{challenge.targetWords.join(" ")}</b>
                     </p>
                     {placedTiles.some((t) => t.isDistractor) && (
                       <p className="distractor-warning">
@@ -534,12 +545,7 @@ export function SentenceOrderGame({
                     Попробовать ещё раз
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="primary-button"
-                  autoFocus
-                  onClick={nextRound}
-                >
+                <button type="button" className="primary-button" autoFocus onClick={nextRound}>
                   {roundIndex + 1 < rounds.length ? "Следующее предложение" : "Завершить игру"}{" "}
                   <Icon name="arrow" size={16} />
                 </button>
@@ -550,8 +556,8 @@ export function SentenceOrderGame({
           {showHint && !feedback && (
             <div className="sentence-hint-card">
               <p>
-                💡 Первое слово: <strong>«{challenge.targetWords[0]}»</strong> · Всего в предложении:{" "}
-                <strong>{challenge.targetWords.length}</strong> слов.
+                💡 Первое слово: <strong>«{challenge.targetWords[0]}»</strong> · Всего в
+                предложении: <strong>{challenge.targetWords.length}</strong> слов.
               </p>
             </div>
           )}

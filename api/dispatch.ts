@@ -16,7 +16,8 @@ async function requestAtPath(request: Request, path: string) {
     redirect: request.redirect,
     signal: request.signal,
   };
-  if (request.method !== "GET" && request.method !== "HEAD") init.body = await request.arrayBuffer();
+  if (request.method !== "GET" && request.method !== "HEAD")
+    init.body = await request.arrayBuffer();
   return new Request(url, init);
 }
 
@@ -24,7 +25,10 @@ async function dispatch(request: Request) {
   const currentUrl = new URL(request.url, process.env.BETTER_AUTH_URL || "https://localhost");
   const path = currentUrl.searchParams.get("__route")?.replace(/^\/+|\/+$/g, "");
   if (!path)
-    return Response.json({ error: "Not found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
+    return Response.json(
+      { error: "Not found." },
+      { status: 404, headers: { "Cache-Control": "no-store" } },
+    );
 
   const forwarded = await requestAtPath(request, path);
   if (path.startsWith("auth/")) return auth.handler(forwarded);
@@ -44,7 +48,10 @@ async function dispatch(request: Request) {
     );
   }
 
-  return Response.json({ error: "Not found." }, { status: 404, headers: { "Cache-Control": "no-store" } });
+  return Response.json(
+    { error: "Not found." },
+    { status: 404, headers: { "Cache-Control": "no-store" } },
+  );
 }
 
 export default { fetch: dispatch };

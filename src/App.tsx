@@ -45,6 +45,12 @@ import { Trophy } from "./components/Trophy";
 import { Companion, FeedbackSurvey, NotFound } from "./components/Companion";
 import { LearningTrail, Pagination } from "./components/LearningTrail";
 import {
+  isScreenAllowed,
+  readMenuVisibilityConfig,
+  defaultMenuVisibilityConfig,
+  type MenuVisibilityConfig,
+} from "./lib/menuAccess";
+import {
   AccountPanel,
   AuthScreen,
   type AccountUser,
@@ -137,12 +143,12 @@ const screenNames: Screen[] = [
   "analytics",
 ];
 function screenFromHash(): Screen {
-  if (typeof window === "undefined") return "today";
+  if (typeof window === "undefined") return "path";
   const hash = window.location.hash.replace(/^#\/?/, "");
   const route = hash.split(/[?&]/)[0] as Screen;
   if (route === "path" && new URLSearchParams(hash.split("?").slice(1).join("?")).has("lesson"))
     return "materials";
-  return !route ? "today" : screenNames.includes(route) ? route : "404";
+  return !route ? "path" : screenNames.includes(route) ? route : "404";
 }
 type PathActivity = {
   id: string;
@@ -261,11 +267,7 @@ function useStored<T>(key: string, initial: T): [T, React.Dispatch<React.SetStat
     };
     const hydrate = (event: Event) => {
       const detail = (event as CustomEvent<{ userId: string; keys: string[] }>).detail;
-      if (
-        detail?.userId !== getActiveProfileId() ||
-        !detail.keys?.includes(key)
-      )
-        return;
+      if (detail?.userId !== getActiveProfileId() || !detail.keys?.includes(key)) return;
       setStoredValue(readProfileItem(key));
     };
     window.addEventListener("linguaplay-profile-reconciled", reconcile);
@@ -365,6 +367,12 @@ function WorkspaceApp({
   const [screen, setScreen] = useState<Screen>(() =>
     guestMode && !window.location.hash ? "path" : screenFromHash(),
   );
+  const [menuConfig, setMenuConfig] = useState<MenuVisibilityConfig>(readMenuVisibilityConfig);
+  useEffect(() => {
+    const syncMenuConfig = () => setMenuConfig(readMenuVisibilityConfig());
+    window.addEventListener("storage", syncMenuConfig);
+    return () => window.removeEventListener("storage", syncMenuConfig);
+  }, []);
   const [uiLanguage, setUiLanguage] = useStored<"ru" | "en">("clickling-ui-language", "ru");
   useEffect(() => {
     document.documentElement.lang = uiLanguage;
@@ -860,6 +868,13 @@ function WorkspaceApp({
   const canManageSpeechProviders = import.meta.env.DEV || user?.role === "owner";
   const canManageUsers =
     user?.role === "owner" || (user?.role === "admin" && Boolean(user?.permissions?.manageUsers));
+  const isScreenPermitted = isScreenAllowed(
+    screen,
+    user,
+    menuConfig,
+    canManageUsers,
+    canManageContent,
+  );
   const serverEnergyReady = !user || serverEnergyUserId === user.id;
   const energyStats = user && serverEnergyReady ? energy : energySnapshot(energy, energyClock);
   const isPro = user ? serverEnergyReady && serverIsPro : false;
@@ -1408,7 +1423,8 @@ function WorkspaceApp({
       };
     });
     if (correct) {
-      const eventId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const eventId =
+        crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       creditCrystals(1, `practice:${eventId}`);
     }
   };
@@ -1914,6 +1930,8 @@ function WorkspaceApp({
         onSettings={() => setSettingsOpen(true)}
         onLanguage={() => setSpacesOpen(true)}
         hiddenSections={user?.permissions?.hiddenSections}
+        user={user}
+        menuConfig={menuConfig}
       />
       <main className="main-area">
         <header className="top-header">
@@ -1947,9 +1965,9 @@ function WorkspaceApp({
                 ? "Проверяем серверный баланс энергии"
                 : isPro
                   ? "PRO · энергия не ограничена"
-                : unlimitedEnergy
-                  ? "Администратор · энергия не расходуется"
-                  : `Энергия ${energyStats.energy} из ${energyCap}${energyStats.nextAt ? ` · +1 через ${clockLabel(energyStats.nextAt - energyClock)}` : ""}`
+                  : unlimitedEnergy
+                    ? "Администратор · энергия не расходуется"
+                    : `Энергия ${energyStats.energy} из ${energyCap}${energyStats.nextAt ? ` · +1 через ${clockLabel(energyStats.nextAt - energyClock)}` : ""}`
             }
             data-track="energy-open"
             onClick={() => {
@@ -1984,8 +2002,8 @@ function WorkspaceApp({
             <span className="account-button-label">{user ? "Кабинет" : "Профиль"}</span>
           </button>
         </header>
-        {screen === "404" && <NotFound />}
-        {screen === "today" && (
+        {(!isScreenPermitted || screen === "404") && <NotFound />}
+        {isScreenPermitted && screen === "today" && (
           <Today
             modules={visibleModules}
             allCards={visibleCards}
@@ -2067,7 +2085,7 @@ function WorkspaceApp({
             onLibrary={() => setScreen("library")}
           />
         )}
-        {screen === "library" && (
+        {isScreenPermitted && screen === "library" && (
           <Library
             modules={visibleModules}
             progress={progress}
@@ -2118,10 +2136,14 @@ function WorkspaceApp({
               setPreferredGameModuleId(module.id);
               setScreen("games");
             }}
+            onAudioLoop={(module) => {
+              setPreferredGameModuleId(module.id);
+              setActiveGame({ gameId: "audioloop", module });
+            }}
             canManageContent={canManageContent}
           />
         )}
-        {screen === "catalog" && (
+        {isScreenPermitted && screen === "catalog" && (
           <Suspense fallback={<div className="lazy-section-loading">Открываем общий каталог…</div>}>
             <CatalogScreen
               languageCode={activeSpace.languageCode}
@@ -2156,7 +2178,8 @@ function WorkspaceApp({
             />
           </Suspense>
         )}
-        {screen === "path" &&
+        {isScreenPermitted &&
+          screen === "path" &&
           (activeSpace.languageCode === "de" ? (
             <Suspense fallback={<div className="lazy-section-loading">Открываю курс…</div>}>
               <CoursePath
@@ -2181,7 +2204,7 @@ function WorkspaceApp({
               </button>
             </div>
           ))}
-        {screen === "materials" && (
+        {isScreenPermitted && screen === "materials" && (
           <PathScreen
             modules={visibleModules}
             progress={progress}
@@ -2263,7 +2286,7 @@ function WorkspaceApp({
             }}
           />
         )}
-        {screen === "games" && (
+        {isScreenPermitted && screen === "games" && (
           <Suspense fallback={<div className="lazy-section-loading">Открываю игры…</div>}>
             <GameHub
               key={activeSpace.id}
@@ -2304,7 +2327,7 @@ function WorkspaceApp({
             />
           </Suspense>
         )}
-        {screen === "stats" && (
+        {isScreenPermitted && screen === "stats" && (
           <StatsScreen
             modules={visibleModules}
             cards={visibleCards}
@@ -3069,7 +3092,9 @@ function EnergyDialog({
             </button>
           </>
         ) : isPro || unlimitedEnergy ? (
-          <p>{isPro ? "PRO · энергия не расходуется." : "Администратор · энергия не расходуется."}</p>
+          <p>
+            {isPro ? "PRO · энергия не расходуется." : "Администратор · энергия не расходуется."}
+          </p>
         ) : (
           <>
             <div className="energy-capacity-meter" aria-label={`${energy} из ${cap} энергии`}>
@@ -3200,10 +3225,10 @@ function LegalCenter({ onClose }: { onClose: () => void }) {
               отправляются только после выбора «Принять все». Они включают посещения, действия,
               учебные метрики, язык и тип устройства; аккаунтные события связаны с профилем, а
               события гостя — со случайным ID. Сохраняются примерный регион и защищённый хэш IP,
-              исходный IP не записывается; ID гостя хранится в Cookie до 10 лет, в зависимости от браузера. Аналитические
-              события и дневные снимки сохраняются без автоматического срока удаления для
-              исторической аналитики. Изменение Cookie-настройки останавливает новые события, но не
-              удаляет уже сохранённую историю.
+              исходный IP не записывается; ID гостя хранится в Cookie до 10 лет, в зависимости от
+              браузера. Аналитические события и дневные снимки сохраняются без автоматического срока
+              удаления для исторической аналитики. Изменение Cookie-настройки останавливает новые
+              события, но не удаляет уже сохранённую историю.
             </p>
           </article>
           <article>
@@ -3265,6 +3290,8 @@ function Sidebar({
   onSettings,
   onLanguage,
   hiddenSections = [],
+  user = null,
+  menuConfig = defaultMenuVisibilityConfig,
 }: {
   screen: Screen;
   uiLanguage: "ru" | "en";
@@ -3275,6 +3302,8 @@ function Sidebar({
   onSettings: () => void;
   onLanguage: () => void;
   hiddenSections?: string[];
+  user?: AccountUser | null;
+  menuConfig?: MenuVisibilityConfig;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   useEffect(() => {
@@ -3289,11 +3318,11 @@ function Sidebar({
     uiLanguage === "en"
       ? {
           today: "Today",
-          library: "Word library",
+          library: "Vocabulary",
           catalog: "Catalog",
-          path: "Learning path",
+          path: "Learning",
           materials: canManageContent ? "Assignment builder" : "Learning materials",
-          games: "Games & practice",
+          games: "Games",
           stats: "Progress",
           admin: "Users",
           analytics: "Analytics",
@@ -3302,11 +3331,11 @@ function Sidebar({
         }
       : {
           today: "Сегодня",
-          library: "Библиотека слов",
+          library: "Словарь",
           catalog: "Каталог",
-          path: "Учебный путь",
+          path: "Обучение",
           materials: canManageContent ? "Конструктор заданий" : "Учебные материалы",
-          games: "Игры и упражнения",
+          games: "Игры",
           stats: "Прогресс",
           admin: "Пользователи",
           analytics: "Аналитика",
@@ -3314,25 +3343,25 @@ function Sidebar({
           settings: "Настройки",
         };
   const nav: { id: Screen; label: string; icon: IconName }[] = [
-    { id: "today", label: labels.today, icon: "home" },
-    { id: "library", label: labels.library, icon: "library" },
-    { id: "catalog", label: labels.catalog, icon: "book" },
     { id: "path", label: labels.path, icon: "path" },
-    {
-      id: "materials",
-      label: labels.materials,
-      icon: "folder",
-    },
+    { id: "library", label: labels.library, icon: "library" },
     { id: "games", label: labels.games, icon: "game" },
     { id: "stats", label: labels.stats, icon: "chart" },
   ];
+  if (canManageContent)
+    nav.push(
+      { id: "catalog", label: labels.catalog, icon: "book" },
+      { id: "materials", label: labels.materials, icon: "folder" },
+    );
   if (canManageUsers)
     nav.push(
       { id: "admin", label: labels.admin, icon: "settings" },
       { id: "analytics", label: labels.analytics, icon: "chart" },
     );
-  const visibleNav = nav.filter((item) => canManageUsers || !hiddenSections.includes(item.id));
-  const mobilePrimary = new Set<Screen>(["today", "library", "path", "games"]);
+  const visibleNav = nav.filter((item) =>
+    isScreenAllowed(item.id, user, menuConfig, canManageUsers, canManageContent),
+  );
+  const mobilePrimary = new Set<Screen>(["path", "library", "games", "stats"]);
   const mobileSecondary = visibleNav.filter((item) => !mobilePrimary.has(item.id));
   return (
     <aside className="sidebar">
@@ -3812,6 +3841,7 @@ function Library({
   onDelete,
   onExport,
   onGames,
+  onAudioLoop,
   canManageContent,
 }: {
   modules: VocabModule[];
@@ -3827,11 +3857,14 @@ function Library({
   onDelete: (module: VocabModule) => void;
   onExport: (module: VocabModule) => void;
   onGames: (module: VocabModule) => void;
+  onAudioLoop?: (module: VocabModule) => void;
   canManageContent: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [openMenu, setOpenMenu] = useState<number | null>(null);
   const [filter, setFilter] = useState<"all" | "new" | "learned">("all");
+  const [selectedModuleId, setSelectedModuleId] = useState<number | "all">("all");
+  const [cardSearch, setCardSearch] = useState("");
   const [sortBy, setSortBy] = useState<"manual" | "module" | "title" | "cards" | "progress">(
     "manual",
   );
@@ -3932,6 +3965,25 @@ function Library({
         </div>
       </div>
       <div className="library-tools">
+        <label className="module-select-label">
+          Слова из модуля
+          <select
+            value={selectedModuleId}
+            onChange={(event) => {
+              setSelectedModuleId(
+                event.target.value === "all" ? "all" : Number(event.target.value),
+              );
+              setCardSearch("");
+            }}
+          >
+            <option value="all">Все модули ({modules.length})</option>
+            {modules.map((module) => (
+              <option key={module.id} value={module.id}>
+                Модуль {module.id} · {module.title}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="search-box">
           <Icon name="search" size={18} />
           <input
@@ -3996,211 +4048,418 @@ function Library({
           <span>Один маршрут · шаг за шагом</span>
         </p>
       )}
-      {visible.length === 0 ? (
-        <div className="empty-state">
-          <Icon name="search" size={28} />
-          <h2>{search ? "Ничего не найдено" : "В этом кабинете пока нет модулей"}</h2>
-          <p>
-            {search
-              ? "Измените запрос или сбросьте фильтр."
-              : "Создайте модуль или импортируйте слова для выбранного языка и уровня."}
-          </p>
-          {search ? (
-            <button className="secondary-button" onClick={() => setSearch("")}>
-              Сбросить поиск
-            </button>
-          ) : (
-            canManageContent && (
-              <button className="primary-button" onClick={onCreate}>
-                <Icon name="plus" /> Создать первый модуль
-              </button>
-            )
-          )}
-        </div>
-      ) : (
-        <LearningTrail className="module-grid library-path-map">
-          {pagedModules.map((module, pageIndex) => {
-            const index = pageStart + pageIndex;
-            const mastered = module.cards.filter(
-              (card) => (progress[card.id]?.level ?? 0) >= 2,
-            ).length;
-            const percent = module.cards.length
-              ? Math.round((mastered / module.cards.length) * 100)
-              : 0;
-            const group = groupForModule(module);
-            const beginsGroup = pageIndex === 0 || groupForModule(visible[index - 1]) !== group;
-            return (
+      {selectedModuleId !== "all" &&
+        (() => {
+          const activeMod = modules.find((m) => m.id === selectedModuleId);
+          if (!activeMod) return null;
+          const modCards = activeMod.cards.filter((card) =>
+            cardSearch
+              ? `${card.word} ${card.translation}`.toLowerCase().includes(cardSearch.toLowerCase())
+              : true,
+          );
+          const newCardsCount = activeMod.cards.filter(
+            (c) => !progress[c.id] || progress[c.id].level === 0,
+          ).length;
+          const learnedCardsCount = activeMod.cards.filter(
+            (c) => (progress[c.id]?.level ?? 0) >= 2,
+          ).length;
+          return (
+            <div className="module-detail-view" style={{ marginTop: "20px" }}>
               <div
-                className={`library-map-item ${beginsGroup ? "starts-group" : ""}`}
-                key={module.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  flexWrap: "wrap",
+                  gap: "16px",
+                  background: "var(--app-card, #f8fafc)",
+                  padding: "20px",
+                  borderRadius: "16px",
+                  border: "1px solid var(--app-line, #e2e8f0)",
+                }}
               >
-                {beginsGroup && (
-                  <div className="library-group-heading">
-                    <span>
-                      Раздел{" "}
-                      {String(
-                        visible
-                          .slice(0, index + 1)
-                          .filter(
-                            (item, itemIndex, list) =>
-                              itemIndex === 0 ||
-                              groupForModule(list[itemIndex - 1]) !== groupForModule(item),
-                          ).length,
-                      ).padStart(2, "0")}
-                    </span>
-                    <strong>{group}</strong>
-                  </div>
-                )}
-                <article
-                  className="module-card-shell"
-                  draggable
-                  onDragStart={(event) => {
-                    draggedModule.current = module.id;
-                    event.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const from = draggedModule.current;
-                    if (from !== null) onReorder(from, module.id);
-                    draggedModule.current = null;
-                  }}
-                  onDragEnd={() => {
-                    draggedModule.current = null;
-                  }}
-                >
-                  <button className="module-card" onClick={() => onStart(module)}>
-                    <div
-                      data-trail-anchor
-                      className={`module-cover ${["blue", "violet", "teal", "amber", "rose"][index % 5]}`}
+                <div>
+                  <span className="eyebrow">МОДУЛЬ {activeMod.id}</span>
+                  <h2 style={{ margin: "4px 0 8px", fontSize: "24px" }}>{activeMod.title}</h2>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", fontSize: "13px" }}>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "20px",
+                        background: "var(--click-primary, #3b82f6)",
+                        color: "#fff",
+                        fontWeight: 700,
+                      }}
                     >
-                      <span>{String(module.id).padStart(2, "0")}</span>
-                      <Icon
-                        name={index % 3 === 0 ? "spark" : index % 3 === 1 ? "book" : "path"}
-                        size={30}
-                      />
-                    </div>
-                    <div className="module-info">
-                      <div>
-                        <span>
-                          МОДУЛЬ {module.id}
-                          {module.custom ? " · МОЙ" : ""}
-                        </span>
-                        <span
-                          className="module-drag-grip"
-                          title="Перетащите модуль, чтобы изменить порядок"
-                        >
-                          ⠿
-                        </span>
-                        <Icon name="arrow" size={15} />
-                      </div>
-                      <h3>{module.title}</h3>
-                      <p>
-                        {module.cards.length} карточек · {module.level}
-                      </p>
-                      <div className="module-progress">
-                        <i style={{ width: `${percent}%` }} />
-                      </div>
-                    </div>
+                      {activeMod.cards.length} карточек
+                    </span>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "20px",
+                        background: "#fef3c7",
+                        color: "#92400e",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {newCardsCount} новых
+                    </span>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "20px",
+                        background: "#dcfce7",
+                        color: "#166534",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {learnedCardsCount} выучено
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {onAudioLoop && (
+                    <button
+                      className="primary-button"
+                      onClick={() => onAudioLoop(activeMod)}
+                      style={{ background: "#8b5cf6" }}
+                    >
+                      <Icon name="volume" size={17} /> 🎧 Аудио-плеер
+                    </button>
+                  )}
+                  <button className="primary-button" onClick={() => onStart(activeMod)}>
+                    <Icon name="arrow" size={17} /> Учить карточками
                   </button>
+                  <button className="secondary-button" onClick={() => onGames(activeMod)}>
+                    <Icon name="game" size={17} /> В игры
+                  </button>
+                  <button className="secondary-button" onClick={() => onWrite(activeMod)}>
+                    ✍️ Письмо
+                  </button>
+                  <button className="secondary-button" onClick={() => onTest(activeMod)}>
+                    🧪 Тест
+                  </button>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  margin: "20px 0 12px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "12px",
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: "18px" }}>Слова модуля ({modCards.length})</h3>
+                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <label className="search-box" style={{ maxWidth: "260px" }}>
+                    <Icon name="search" size={16} />
+                    <input
+                      value={cardSearch}
+                      onChange={(e) => setCardSearch(e.target.value)}
+                      placeholder="Поиск по словам модуля..."
+                    />
+                  </label>
                   <button
-                    className="module-menu-trigger"
-                    aria-label={`Действия модуля ${module.title}`}
-                    aria-expanded={openMenu === module.id}
-                    onClick={() => setOpenMenu((value) => (value === module.id ? null : module.id))}
+                    className="secondary-button compact"
+                    onClick={() => setSelectedModuleId("all")}
                   >
-                    <Icon name="more" size={17} />
+                    ✕ Показать все модули
                   </button>
-                  {openMenu === module.id && (
-                    <div className="module-actions-menu">
-                      <button
-                        onClick={() => {
-                          setOpenMenu(null);
-                          onTest(module);
-                        }}
-                      >
-                        Тест по модулю
-                      </button>
-                      <button
-                        onClick={() => {
-                          setOpenMenu(null);
-                          onCopyTestLink(module);
-                        }}
-                      >
-                        Ссылка на тест
-                      </button>
-                      <button
-                        title="Письменная тренировка по словам этого модуля. Слова и переводы меняются в редакторе карточек."
-                        onClick={() => {
-                          setOpenMenu(null);
-                          onWrite(module);
-                        }}
-                      >
-                        Тренировка: написать перевод
-                      </button>
-                      <button
-                        onClick={() => {
-                          setOpenMenu(null);
-                          onGames(module);
-                        }}
-                      >
-                        Игры и упражнения
-                      </button>
-                      {canManageContent && (
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                  gap: "12px",
+                  marginBottom: "32px",
+                }}
+              >
+                {modCards.map((card) => {
+                  const cardProg = progress[card.id];
+                  const isLearned = (cardProg?.level ?? 0) >= 2;
+                  const isNew = !cardProg || cardProg.level === 0;
+                  return (
+                    <article
+                      key={card.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "12px 16px",
+                        background: "var(--app-card, #ffffff)",
+                        border: "1px solid var(--app-line, #e2e8f0)",
+                        borderRadius: "12px",
+                        boxShadow: "0 2px 6px rgb(0 0 0 / 2%)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                         <button
-                          onClick={() => {
-                            setOpenMenu(null);
-                            onEdit(module);
+                          type="button"
+                          className="icon-button"
+                          aria-label={`Прослушать ${card.word}`}
+                          onClick={() => speakText(card.word, "de-DE")}
+                          style={{
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "50%",
+                            background: "var(--app-hover, #f1f5f9)",
+                            border: "none",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
                         >
-                          Изменить карточки и порядок
+                          <Icon name="volume" size={16} />
                         </button>
-                      )}
-                      <button
-                        disabled={index === 0}
-                        onClick={() => {
-                          setOpenMenu(null);
-                          if (visible[index - 1]) onReorder(module.id, visible[index - 1].id);
+                        <div>
+                          <strong style={{ fontSize: "16px", display: "block" }}>
+                            {card.article ? `${card.article} ` : ""}
+                            {card.word}
+                          </strong>
+                          {card.transcription && (
+                            <small style={{ color: "#94a3b8", display: "block", fontSize: "12px" }}>
+                              {card.transcription}
+                            </small>
+                          )}
+                          <span style={{ fontSize: "14px", color: "#475569" }}>
+                            {card.translation}
+                          </span>
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "3px 8px",
+                          borderRadius: "12px",
+                          background: isLearned ? "#dcfce7" : isNew ? "#fef3c7" : "#e0e7ff",
+                          color: isLearned ? "#166534" : isNew ? "#92400e" : "#3730a3",
                         }}
                       >
-                        Переместить выше
-                      </button>
-                      <button
-                        disabled={index === visible.length - 1}
-                        onClick={() => {
-                          setOpenMenu(null);
-                          if (visible[index + 1]) onReorder(module.id, visible[index + 1].id);
-                        }}
-                      >
-                        Переместить ниже
-                      </button>
-                      <button
-                        onClick={() => {
-                          setOpenMenu(null);
-                          onExport(module);
-                        }}
-                      >
-                        Экспортировать словарь .txt
-                      </button>
-                      {canManageContent && (
-                        <button
-                          className="text-danger"
-                          onClick={() => {
-                            setOpenMenu(null);
-                            onDelete(module);
-                          }}
-                        >
-                          Удалить модуль
-                        </button>
-                      )}
+                        {isLearned ? "Закреплено" : isNew ? "Новое" : "Повторение"}
+                      </span>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+      {selectedModuleId === "all" &&
+        (visible.length === 0 ? (
+          <div className="empty-state">
+            <Icon name="search" size={28} />
+            <h2>{search ? "Ничего не найдено" : "В этом кабинете пока нет модулей"}</h2>
+            <p>
+              {search
+                ? "Измените запрос или сбросьте фильтр."
+                : "Создайте модуль или импортируйте слова для выбранного языка и уровня."}
+            </p>
+            {search ? (
+              <button className="secondary-button" onClick={() => setSearch("")}>
+                Сбросить поиск
+              </button>
+            ) : (
+              canManageContent && (
+                <button className="primary-button" onClick={onCreate}>
+                  <Icon name="plus" /> Создать первый модуль
+                </button>
+              )
+            )}
+          </div>
+        ) : (
+          <LearningTrail className="module-grid library-path-map">
+            {pagedModules.map((module, pageIndex) => {
+              const index = pageStart + pageIndex;
+              const mastered = module.cards.filter(
+                (card) => (progress[card.id]?.level ?? 0) >= 2,
+              ).length;
+              const percent = module.cards.length
+                ? Math.round((mastered / module.cards.length) * 100)
+                : 0;
+              const group = groupForModule(module);
+              const beginsGroup = pageIndex === 0 || groupForModule(visible[index - 1]) !== group;
+              return (
+                <div
+                  className={`library-map-item ${beginsGroup ? "starts-group" : ""}`}
+                  key={module.id}
+                >
+                  {beginsGroup && (
+                    <div className="library-group-heading">
+                      <span>
+                        Раздел{" "}
+                        {String(
+                          visible
+                            .slice(0, index + 1)
+                            .filter(
+                              (item, itemIndex, list) =>
+                                itemIndex === 0 ||
+                                groupForModule(list[itemIndex - 1]) !== groupForModule(item),
+                            ).length,
+                        ).padStart(2, "0")}
+                      </span>
+                      <strong>{group}</strong>
                     </div>
                   )}
-                </article>
-              </div>
-            );
-          })}
-        </LearningTrail>
-      )}
+                  <article
+                    className="module-card-shell"
+                    draggable
+                    onDragStart={(event) => {
+                      draggedModule.current = module.id;
+                      event.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const from = draggedModule.current;
+                      if (from !== null) onReorder(from, module.id);
+                      draggedModule.current = null;
+                    }}
+                    onDragEnd={() => {
+                      draggedModule.current = null;
+                    }}
+                  >
+                    <button className="module-card" onClick={() => onStart(module)}>
+                      <div
+                        data-trail-anchor
+                        className={`module-cover ${["blue", "violet", "teal", "amber", "rose"][index % 5]}`}
+                      >
+                        <span>{String(module.id).padStart(2, "0")}</span>
+                        <Icon
+                          name={index % 3 === 0 ? "spark" : index % 3 === 1 ? "book" : "path"}
+                          size={30}
+                        />
+                      </div>
+                      <div className="module-info">
+                        <div>
+                          <span>
+                            МОДУЛЬ {module.id}
+                            {module.custom ? " · МОЙ" : ""}
+                          </span>
+                          <span
+                            className="module-drag-grip"
+                            title="Перетащите модуль, чтобы изменить порядок"
+                          >
+                            ⠿
+                          </span>
+                          <Icon name="arrow" size={15} />
+                        </div>
+                        <h3>{module.title}</h3>
+                        <p>
+                          {module.cards.length} карточек · {module.level}
+                        </p>
+                        <div className="module-progress">
+                          <i style={{ width: `${percent}%` }} />
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      className="module-menu-trigger"
+                      aria-label={`Действия модуля ${module.title}`}
+                      aria-expanded={openMenu === module.id}
+                      onClick={() =>
+                        setOpenMenu((value) => (value === module.id ? null : module.id))
+                      }
+                    >
+                      <Icon name="more" size={17} />
+                    </button>
+                    {openMenu === module.id && (
+                      <div className="module-actions-menu">
+                        <button
+                          onClick={() => {
+                            setOpenMenu(null);
+                            onTest(module);
+                          }}
+                        >
+                          Тест по модулю
+                        </button>
+                        <button
+                          onClick={() => {
+                            setOpenMenu(null);
+                            onCopyTestLink(module);
+                          }}
+                        >
+                          Ссылка на тест
+                        </button>
+                        <button
+                          title="Письменная тренировка по словам этого модуля. Слова и переводы меняются в редакторе карточек."
+                          onClick={() => {
+                            setOpenMenu(null);
+                            onWrite(module);
+                          }}
+                        >
+                          Тренировка: написать перевод
+                        </button>
+                        <button
+                          onClick={() => {
+                            setOpenMenu(null);
+                            onGames(module);
+                          }}
+                        >
+                          Игры и упражнения
+                        </button>
+                        {canManageContent && (
+                          <button
+                            onClick={() => {
+                              setOpenMenu(null);
+                              onEdit(module);
+                            }}
+                          >
+                            Изменить карточки и порядок
+                          </button>
+                        )}
+                        <button
+                          disabled={index === 0}
+                          onClick={() => {
+                            setOpenMenu(null);
+                            if (visible[index - 1]) onReorder(module.id, visible[index - 1].id);
+                          }}
+                        >
+                          Переместить выше
+                        </button>
+                        <button
+                          disabled={index === visible.length - 1}
+                          onClick={() => {
+                            setOpenMenu(null);
+                            if (visible[index + 1]) onReorder(module.id, visible[index + 1].id);
+                          }}
+                        >
+                          Переместить ниже
+                        </button>
+                        <button
+                          onClick={() => {
+                            setOpenMenu(null);
+                            onExport(module);
+                          }}
+                        >
+                          Экспортировать словарь .txt
+                        </button>
+                        {canManageContent && (
+                          <button
+                            className="text-danger"
+                            onClick={() => {
+                              setOpenMenu(null);
+                              onDelete(module);
+                            }}
+                          >
+                            Удалить модуль
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                </div>
+              );
+            })}
+          </LearningTrail>
+        ))}
       <Pagination page={currentPage} count={pageCount} onChange={changePage} />
     </div>
   );
@@ -4454,12 +4713,7 @@ function PathScreen({
   return (
     <div className="page course-page">
       <div className="page-heading">
-        <img
-          className="builder-heading-mascot"
-          src="/mascots/6.webp"
-          alt=""
-          aria-hidden="true"
-        />
+        <img className="builder-heading-mascot" src="/mascots/6.webp" alt="" aria-hidden="true" />
         <div>
           <p className="eyebrow">
             КОНСТРУКТОР · {modules[0]?.languageName ?? "ЯЗЫК"} {modules[0]?.level ?? ""}

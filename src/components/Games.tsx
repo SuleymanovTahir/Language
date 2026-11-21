@@ -11,6 +11,7 @@ import { getActiveProfileId, readProfileItem, writeProfileItem } from "../lib/pr
 import { readSpeechSettings } from "../lib/speech";
 import { ScenarioGame, type ScenarioGameId } from "./ScenarioGames";
 import { SentenceOrderGame } from "./SentenceOrderGame";
+import { AudioLoopGame } from "./AudioLoopGame";
 import { GameRatingBar } from "./GameRatingBar";
 import { GameLeaderboard } from "./GameLeaderboard";
 
@@ -659,6 +660,7 @@ export function GameHub({
     : [];
   const gameFilterIds: Record<Exclude<typeof gameFilter, "all">, Set<GameId>> = {
     words: new Set([
+      "audioloop",
       "pairs",
       "blitz",
       "hangman",
@@ -674,7 +676,7 @@ export function GameHub({
       "memory",
       "speed",
     ]),
-    listening: new Set(["phonetic", "finalsound"]),
+    listening: new Set(["audioloop", "phonetic", "finalsound"]),
     writing: new Set(["wordsearch", "anagram", "sentenceorder", "syllables"]),
     grammar: new Set([
       "articles",
@@ -693,6 +695,7 @@ export function GameHub({
     {
       title: "Слова и фразы",
       ids: new Set<GameId>([
+        "audioloop",
         "pairs",
         "blitz",
         "hangman",
@@ -1194,12 +1197,7 @@ export function GameHub({
   return (
     <div className="page games-page">
       <div className="page-heading">
-        <img
-          className="games-heading-mascot"
-          src="/mascots/3.webp"
-          alt=""
-          aria-hidden="true"
-        />
+        <img className="games-heading-mascot" src="/mascots/3.webp" alt="" aria-hidden="true" />
         <div>
           <p className="eyebrow">
             {selectedModule?.languageName ?? "УЧЕБНЫЙ КАБИНЕТ"} · {selectedModule?.level ?? ""}
@@ -2647,9 +2645,7 @@ function optionsFor(
     .map(key)
     .filter((s) => s && s.toLowerCase() !== target.toLowerCase());
 
-  const sameScriptDistractors = allDistractors.filter(
-    (s) => /[а-яёА-ЯЁ]/.test(s) === isCyrillic,
-  );
+  const sameScriptDistractors = allDistractors.filter((s) => /[а-яёА-ЯЁ]/.test(s) === isCyrillic);
   const poolToUse = sameScriptDistractors.length >= 3 ? sameScriptDistractors : allDistractors;
   const uniqueDistractors = [...new Set(poolToUse)];
 
@@ -2718,7 +2714,6 @@ export type AnswerTelemetry = {
   sessionTotal?: number;
 };
 
-
 // Mute/unmute toggle button for game topbars
 function MuteToggleBtn({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
   return (
@@ -2730,13 +2725,31 @@ function MuteToggleBtn({ muted, onToggle }: { muted: boolean; onToggle: () => vo
       aria-label={muted ? "Включить озвучку" : "Выключить озвучку"}
     >
       {muted ? (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
           <line x1="23" y1="9" x2="17" y2="15" />
           <line x1="17" y1="9" x2="23" y2="15" />
         </svg>
       ) : (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
           <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
           <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
@@ -2782,12 +2795,19 @@ export function GameSession({
       const next = !current;
       try {
         const raw = readProfileItem("linguaplay-speech-settings");
-        const saved: Record<string, unknown> = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+        const saved: Record<string, unknown> = raw
+          ? (JSON.parse(raw) as Record<string, unknown>)
+          : {};
         if (next) {
           // muting: save current provider as _prevProvider, switch to "none"
           writeProfileItem(
             "linguaplay-speech-settings",
-            JSON.stringify({ ...saved, enabled: false, _prevProvider: saved.provider ?? "edge", provider: "none" }),
+            JSON.stringify({
+              ...saved,
+              enabled: false,
+              _prevProvider: saved.provider ?? "edge",
+              provider: "none",
+            }),
           );
         } else {
           // unmuting: restore previous provider
@@ -2883,6 +2903,17 @@ export function GameSession({
           onExit={onExit}
           onRestart={restart}
           onAnswer={onAnswer}
+          onComplete={handleComplete}
+          onNextGame={onNextGame}
+          muted={muted}
+          onToggleMute={toggleMute}
+        />
+      ) : gameId === "audioloop" ? (
+        <AudioLoopGame
+          key={runKey}
+          module={module}
+          onExit={onExit}
+          onRestart={restart}
           onComplete={handleComplete}
           onNextGame={onNextGame}
           muted={muted}
@@ -4084,12 +4115,13 @@ function QuestionGame({
     if (!card?.translation) return "";
     const cleaned = card.translation.replace(/\([^)]*\)/g, "").trim();
     const firstVariant = cleaned.split(/[\/,;]/)[0]?.trim() || cleaned;
-    return firstVariant.normalize("NFC").toLocaleLowerCase().replace(/[^\p{L}]/gu, "");
+    return firstVariant
+      .normalize("NFC")
+      .toLocaleLowerCase()
+      .replace(/[^\p{L}]/gu, "");
   }, [card?.translation]);
   const hangmanTargetWord =
-    gameId === "hangman" && hangmanDirection === "to-native"
-      ? russianHangmanWord
-      : targetWord;
+    gameId === "hangman" && hangmanDirection === "to-native" ? russianHangmanWord : targetWord;
   const hangmanAlphabet = useMemo(() => {
     if (hangmanDirection === "to-native") {
       return [...new Set([...[..."абвгдеёжзийклмнопрстуфхцчшщъыьэюя"], ...[...hangmanTargetWord]])];
@@ -5043,10 +5075,10 @@ function QuestionGame({
                   : gameId === "hangman"
                     ? hangmanTargetWord
                     : gameId === "finalsound"
-                    ? "конечный согласный оглушается"
-                    : gameId === "articles"
-                      ? card.article
-                      : german(card)}{" "}
+                      ? "конечный согласный оглушается"
+                      : gameId === "articles"
+                        ? card.article
+                        : german(card)}{" "}
                 · {card.translation}.{" "}
                 {(answerAttempts.current[card.id]?.attempts ?? 0) === 1
                   ? "Можно повторить один раз."

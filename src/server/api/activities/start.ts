@@ -172,14 +172,16 @@ export async function hasPro(client: PoolClient, userId: string) {
 }
 
 export async function hasUnlimitedEnergy(client: PoolClient, userId: string) {
-  const result = await client.query(
-    "SELECT role FROM linguaplay_user_roles WHERE user_id=$1",
-    [userId],
-  );
+  const result = await client.query("SELECT role FROM linguaplay_user_roles WHERE user_id=$1", [
+    userId,
+  ]);
   return ["owner", "admin"].includes(String(result.rows[0]?.role ?? ""));
 }
 
-export async function runWithAccount<T>(userId: string, operation: (client: PoolClient) => Promise<T>) {
+export async function runWithAccount<T>(
+  userId: string,
+  operation: (client: PoolClient) => Promise<T>,
+) {
   await ensureEnergyTables();
   const client = await pool.connect();
   try {
@@ -266,7 +268,14 @@ export async function POST(request: Request) {
       const isPro = await hasPro(client, session.user.id);
       const unlimitedEnergy = await hasUnlimitedEnergy(client, session.user.id);
       if (!isPro && !unlimitedEnergy && snapshot.energy <= 0)
-        return { ...snapshot, isPro, unlimitedEnergy, cap: ENERGY_CAP, refillMs: REFILL_MS, exhausted: true };
+        return {
+          ...snapshot,
+          isPro,
+          unlimitedEnergy,
+          cap: ENERGY_CAP,
+          refillMs: REFILL_MS,
+          exhausted: true,
+        };
       const energy = isPro || unlimitedEnergy ? snapshot.energy : snapshot.energy - 1;
       const nextAt =
         !isPro && !unlimitedEnergy && energy < ENERGY_CAP

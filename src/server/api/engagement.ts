@@ -2,11 +2,7 @@ import { randomBytes } from "node:crypto";
 import { auth, pool } from "../../lib/auth.ts";
 import { readLimitedRequestBody } from "../../lib/readLimitedRequestBody.ts";
 import { findPreparedAnswer } from "../../lib/assistantFaq.ts";
-import {
-  ensureAnalyticsSchema,
-  getAnalyticsActor,
-  withVisitorCookie,
-} from "./analytics.ts";
+import { ensureAnalyticsSchema, getAnalyticsActor, withVisitorCookie } from "./analytics.ts";
 const json = (v: unknown, status = 200) =>
   Response.json(v, { status, headers: { "Cache-Control": "no-store" } });
 const AI_CRYSTAL_COST = 10;
@@ -38,10 +34,7 @@ async function quota(id: string) {
     `SELECT count(*)::int AS used FROM clickling_ai_requests WHERE user_id=$1 AND day=CURRENT_DATE AND state<>'failed' AND payment='pro'`,
     [id],
   );
-  const wallet = await pool.query(
-    "SELECT balance FROM clickling_ai_wallet WHERE user_id=$1",
-    [id],
-  );
+  const wallet = await pool.query("SELECT balance FROM clickling_ai_wallet WHERE user_id=$1", [id]);
   const schedule = await pool.query(
     "SELECT COALESCE((settings->>'assistantEnabled')::boolean,true) AS enabled FROM clickling_schedule WHERE id=1",
   );
@@ -82,9 +75,8 @@ export async function GET(request: Request) {
         session.user.id,
       ]);
       if (role.rows[0]?.role !== "owner") return json({ error: "Доступ только владельцу." }, 403);
-      const current = (
-        await pool.query("SELECT settings FROM clickling_schedule WHERE id=1")
-      ).rows[0]?.settings;
+      const current = (await pool.query("SELECT settings FROM clickling_schedule WHERE id=1"))
+        .rows[0]?.settings;
       return json({ reminders: "off", news: "off", assistantEnabled: true, ...current });
     }
     return json({ error: "Не найдено." }, 404);
@@ -133,7 +125,9 @@ export async function POST(request: Request) {
     try {
       await client.query("BEGIN");
       const feedbackActor = id ?? actor.visitorId;
-      await client.query("SELECT pg_advisory_xact_lock(hashtext('clickling-feedback:' || $1))", [feedbackActor]);
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('clickling-feedback:' || $1))", [
+        feedbackActor,
+      ]);
       const recent = id
         ? await client.query(
             `SELECT 1 FROM clickling_feedback WHERE user_id=$1 AND created_at>now()-interval '1 day'`,
@@ -194,9 +188,9 @@ export async function POST(request: Request) {
       (b.assistantEnabled !== undefined && typeof b.assistantEnabled !== "boolean")
     )
       return json({ error: "Неверная частота." }, 400);
-    const previous = (
-      await pool.query("SELECT settings FROM clickling_schedule WHERE id=1")
-    ).rows[0]?.settings ?? {};
+    const previous =
+      (await pool.query("SELECT settings FROM clickling_schedule WHERE id=1")).rows[0]?.settings ??
+      {};
     await pool.query(
       "INSERT INTO clickling_schedule VALUES(1,$1) ON CONFLICT(id) DO UPDATE SET settings=$1",
       [
@@ -239,7 +233,9 @@ export async function POST(request: Request) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query("SELECT pg_advisory_xact_lock(hashtext('clickling-ai-wallet:' || $1))", [id]);
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('clickling-ai-wallet:' || $1))", [
+        id,
+      ]);
       await client.query(
         "INSERT INTO clickling_ai_wallet(user_id,balance) VALUES($1,$2) ON CONFLICT(user_id) DO NOTHING",
         [id, initialBalance],
@@ -316,7 +312,10 @@ export async function POST(request: Request) {
     process.env.APP_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.gemini_api_key;
   const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite";
   if (!/^[A-Za-z0-9._-]{1,80}$/.test(model))
-    return json({ error: "AI-помощник временно недоступен. Попробуйте готовые объяснения по теории." }, 503);
+    return json(
+      { error: "AI-помощник временно недоступен. Попробуйте готовые объяснения по теории." },
+      503,
+    );
   if (!prepared && !key)
     return json(
       {
@@ -374,7 +373,9 @@ export async function POST(request: Request) {
       if (!spent.rowCount) {
         await client.query("ROLLBACK");
         return json(
-          { error: `Нужно ${AI_CRYSTAL_COST} кристаллов. Выполняйте упражнения или подключите PRO.` },
+          {
+            error: `Нужно ${AI_CRYSTAL_COST} кристаллов. Выполняйте упражнения или подключите PRO.`,
+          },
           402,
         );
       }
@@ -392,10 +393,11 @@ export async function POST(request: Request) {
         return json({ error: "Дневной лимит сервиса AI исчерпан. Попробуйте позже." }, 429);
       }
     }
-    await client.query(
-      "INSERT INTO clickling_ai_requests(user_id,id,payment) VALUES($1,$2,$3)",
-      [id, b.id, payment],
-    );
+    await client.query("INSERT INTO clickling_ai_requests(user_id,id,payment) VALUES($1,$2,$3)", [
+      id,
+      b.id,
+      payment,
+    ]);
     await client.query("COMMIT");
     accepted = true;
   } catch {
@@ -410,7 +412,12 @@ export async function POST(request: Request) {
       [id, b.id, prepared.answer],
     );
     const currentQuota = await quota(id).catch(() => null);
-    return json({ answer: prepared.answer, source: "prepared", title: prepared.title, quota: currentQuota });
+    return json({
+      answer: prepared.answer,
+      source: "prepared",
+      title: prepared.title,
+      quota: currentQuota,
+    });
   }
   try {
     const response = await fetch(

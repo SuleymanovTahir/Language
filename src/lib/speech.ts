@@ -86,7 +86,14 @@ function voiceFor(provider: SpeechProvider, voice: string, languageCode: string)
   return voice;
 }
 
-const speechProviders: SpeechProvider[] = ["device", "edge", "kokoro", "elevenlabs", "azure", "none"];
+const speechProviders: SpeechProvider[] = [
+  "device",
+  "edge",
+  "kokoro",
+  "elevenlabs",
+  "azure",
+  "none",
+];
 
 export function readSpeechSettings(): SpeechSettings {
   try {
@@ -112,6 +119,13 @@ function stopCurrentAudio() {
   activeAudio = null;
   if (activeAudioUrl) URL.revokeObjectURL(activeAudioUrl);
   activeAudioUrl = "";
+}
+
+export function stopAllSpeech() {
+  stopCurrentAudio();
+  if (typeof window !== "undefined") {
+    window.speechSynthesis?.cancel();
+  }
 }
 
 function speakOnDevice(text: string, lang: string, slow: boolean, settings: SpeechSettings) {
@@ -241,4 +255,129 @@ export function speakText(
         speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
     });
   return true;
+}
+
+export function speakTextAsync(
+  text: string,
+  lang = detectSpeechLanguage(text),
+  slow = false,
+  override?: SpeechSettings,
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || !text.trim()) {
+      resolve();
+      return;
+    }
+    stopCurrentAudio();
+    window.speechSynthesis?.cancel();
+    const settings = override ?? readSpeechSettings();
+    if (settings.enabled === false || settings.provider === "none") {
+      resolve();
+      return;
+    }
+
+    const rate = Math.max(0.55, Math.min(1.1, settings.rate * (slow ? 0.76 : 1)));
+    const requestId = ++audioRequestId;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      if (requestId === audioRequestId) {
+        stopCurrentAudio();
+      }
+      resolve();
+    };
+
+    const maxDurationMs = Math.max(2500, text.length * 200 + 1500);
+    const fallbackTimer = window.setTimeout(finish, maxDurationMs);
+
+    const done = () => {
+      window.clearTimeout(fallbackTimer);
+      finish();
+    };
+
+    const playWithAudioElement = (blob: Blob) => {
+      if (requestId !== audioRequestId) {
+        done();
+        return;
+      }
+      activeAudioUrl = URL.createObjectURL(blob);
+      activeAudio = new Audio(activeAudioUrl);
+      activeAudio.onended = () => {
+        stopCurrentAudio();
+        done();
+      };
+      activeAudio.onerror = () => {
+        stopCurrentAudio();
+        done();
+      };
+      activeAudio.play().catch(() => {
+        stopCurrentAudio();
+        done();
+      });
+    };
+
+    const fallbackDevice = () => {
+      if (!("speechSynthesis" in window)) {
+        done();
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang;
+      utterance.rate = rate;
+      const language = lang.toLowerCase().split("-")[0];
+      const voices = window.speechSynthesis.getVoices();
+      const matchingVoices = voices.filter(
+        (voice) =>
+          voice.lang.toLowerCase() === lang.toLowerCase() ||
+          voice.lang.toLowerCase().startsWith(`${language}-`),
+      );
+      const selected = matchingVoices.find((voice) => voice.voiceURI === settings.voice);
+      utterance.voice = selected ?? matchingVoices[0] ?? null;
+      utterance.onend = done;
+      utterance.onerror = done;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    if (settings.provider === "device") {
+      fallbackDevice();
+      return;
+    }
+
+    const language = lang.toLowerCase().split("-")[0];
+    if (settings.provider === "kokoro") {
+      if (!defaultVoiceFor("kokoro", lang) && !settings.voice) {
+        fallbackDevice();
+        return;
+      }
+      synthesizeWithKokoro(text, lang, voiceFor("kokoro", settings.voice, lang), rate)
+        .then((blob) => playWithAudioElement(blob))
+        .catch(() => fallbackDevice());
+      return;
+    }
+
+    const endpoint = "/api/tts";
+    const voice = voiceFor(settings.provider, settings.voice || "", language);
+    if (settings.provider === "edge" && !voice) {
+      fallbackDevice();
+      return;
+    }
+    fetch(endpoint, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: settings.provider, text, voice, rate }),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Cloud speech is unavailable");
+        playWithAudioElement(await response.blob());
+      })
+      .catch(() => {
+        if (requestId === audioRequestId) {
+          fallbackDevice();
+        } else {
+          done();
+        }
+      });
+  });
 }

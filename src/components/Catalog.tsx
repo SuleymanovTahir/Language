@@ -235,7 +235,10 @@ export function CatalogScreen({
         const aGroup = catalogGroups.indexOf(a.title);
         const bGroup = catalogGroups.indexOf(b.title);
         if (aGroup >= 0 || bGroup >= 0)
-          return (aGroup < 0 ? catalogGroups.length : aGroup) - (bGroup < 0 ? catalogGroups.length : bGroup);
+          return (
+            (aGroup < 0 ? catalogGroups.length : aGroup) -
+            (bGroup < 0 ? catalogGroups.length : bGroup)
+          );
         return a.title.localeCompare(b.title, "ru");
       });
   }, [items]);
@@ -272,7 +275,10 @@ export function CatalogScreen({
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить каталог.");
       const published = data.items ?? [];
       const existing = new Set(
-        published.map((item) => `${item.kind}:${item.languageCode}:${item.level}:${item.title.toLocaleLowerCase()}`),
+        published.map(
+          (item) =>
+            `${item.kind}:${item.languageCode}:${item.level}:${item.title.toLocaleLowerCase()}`,
+        ),
       );
       setItems([
         ...published,
@@ -475,10 +481,7 @@ export function CatalogScreen({
     }
   };
   const view = (item: CatalogItem, index = 1) => (
-    <article
-      className={`catalog-card ${shareToken ? "shared-catalog-card" : ""}`}
-      key={item.id}
-    >
+    <article className={`catalog-card ${shareToken ? "shared-catalog-card" : ""}`} key={item.id}>
       {!shareToken && (
         <span className="catalog-route-marker" data-trail-anchor aria-hidden="true">
           {String(index).padStart(2, "0")}
@@ -528,11 +531,7 @@ export function CatalogScreen({
                 Ссылка на 7 дней · 3 просмотра
               </button>
             )}
-            <button
-              className="text-danger"
-              disabled={working}
-              onClick={() => void archive(item)}
-            >
+            <button className="text-danger" disabled={working} onClick={() => void archive(item)}>
               Архивировать
             </button>
           </div>
@@ -573,12 +572,7 @@ export function CatalogScreen({
   return (
     <div className="page catalog-page">
       <div className="page-heading">
-        <img
-          className="catalog-heading-mascot"
-          src="/mascots/5.webp"
-          alt=""
-          aria-hidden="true"
-        />
+        <img className="catalog-heading-mascot" src="/mascots/5.webp" alt="" aria-hidden="true" />
         <div>
           <p className="eyebrow">ОБЩИЕ УЧЕБНЫЕ МАТЕРИАЛЫ</p>
           <h1>Каталог</h1>
@@ -779,11 +773,7 @@ export function CatalogScreen({
       ) : sections.length ? (
         <div className="catalog-path-sections">
           {sections.map((section, sectionIndex) => (
-            <details
-              className="catalog-path-section"
-              key={section.title}
-              open={sectionIndex === 0}
-            >
+            <details className="catalog-path-section" key={section.title} open={sectionIndex === 0}>
               <summary className="catalog-path-heading">
                 <span className="catalog-section-number">
                   {String(sectionIndex + 1).padStart(2, "0")}
@@ -794,7 +784,9 @@ export function CatalogScreen({
                     {section.items.length} {section.items.length === 1 ? "материал" : "материала"}
                   </small>
                 </span>
-                <span className="catalog-section-toggle" aria-hidden="true">⌄</span>
+                <span className="catalog-section-toggle" aria-hidden="true">
+                  ⌄
+                </span>
               </summary>
               <LearningTrail className="catalog-route-list">
                 {section.items.map((item, index) => (
@@ -833,10 +825,12 @@ function ContentSummary({ body }: { body: Record<string, unknown> }) {
         <div className="catalog-word-preview">
           <strong>{cards.length} слов</strong>
           {cards.slice(0, 4).map((value, index) => {
-            const card = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+            const card =
+              value && typeof value === "object" ? (value as Record<string, unknown>) : {};
             return (
               <span key={`${String(card.word ?? "word")}-${index}`}>
-                {card.article ? `${String(card.article)} ` : ""}{String(card.word ?? "")}
+                {card.article ? `${String(card.article)} ` : ""}
+                {String(card.word ?? "")}
                 {card.translation ? ` · ${String(card.translation)}` : ""}
               </span>
             );
@@ -860,9 +854,9 @@ function ContentSummary({ body }: { body: Record<string, unknown> }) {
 
 function ModuleSummary({ body }: { body: Record<string, unknown> }) {
   const cards = Array.isArray(body.cards) ? body.cards : [];
-  const examples = cards.slice(0, 3).map((value) =>
-    value && typeof value === "object" ? (value as Record<string, unknown>) : {},
-  );
+  const examples = cards
+    .slice(0, 3)
+    .map((value) => (value && typeof value === "object" ? (value as Record<string, unknown>) : {}));
   const estimated = Number(body.estimated_seconds);
   return (
     <div className="catalog-module-summary">
@@ -873,13 +867,18 @@ function ModuleSummary({ body }: { body: Record<string, unknown> }) {
       <div className="catalog-module-examples">
         {examples.map((card, index) => (
           <span key={`${String(card.word ?? "word")}-${index}`}>
-            <b>{card.article ? `${String(card.article)} ` : ""}{String(card.word ?? "")}</b>
+            <b>
+              {card.article ? `${String(card.article)} ` : ""}
+              {String(card.word ?? "")}
+            </b>
             <i>{String(card.translation ?? "")}</i>
           </span>
         ))}
       </div>
       {Number.isFinite(estimated) && estimated > 0 && (
-        <small>Запоминание и произношение · около {Math.max(1, Math.round(estimated / 60))} мин</small>
+        <small>
+          Запоминание и произношение · около {Math.max(1, Math.round(estimated / 60))} мин
+        </small>
       )}
     </div>
   );

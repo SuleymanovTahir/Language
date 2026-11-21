@@ -24,7 +24,10 @@ export type PreparedSentenceRound = {
 };
 
 function cleanToken(token: string): string {
-  return token.replace(/[.,!?;:]+$/u, "").trim().toLowerCase();
+  return token
+    .replace(/[.,!?;:]+$/u, "")
+    .trim()
+    .toLowerCase();
 }
 
 function shuffle<T>(items: T[]): T[] {
@@ -111,14 +114,16 @@ const CURATED_MODULE_SENTENCES: Record<number, SentenceChallenge[]> = {
       russian: "Сегодня у нас совсем нет свободного времени.",
       targetWords: ["Heute", "haben", "wir", "wirklich", "keine", "freie", "Zeit."],
       difficulty: "hard",
-      explanation: "Обратный порядок слов: обстоятельство времени Heute на первом месте, глагол haben на втором.",
+      explanation:
+        "Обратный порядок слов: обстоятельство времени Heute на первом месте, глагол haben на втором.",
     },
     {
       id: "m1-h2",
       russian: "Почему вы сейчас не хотите быть здесь?",
       targetWords: ["Warum", "wollt", "ihr", "jetzt", "nicht", "hier", "sein?"],
       difficulty: "hard",
-      explanation: "Инфинитив sein отправляется в самый конец предложения после модального глагола.",
+      explanation:
+        "Инфинитив sein отправляется в самый конец предложения после модального глагола.",
     },
     {
       id: "m1-h3",
@@ -166,7 +171,8 @@ const CURATED_MODULE_SENTENCES: Record<number, SentenceChallenge[]> = {
       russian: "Здесь нельзя громко разговаривать.",
       targetWords: ["Man", "darf", "hier", "nicht", "laut", "sprechen."],
       difficulty: "medium",
-      explanation: "Неопределенно-личное местоимение man с dürfen означает «разрешено / запрещено».",
+      explanation:
+        "Неопределенно-личное местоимение man с dürfen означает «разрешено / запрещено».",
     },
     {
       id: "m2-m3",
@@ -181,14 +187,16 @@ const CURATED_MODULE_SENTENCES: Record<number, SentenceChallenge[]> = {
       russian: "К сожалению, сегодня я не могу прийти к тебе.",
       targetWords: ["Leider", "kann", "ich", "heute", "nicht", "zu", "dir", "kommen."],
       difficulty: "hard",
-      explanation: "Инверсия: вводное слово Leider на 1-м месте, глагол kann на 2-м, подлежащее ich на 3-м.",
+      explanation:
+        "Инверсия: вводное слово Leider на 1-м месте, глагол kann на 2-м, подлежащее ich на 3-м.",
     },
     {
       id: "m2-h2",
       russian: "Почему мы должны делать это именно сейчас?",
       targetWords: ["Warum", "müssen", "wir", "das", "genau", "jetzt", "erledigen?"],
       difficulty: "hard",
-      explanation: "Вопросительное слово Warum + глагол müssen + подлежащее wir + инфинитив в конце.",
+      explanation:
+        "Вопросительное слово Warum + глагол müssen + подлежащее wir + инфинитив в конце.",
     },
   ],
 
@@ -237,7 +245,8 @@ const CURATED_MODULE_SENTENCES: Record<number, SentenceChallenge[]> = {
       russian: "Скажи мне, пожалуйста, когда начинается этот урок?",
       targetWords: ["Sag", "mir", "bitte,", "wann", "dieser", "Unterricht", "beginnt."],
       difficulty: "hard",
-      explanation: "Косвенный вопрос с wann: глагол начинается (beginnt) отправляется в конец придаточного.",
+      explanation:
+        "Косвенный вопрос с wann: глагол начинается (beginnt) отправляется в конец придаточного.",
     },
   ],
 
@@ -272,7 +281,8 @@ const CURATED_MODULE_SENTENCES: Record<number, SentenceChallenge[]> = {
       russian: "Моя сестра учится в Берлине уже два года.",
       targetWords: ["Meine", "Schwester", "studiert", "schon", "zwei", "Jahre", "in", "Berlin."],
       difficulty: "hard",
-      explanation: "Обстоятельство времени (zwei Jahre) ставится перед обстоятельством места (in Berlin).",
+      explanation:
+        "Обстоятельство времени (zwei Jahre) ставится перед обстоятельством места (in Berlin).",
     },
   ],
 
@@ -582,7 +592,8 @@ export function getSentenceChallengesForModule(
         russian: "К сожалению, сегодня я не могу вам помочь.",
         targetWords: ["Leider", "kann", "ich", "Ihnen", "heute", "nicht", "helfen."],
         difficulty: "hard",
-        explanation: "Инверсия: вводное слово Leider на 1-м месте, глагол kann на 2-м, инфинитив helfen в конце.",
+        explanation:
+          "Инверсия: вводное слово Leider на 1-м месте, глагол kann на 2-м, инфинитив helfen в конце.",
       },
       {
         id: `fb-h2-${module.id}`,

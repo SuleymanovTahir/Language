@@ -78,9 +78,7 @@ export function GameLeaderboard({
         <span className="leaderboard-icon">🏆</span>
         <div>
           <h3>Рейтинг раунда</h3>
-          <p>
-            Места распределяются по количеству баллов, а при равенстве — по скорости ответа.
-          </p>
+          <p>Места распределяются по количеству баллов, а при равенстве — по скорости ответа.</p>
         </div>
       </div>
 
@@ -96,7 +94,11 @@ export function GameLeaderboard({
                   : `#${userRank} место`}
           </span>
           <span className="rank-stats">
-            Ваш результат: <b>{score}/{total}</b> за <b>{timeLabel}</b>
+            Ваш результат:{" "}
+            <b>
+              {score}/{total}
+            </b>{" "}
+            за <b>{timeLabel}</b>
           </span>
         </div>
       )}

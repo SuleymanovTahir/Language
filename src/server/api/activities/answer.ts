@@ -9,10 +9,9 @@ import {
   runWithAccount,
 } from "./start.ts";
 
-const REFILL_MS = Math.max(
-  1,
-  Math.min(1440, Number(process.env.LINGUAPLAY_ENERGY_REFILL_MINUTES ?? 30) || 30),
-) * 60_000;
+const REFILL_MS =
+  Math.max(1, Math.min(1440, Number(process.env.LINGUAPLAY_ENERGY_REFILL_MINUTES ?? 30) || 30)) *
+  60_000;
 const json = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -69,8 +68,7 @@ export async function POST(request: Request) {
         `SELECT activity_id FROM linguaplay_energy_ledger WHERE id=$1 AND user_id=$2 AND reason IN ('Activity start','PRO activity','Admin activity')`,
         [sessionId, userId],
       );
-      if (!started.rowCount || started.rows[0].activity_id !== activityId)
-        return null;
+      if (!started.rowCount || started.rows[0].activity_id !== activityId) return null;
 
       const snapshot = await loadEnergy(client, userId);
       const run = await client.query(
@@ -85,7 +83,11 @@ export async function POST(request: Request) {
         : [];
       const streak = body.correct ? oldStreak + 1 : 0;
       let bonus = 0;
-      for (const [milestone, amount] of [[3, 1], [5, 1], [10, 1]] as const) {
+      for (const [milestone, amount] of [
+        [3, 1],
+        [5, 1],
+        [10, 1],
+      ] as const) {
         if (streak >= milestone && !awarded.includes(milestone)) {
           awarded.push(milestone);
           bonus += amount;
@@ -124,7 +126,15 @@ export async function POST(request: Request) {
       await client.query(
         `INSERT INTO linguaplay_energy_answer_events(user_id,event_id,session_id,correct,bonus,balance_after,streak)
          VALUES($1,$2,$3,$4,$5,$6,$7)`,
-        [userId, eventId, sessionId, body.correct, Math.max(0, energy - snapshot.energy), energy, streak],
+        [
+          userId,
+          eventId,
+          sessionId,
+          body.correct,
+          Math.max(0, energy - snapshot.energy),
+          energy,
+          streak,
+        ],
       );
       return {
         energy,

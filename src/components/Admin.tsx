@@ -2,6 +2,12 @@ import { CommunicationSettings } from "./Companion";
 import { useEffect, useMemo, useState } from "react";
 import type { AccountUser } from "./Accounts";
 import { Icon } from "./Icon";
+import {
+  readMenuVisibilityConfig,
+  saveMenuVisibilityConfig,
+  MENU_SECTIONS,
+  type MenuVisibilityConfig,
+} from "../lib/menuAccess";
 
 type AdminUser = AccountUser & {
   created_at: string;
@@ -267,7 +273,9 @@ function CreateUserModal({
                 border: "1px solid #e2e8f0",
               }}
             >
-              <strong style={{ display: "block", marginBottom: 10, fontSize: 13, color: "#1e293b" }}>
+              <strong
+                style={{ display: "block", marginBottom: 10, fontSize: 13, color: "#1e293b" }}
+              >
                 Права администратора:
               </strong>
               <label className="admin-toggle-row" style={{ marginBottom: 10 }}>
@@ -325,12 +333,7 @@ function CreateUserModal({
           )}
 
           <div className="dialog-actions" style={{ marginTop: 22 }}>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={onClose}
-              disabled={working}
-            >
+            <button type="button" className="secondary-button" onClick={onClose} disabled={working}>
               Отмена
             </button>
             <button
@@ -362,7 +365,24 @@ export function AdminUsersScreen({
   const [reloadNonce, setReloadNonce] = useState(0);
   const [notice, setNotice] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"users" | "ratings">("users");
+  const [viewMode, setViewMode] = useState<"users" | "ratings" | "menu">("users");
+  const [menuConfig, setMenuConfig] = useState<MenuVisibilityConfig>(readMenuVisibilityConfig);
+  const [menuSaving, setMenuSaving] = useState(false);
+  const [menuNotice, setMenuNotice] = useState("");
+
+  const saveMenuSettings = async () => {
+    setMenuSaving(true);
+    setMenuNotice("");
+    try {
+      saveMenuVisibilityConfig(menuConfig);
+      await adminRequest({ action: "save-menu-settings", settings: menuConfig }, "POST");
+      setMenuNotice("Настройки меню сохранены! Видимость пунктов и 404-защита обновлены.");
+    } catch {
+      setMenuNotice("Настройки сохранены локально.");
+    } finally {
+      setMenuSaving(false);
+    }
+  };
   const [ratingsData, setRatingsData] = useState<{
     ratings: Array<{
       id: string | number;
@@ -471,7 +491,10 @@ export function AdminUsersScreen({
         </div>
       </div>
       <CommunicationSettings admin />
-      <div className="admin-nav-tabs" style={{ display: "flex", gap: "10px", margin: "16px 0 24px" }}>
+      <div
+        className="admin-nav-tabs"
+        style={{ display: "flex", gap: "10px", margin: "16px 0 24px" }}
+      >
         <button
           type="button"
           className={`primary-button compact ${viewMode === "users" ? "" : "ghost"}`}
@@ -486,11 +509,26 @@ export function AdminUsersScreen({
         >
           ⭐ Оценки игр {ratingsData?.ratings.length ? `(${ratingsData.ratings.length})` : ""}
         </button>
+        <button
+          type="button"
+          className={`primary-button compact ${viewMode === "menu" ? "" : "ghost"}`}
+          onClick={() => setViewMode("menu")}
+        >
+          🛡️ Меню, тарифы и 404
+        </button>
       </div>
 
       {viewMode === "ratings" ? (
         <section className="admin-ratings-section">
-          <div className="admin-ratings-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div
+            className="admin-ratings-header"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
             <div>
               <h2 style={{ margin: "0 0 4px" }}>Оценки игр от пользователей</h2>
               <p style={{ margin: 0, opacity: 0.75, fontSize: "0.9rem" }}>
@@ -521,7 +559,10 @@ export function AdminUsersScreen({
             <div className="empty-state admin-empty">
               <span style={{ fontSize: "2.5rem" }}>⭐</span>
               <h2>Оценок пока нет</h2>
-              <p>Оценки игроков появятся здесь, как только кто-нибудь оценит игру в процессе или в конце раунда.</p>
+              <p>
+                Оценки игроков появятся здесь, как только кто-нибудь оценит игру в процессе или в
+                конце раунда.
+              </p>
             </div>
           ) : (
             <>
@@ -540,7 +581,9 @@ export function AdminUsersScreen({
                 ))}
               </div>
 
-              <h3 style={{ margin: "24px 0 12px", fontSize: "1rem" }}>Последние оценки ({ratingsData.ratings.length})</h3>
+              <h3 style={{ margin: "24px 0 12px", fontSize: "1rem" }}>
+                Последние оценки ({ratingsData.ratings.length})
+              </h3>
               <div className="admin-ratings-table-wrap">
                 <table className="admin-ratings-table">
                   <thead>
@@ -556,13 +599,20 @@ export function AdminUsersScreen({
                   <tbody>
                     {ratingsData.ratings.map((row) => (
                       <tr key={row.id}>
-                        <td><strong>{row.user_name || "Гость"}</strong></td>
-                        <td><code>{displayLogin(row.user_email)}</code></td>
-                        <td><span className="game-badge">{row.game_id}</span></td>
+                        <td>
+                          <strong>{row.user_name || "Гость"}</strong>
+                        </td>
+                        <td>
+                          <code>{displayLogin(row.user_email)}</code>
+                        </td>
+                        <td>
+                          <span className="game-badge">{row.game_id}</span>
+                        </td>
                         <td>Модуль {row.module_id}</td>
                         <td>
                           <span className="stars-pill">
-                            {"★".repeat(row.rating)}{"☆".repeat(Math.max(0, 5 - row.rating))} ({row.rating}/5)
+                            {"★".repeat(row.rating)}
+                            {"☆".repeat(Math.max(0, 5 - row.rating))} ({row.rating}/5)
                           </span>
                         </td>
                         <td>
@@ -576,143 +626,387 @@ export function AdminUsersScreen({
             </>
           )}
         </section>
+      ) : viewMode === "menu" ? (
+        <section className="admin-menu-management-section">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
+            <div>
+              <h2 style={{ margin: "0 0 4px" }}>Управление меню, тарифами и доступом</h2>
+              <p style={{ margin: 0, opacity: 0.75, fontSize: "0.9rem" }}>
+                Настройка видимости бокового меню. При ограничении доступа прямые ссылки возвращают
+                страницу 404.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="primary-button compact"
+              onClick={() => void saveMenuSettings()}
+              disabled={menuSaving}
+            >
+              {menuSaving ? "Сохраняю…" : "Сохранить настройки меню"}
+            </button>
+          </div>
+
+          {menuNotice && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "rgba(34, 197, 94, 0.15)",
+                color: "#86efac",
+                marginBottom: 16,
+              }}
+            >
+              {menuNotice}
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            {/* Column 1: Global visibility */}
+            <div
+              style={{
+                background: "var(--card-bg, #1e293b)",
+                border: "1px solid var(--border-color, #334155)",
+                borderRadius: 16,
+                padding: 20,
+              }}
+            >
+              <h3 style={{ margin: "0 0 8px", fontSize: "1.1rem" }}>
+                🌐 Видимость разделов для всех
+              </h3>
+              <p style={{ fontSize: "0.85rem", opacity: 0.7, margin: "0 0 16px" }}>
+                Снимите галочку, чтобы скрыть раздел из бокового меню у всех учеников и гостей.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {MENU_SECTIONS.map((sec) => (
+                  <label
+                    key={sec.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!menuConfig.globallyHiddenSections.includes(sec.id)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setMenuConfig((prev) => ({
+                          ...prev,
+                          globallyHiddenSections: checked
+                            ? prev.globallyHiddenSections.filter((id) => id !== sec.id)
+                            : [...prev.globallyHiddenSections, sec.id],
+                        }));
+                      }}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <strong style={{ display: "block", fontSize: "0.95rem" }}>{sec.label}</strong>
+                      <span style={{ fontSize: "0.8rem", opacity: 0.65 }}>{sec.description}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Column 2: Staff Only & PRO restrictions */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Staff only */}
+              <div
+                style={{
+                  background: "var(--card-bg, #1e293b)",
+                  border: "1px solid var(--border-color, #334155)",
+                  borderRadius: 16,
+                  padding: 20,
+                }}
+              >
+                <h3 style={{ margin: "0 0 8px", fontSize: "1.1rem" }}>
+                  👔 Только для персонала (Авторы / Учителя)
+                </h3>
+                <p style={{ fontSize: "0.85rem", opacity: 0.7, margin: "0 0 16px" }}>
+                  Разделы, скрытые от учеников и игроков. Доступны только контент-менеджерам и
+                  администраторам.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {MENU_SECTIONS.filter((s) => ["catalog", "materials"].includes(s.id)).map(
+                    (sec) => (
+                      <label
+                        key={sec.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 10,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={menuConfig.staffOnlySections.includes(sec.id)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setMenuConfig((prev) => ({
+                              ...prev,
+                              staffOnlySections: checked
+                                ? [...prev.staffOnlySections, sec.id]
+                                : prev.staffOnlySections.filter((id) => id !== sec.id),
+                            }));
+                          }}
+                          style={{ marginTop: 3 }}
+                        />
+                        <div>
+                          <strong style={{ display: "block", fontSize: "0.95rem" }}>
+                            {sec.label}
+                          </strong>
+                          <span style={{ fontSize: "0.8rem", opacity: 0.65 }}>
+                            {sec.id === "catalog"
+                              ? "Скрыть каталог от игроков (рекомендуется: там нет игровых механик)"
+                              : "Скрыть конструктор уроков от обычных учеников"}
+                          </span>
+                        </div>
+                      </label>
+                    ),
+                  )}
+                </div>
+              </div>
+
+              {/* PRO only */}
+              <div
+                style={{
+                  background: "var(--card-bg, #1e293b)",
+                  border: "1px solid var(--border-color, #334155)",
+                  borderRadius: 16,
+                  padding: 20,
+                }}
+              >
+                <h3 style={{ margin: "0 0 8px", fontSize: "1.1rem" }}>
+                  ⭐ Ограничение по тарифу (Только PRO)
+                </h3>
+                <p style={{ fontSize: "0.85rem", opacity: 0.7, margin: "0 0 16px" }}>
+                  Разделы, доступные только пользователям с активной подпиской PRO. Бесплатным
+                  пользователям по прямой ссылке показывается 404.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {MENU_SECTIONS.filter((s) => ["games", "materials", "stats"].includes(s.id)).map(
+                    (sec) => (
+                      <label
+                        key={sec.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 10,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={menuConfig.proOnlySections.includes(sec.id)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setMenuConfig((prev) => ({
+                              ...prev,
+                              proOnlySections: checked
+                                ? [...prev.proOnlySections, sec.id]
+                                : prev.proOnlySections.filter((id) => id !== sec.id),
+                            }));
+                          }}
+                          style={{ marginTop: 3 }}
+                        />
+                        <div>
+                          <strong style={{ display: "block", fontSize: "0.95rem" }}>
+                            {sec.label} (Только PRO)
+                          </strong>
+                          <span style={{ fontSize: "0.8rem", opacity: 0.65 }}>
+                            Требовать PRO для доступа к разделу
+                          </span>
+                        </div>
+                      </label>
+                    ),
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Info notice about 404 */}
+          <div
+            style={{
+              marginTop: 20,
+              padding: 16,
+              borderRadius: 12,
+              background: "rgba(59, 130, 246, 0.1)",
+              border: "1px solid rgba(59, 130, 246, 0.25)",
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+            }}
+          >
+            <span style={{ fontSize: 24 }}>🛡️</span>
+            <div style={{ fontSize: "0.85rem", lineHeight: 1.5 }}>
+              <strong>Защита прямых ссылок (Route Guard 404):</strong> Когда пункт меню скрыт или
+              ограничен, он не только исчезает из левого меню, но и надёжно блокируется при вводе
+              прямого URL (например,{" "}
+              <code style={{ background: "rgba(0,0,0,0.2)", padding: "2px 6px", borderRadius: 4 }}>
+                #/catalog
+              </code>{" "}
+              или{" "}
+              <code style={{ background: "rgba(0,0,0,0.2)", padding: "2px 6px", borderRadius: 4 }}>
+                #/games
+              </code>
+              ). Неавторизованный пользователь сразу увидит страницу 404.
+            </div>
+          </div>
+        </section>
       ) : (
         <>
-      <div className="admin-overview-cards">
-        <article>
-          <span>Всего</span>
-          <strong>{counts.all}</strong>
-          <small>аккаунтов</small>
-        </article>
-        <article className="pro">
-          <span>PRO</span>
-          <strong>{counts.pro}</strong>
-          <small>активный доступ</small>
-        </article>
-        <article>
-          <span>Без PRO</span>
-          <strong>{counts.free}</strong>
-          <small>обычный доступ</small>
-        </article>
-        <article className="muted">
-          <span>Не заходили 14+ дней</span>
-          <strong>{counts.dormant}</strong>
-          <small>включая без истории входов</small>
-        </article>
-      </div>
-      <div className="admin-user-toolbar">
-        <label className="admin-search">
-          <Icon name="search" size={18} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Имя, email или ID"
-          />
-        </label>
-        <div className="admin-filter-tabs">
-          {(["all", "pro", "free", "banned", "dormant"] as AdminFilter[]).map((item) => (
-            <button
-              key={item}
-              className={filter === item ? "active" : ""}
-              onClick={() => setFilter(item)}
-            >
-              {
-                {
-                  all: "Все",
-                  pro: "PRO",
-                  free: "Без PRO",
-                  banned: "Заблокированы",
-                  dormant: "Неактивные",
-                }[item]
-              }{" "}
-              <span>{counts[item]}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      {error && (
-        <p className="form-error admin-error" role="alert">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="admin-notice" role="status">
-          {notice}
-        </p>
-      )}
-      {busy ? (
-        <div className="admin-loading">
-          <span className="account-spinner" /> Загружаю аккаунты…
-        </div>
-      ) : users.length ? (
-        <div className="admin-user-cards">
-          {users.map((user) => (
-            <AdminUserCard
-              key={user.id}
-              user={user}
-              currentUserId={currentUser.id}
-              currentUserRole={currentUser.role}
-              active={data?.active.find((item) => item.user_id === user.id)}
-              onSaved={saved}
-              onError={setError}
-              onEnergyUpdated={onEnergyUpdated}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="empty-state admin-empty">
-          <Icon name="search" size={28} />
-          <h2>Пользователи не найдены</h2>
-          <p>Попробуйте изменить поиск или фильтр.</p>
-        </div>
-      )}
-      <section className="admin-live-summary">
-        <div>
-          <h2>Сейчас учатся</h2>
-          <p>Незавершённые занятия, которые приложение сохранило.</p>
-        </div>
-        {data?.active.length ? (
-          <div className="admin-active-cards">
-            {data.active.map((item) => (
-              <article key={item.user_id}>
-                <strong>
-                  {data.users.find((user) => user.id === item.user_id)?.name ?? "Пользователь"}
-                </strong>
-                <span>
-                  {item.activity_title} · {item.module_title || "занятие"}
-                </span>
-                <small>
-                  Шаг {item.current_index} из {item.total}
-                </small>
-              </article>
-            ))}
+          <div className="admin-overview-cards">
+            <article>
+              <span>Всего</span>
+              <strong>{counts.all}</strong>
+              <small>аккаунтов</small>
+            </article>
+            <article className="pro">
+              <span>PRO</span>
+              <strong>{counts.pro}</strong>
+              <small>активный доступ</small>
+            </article>
+            <article>
+              <span>Без PRO</span>
+              <strong>{counts.free}</strong>
+              <small>обычный доступ</small>
+            </article>
+            <article className="muted">
+              <span>Не заходили 14+ дней</span>
+              <strong>{counts.dormant}</strong>
+              <small>включая без истории входов</small>
+            </article>
           </div>
-        ) : (
-          <small>Активных занятий нет.</small>
-        )}
-      </section>
-      <section className="admin-live-summary admin-subscriptions-summary">
-        <div>
-          <h2>Подписки и продления</h2>
-          <p>Кому выдан PRO, сколько стоит и за какой период.</p>
-        </div>
-        {data?.subscriptions.length ? (
-          <div className="admin-active-cards">
-            {data.subscriptions.map((item) => (
-              <article key={item.id}>
-                <strong>{item.name || item.email}</strong>
-                <span>{item.email} · {item.plan_name} · {item.amount_minor / 100} {item.currency}</span>
-                <small>
-                  {fmtDate(item.period_start)} — {fmtDate(item.period_end)} · {item.status}
-                  {item.cancel_at_period_end ? " · продление отключено" : " · продление включено"}
-                </small>
-              </article>
-            ))}
+          <div className="admin-user-toolbar">
+            <label className="admin-search">
+              <Icon name="search" size={18} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Имя, email или ID"
+              />
+            </label>
+            <div className="admin-filter-tabs">
+              {(["all", "pro", "free", "banned", "dormant"] as AdminFilter[]).map((item) => (
+                <button
+                  key={item}
+                  className={filter === item ? "active" : ""}
+                  onClick={() => setFilter(item)}
+                >
+                  {
+                    {
+                      all: "Все",
+                      pro: "PRO",
+                      free: "Без PRO",
+                      banned: "Заблокированы",
+                      dormant: "Неактивные",
+                    }[item]
+                  }{" "}
+                  <span>{counts[item]}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        ) : (
-          <small>Подписок пока нет. Новые периоды появятся здесь после подключения оплаты.</small>
-        )}
-      </section>
+          {error && (
+            <p className="form-error admin-error" role="alert">
+              {error}
+            </p>
+          )}
+          {notice && (
+            <p className="admin-notice" role="status">
+              {notice}
+            </p>
+          )}
+          {busy ? (
+            <div className="admin-loading">
+              <span className="account-spinner" /> Загружаю аккаунты…
+            </div>
+          ) : users.length ? (
+            <div className="admin-user-cards">
+              {users.map((user) => (
+                <AdminUserCard
+                  key={user.id}
+                  user={user}
+                  currentUserId={currentUser.id}
+                  currentUserRole={currentUser.role}
+                  active={data?.active.find((item) => item.user_id === user.id)}
+                  onSaved={saved}
+                  onError={setError}
+                  onEnergyUpdated={onEnergyUpdated}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state admin-empty">
+              <Icon name="search" size={28} />
+              <h2>Пользователи не найдены</h2>
+              <p>Попробуйте изменить поиск или фильтр.</p>
+            </div>
+          )}
+          <section className="admin-live-summary">
+            <div>
+              <h2>Сейчас учатся</h2>
+              <p>Незавершённые занятия, которые приложение сохранило.</p>
+            </div>
+            {data?.active.length ? (
+              <div className="admin-active-cards">
+                {data.active.map((item) => (
+                  <article key={item.user_id}>
+                    <strong>
+                      {data.users.find((user) => user.id === item.user_id)?.name ?? "Пользователь"}
+                    </strong>
+                    <span>
+                      {item.activity_title} · {item.module_title || "занятие"}
+                    </span>
+                    <small>
+                      Шаг {item.current_index} из {item.total}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <small>Активных занятий нет.</small>
+            )}
+          </section>
+          <section className="admin-live-summary admin-subscriptions-summary">
+            <div>
+              <h2>Подписки и продления</h2>
+              <p>Кому выдан PRO, сколько стоит и за какой период.</p>
+            </div>
+            {data?.subscriptions.length ? (
+              <div className="admin-active-cards">
+                {data.subscriptions.map((item) => (
+                  <article key={item.id}>
+                    <strong>{item.name || item.email}</strong>
+                    <span>
+                      {item.email} · {item.plan_name} · {item.amount_minor / 100} {item.currency}
+                    </span>
+                    <small>
+                      {fmtDate(item.period_start)} — {fmtDate(item.period_end)} · {item.status}
+                      {item.cancel_at_period_end
+                        ? " · продление отключено"
+                        : " · продление включено"}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <small>
+                Подписок пока нет. Новые периоды появятся здесь после подключения оплаты.
+              </small>
+            )}
+          </section>
         </>
       )}
       {createOpen && (
@@ -992,6 +1286,10 @@ function AdminUserCard({
                 </label>
               ))}
             </fieldset>
+            <p style={{ fontSize: "0.8rem", opacity: 0.7, margin: "4px 0 12px", lineHeight: 1.4 }}>
+              Снятые галочки скроют раздел из бокового меню. При переходе по прямой ссылке
+              пользователь увидит страницу 404.
+            </p>
             <button
               className="secondary-button compact"
               disabled={working || user.id === currentUserId}
@@ -1741,12 +2039,17 @@ export function AdminAnalyticsScreen() {
                       <article key={`${item.device_type}-${item.browser}-${item.os}-${index}`}>
                         <strong>{item.device_type ?? "Неизвестное устройство"}</strong>
                         <span>{item.people} посетителей</span>
-                        <small>{item.browser ?? "браузер неизвестен"} · {item.os ?? "OS неизвестна"} · {item.events} событий</small>
+                        <small>
+                          {item.browser ?? "браузер неизвестен"} · {item.os ?? "OS неизвестна"} ·{" "}
+                          {item.events} событий
+                        </small>
                       </article>
                     ))}
                   </div>
                 ) : (
-                  <p className="admin-analytics-empty">Данные появятся после согласия на аналитику.</p>
+                  <p className="admin-analytics-empty">
+                    Данные появятся после согласия на аналитику.
+                  </p>
                 )}
               </section>
               <section className="analytics-panel">
@@ -1760,7 +2063,10 @@ export function AdminAnalyticsScreen() {
                   <div className="analytics-row-list">
                     {data.locations.map((item, index) => (
                       <article key={`${item.country}-${item.region}-${index}`}>
-                        <strong>{[item.region, item.country].filter(Boolean).join(", ") || "Не определена"}</strong>
+                        <strong>
+                          {[item.region, item.country].filter(Boolean).join(", ") ||
+                            "Не определена"}
+                        </strong>
                         <span>{item.people} посетителей</span>
                         <small>{item.events} событий</small>
                       </article>
@@ -1785,17 +2091,26 @@ export function AdminAnalyticsScreen() {
                     {data.retention.map((item) => (
                       <article key={item.cohort_week}>
                         <strong>
-                          Неделя с {new Date(item.cohort_week).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                          Неделя с{" "}
+                          {new Date(item.cohort_week).toLocaleDateString("ru-RU", {
+                            day: "numeric",
+                            month: "short",
+                          })}
                         </strong>
                         <span>{item.cohort_size} регистраций</span>
                         <small>
-                          Активация 7д {retentionRate(item.activated_7d, item.activation_eligible)} · D1 {retentionRate(item.d1_retained, item.d1_eligible)} · D7 {retentionRate(item.d7_retained, item.d7_eligible)} · D30 {retentionRate(item.d30_retained, item.d30_eligible)}
+                          Активация 7д {retentionRate(item.activated_7d, item.activation_eligible)}{" "}
+                          · D1 {retentionRate(item.d1_retained, item.d1_eligible)} · D7{" "}
+                          {retentionRate(item.d7_retained, item.d7_eligible)} · D30{" "}
+                          {retentionRate(item.d30_retained, item.d30_eligible)}
                         </small>
                       </article>
                     ))}
                   </div>
                 ) : (
-                  <p className="admin-analytics-empty">Когорты появятся после регистрации и согласованных событий активности.</p>
+                  <p className="admin-analytics-empty">
+                    Когорты появятся после регистрации и согласованных событий активности.
+                  </p>
                 )}
               </section>
               <section className="analytics-panel">
@@ -1806,14 +2121,37 @@ export function AdminAnalyticsScreen() {
                   </div>
                 </div>
                 <div className="analytics-row-list">
-                  <article><strong>Платящие аккаунты</strong><span>{data.commerce.paying_accounts}</span><small>конверсия от регистраций {percentage(data.commerce.paying_accounts, data.commerce.total_accounts)}</small></article>
-                  <article><strong>Активные подписки</strong><span>{data.commerce.active_subscriptions}</span><small>{data.commerce.cancellations_30d} отмен за 30 дней · {data.commerce.past_due_subscriptions} просрочены</small></article>
-                  <article><strong>Неуспешные платежи</strong><span>{data.commerce.failed_payments_30d}</span><small>за последние 30 дней</small></article>
+                  <article>
+                    <strong>Платящие аккаунты</strong>
+                    <span>{data.commerce.paying_accounts}</span>
+                    <small>
+                      конверсия от регистраций{" "}
+                      {percentage(data.commerce.paying_accounts, data.commerce.total_accounts)}
+                    </small>
+                  </article>
+                  <article>
+                    <strong>Активные подписки</strong>
+                    <span>{data.commerce.active_subscriptions}</span>
+                    <small>
+                      {data.commerce.cancellations_30d} отмен за 30 дней ·{" "}
+                      {data.commerce.past_due_subscriptions} просрочены
+                    </small>
+                  </article>
+                  <article>
+                    <strong>Неуспешные платежи</strong>
+                    <span>{data.commerce.failed_payments_30d}</span>
+                    <small>за последние 30 дней</small>
+                  </article>
                   {data.commerce.by_currency.map((item) => (
                     <article key={item.currency}>
-                      <strong>{item.currency} · {formatMinorMoney(item.gross_minor, item.currency)} всего</strong>
+                      <strong>
+                        {item.currency} · {formatMinorMoney(item.gross_minor, item.currency)} всего
+                      </strong>
                       <span>LTV {formatMinorMoney(item.ltv_minor, item.currency)}</span>
-                      <small>{item.paying_customers} клиентов · {item.successful_payments} платежей · {formatMinorMoney(item.gross_30d_minor, item.currency)} за 30 дней</small>
+                      <small>
+                        {item.paying_customers} клиентов · {item.successful_payments} платежей ·{" "}
+                        {formatMinorMoney(item.gross_30d_minor, item.currency)} за 30 дней
+                      </small>
                     </article>
                   ))}
                   {data.commerce.mrr_by_currency.map((item) => (
@@ -1825,7 +2163,10 @@ export function AdminAnalyticsScreen() {
                   ))}
                 </div>
                 {!data.commerce.by_currency.length && (
-                  <p className="admin-analytics-empty">Подтверждённых платежей пока нет. Checkout сейчас отключён, поэтому фактический LTV появится после подключения оплаты.</p>
+                  <p className="admin-analytics-empty">
+                    Подтверждённых платежей пока нет. Checkout сейчас отключён, поэтому фактический
+                    LTV появится после подключения оплаты.
+                  </p>
                 )}
               </section>
             </div>
@@ -1833,7 +2174,10 @@ export function AdminAnalyticsScreen() {
               <div className="analytics-panel-heading">
                 <div>
                   <h2>История метрик по дням</h2>
-                  <p>Ежедневные снимки DAU, WAU, MAU, оттока, подписок и выручки сохраняются без срока удаления.</p>
+                  <p>
+                    Ежедневные снимки DAU, WAU, MAU, оттока, подписок и выручки сохраняются без
+                    срока удаления.
+                  </p>
                 </div>
                 <span>{data.snapshots.length} дней</span>
               </div>
@@ -1841,14 +2185,32 @@ export function AdminAnalyticsScreen() {
                 <div className="analytics-row-list">
                   {data.snapshots.map((item) => (
                     <article key={item.snapshot_day}>
-                      <strong>{new Date(item.snapshot_day).toLocaleDateString("ru-RU", { dateStyle: "medium" })}</strong>
-                      <span>DAU {metricNumber(item.metrics, "dau")} · WAU {metricNumber(item.metrics, "wau")} · MAU {metricNumber(item.metrics, "mau")}</span>
-                      <small>Отток {metricNumber(item.metrics, "user_churn_rate_30d")}% ({metricNumber(item.metrics, "churned_users_30d")} аккаунтов) · подписки: {metricNumber(item.metrics, "active_subscriptions")} · MRR: {snapshotMrr(item.metrics)} · платящие: {snapshotRevenueCustomers(item.metrics)} · выручка 30д: {snapshotMoney(item.metrics, "gross_30d_minor")} · LTV: {snapshotMoney(item.metrics, "ltv_minor")}</small>
+                      <strong>
+                        {new Date(item.snapshot_day).toLocaleDateString("ru-RU", {
+                          dateStyle: "medium",
+                        })}
+                      </strong>
+                      <span>
+                        DAU {metricNumber(item.metrics, "dau")} · WAU{" "}
+                        {metricNumber(item.metrics, "wau")} · MAU{" "}
+                        {metricNumber(item.metrics, "mau")}
+                      </span>
+                      <small>
+                        Отток {metricNumber(item.metrics, "user_churn_rate_30d")}% (
+                        {metricNumber(item.metrics, "churned_users_30d")} аккаунтов) · подписки:{" "}
+                        {metricNumber(item.metrics, "active_subscriptions")} · MRR:{" "}
+                        {snapshotMrr(item.metrics)} · платящие:{" "}
+                        {snapshotRevenueCustomers(item.metrics)} · выручка 30д:{" "}
+                        {snapshotMoney(item.metrics, "gross_30d_minor")} · LTV:{" "}
+                        {snapshotMoney(item.metrics, "ltv_minor")}
+                      </small>
                     </article>
                   ))}
                 </div>
               ) : (
-                <p className="admin-analytics-empty">Первый полный дневной снимок появится после ночного запуска расписания.</p>
+                <p className="admin-analytics-empty">
+                  Первый полный дневной снимок появится после ночного запуска расписания.
+                </p>
               )}
             </section>
             <section className="analytics-panel">
@@ -1899,7 +2261,8 @@ export function AdminAnalyticsScreen() {
                     <article key={item.id}>
                       <strong>{item.author}</strong>
                       <span aria-label={`${item.rating} из 5`}>
-                        {"★".repeat(item.rating)}{"☆".repeat(5 - item.rating)}
+                        {"★".repeat(item.rating)}
+                        {"☆".repeat(5 - item.rating)}
                       </span>
                       <small>
                         {item.email ||
@@ -1939,8 +2302,7 @@ export function AdminAnalyticsScreen() {
                       <strong>{item.author}</strong>
                       <span>{analyticsEventName(item.event_type)}</span>
                       <small>
-                        {item.email ||
-                          (item.visitor_id ? `ID гостя ${item.visitor_id}` : "")}
+                        {item.email || (item.visitor_id ? `ID гостя ${item.visitor_id}` : "")}
                         {item.country || item.region
                           ? ` · ${[item.region, item.country].filter(Boolean).join(", ")}`
                           : " · регион недоступен"}
@@ -1970,7 +2332,9 @@ export function AdminAnalyticsScreen() {
                   ))}
                 </div>
               ) : (
-                <p className="admin-analytics-empty">События появятся после согласия на аналитику.</p>
+                <p className="admin-analytics-empty">
+                  События появятся после согласия на аналитику.
+                </p>
               )}
             </section>
             <div className="analytics-two-column">
@@ -2012,7 +2376,7 @@ export function AdminAnalyticsScreen() {
                         <small>
                           {item.email ? `${item.email} · ` : ""}
                           {routeName(item.route)} · {fmtDate(item.created_at)}
-                          {(item.country || item.region)
+                          {item.country || item.region
                             ? ` · ${[item.region, item.country].filter(Boolean).join(", ")}`
                             : ""}
                           {item.device_type ? ` · ${item.device_type}` : ""}
@@ -2051,20 +2415,22 @@ function routeName(route: string | null) {
 
 function analyticsEventName(type: string) {
   return (
-    ({
-      "page-view": "Просмотр",
-      "target-action": "Клик",
-      "game-start": "Начало игры",
-      "game-answer": "Ответ в игре",
-      "game-skip": "Пропуск в игре",
-      "game-progress": "Ход игры",
-      "game-complete": "Игра завершена",
-      "practice-start": "Начало упражнения",
-      "practice-answer": "Ответ в упражнении",
-      "practice-progress": "Ход упражнения",
-      "practice-complete": "Упражнение завершено",
-      "study-answer": "Ответ в обучении",
-    } as Record<string, string>)[type] ?? type
+    (
+      {
+        "page-view": "Просмотр",
+        "target-action": "Клик",
+        "game-start": "Начало игры",
+        "game-answer": "Ответ в игре",
+        "game-skip": "Пропуск в игре",
+        "game-progress": "Ход игры",
+        "game-complete": "Игра завершена",
+        "practice-start": "Начало упражнения",
+        "practice-answer": "Ответ в упражнении",
+        "practice-progress": "Ход упражнения",
+        "practice-complete": "Упражнение завершено",
+        "study-answer": "Ответ в обучении",
+      } as Record<string, string>
+    )[type] ?? type
   );
 }
 
@@ -2129,7 +2495,9 @@ function snapshotMrr(metrics: Record<string, unknown>) {
     if (!row || typeof row !== "object") return [];
     const item = row as Record<string, unknown>;
     if (typeof item.currency !== "string" || item.mrr_minor == null) return [];
-    return [`${item.currency} ${formatMinorMoney(item.mrr_minor as number | string, item.currency)}`];
+    return [
+      `${item.currency} ${formatMinorMoney(item.mrr_minor as number | string, item.currency)}`,
+    ];
   });
   return values.length ? values.join(" · ") : "—";
 }

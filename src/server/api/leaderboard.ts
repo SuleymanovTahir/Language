@@ -85,7 +85,10 @@ export async function GET(request: Request) {
       userBestEntry,
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Error fetching leaderboard" }, 500);
+    return json(
+      { error: error instanceof Error ? error.message : "Error fetching leaderboard" },
+      500,
+    );
   }
 }
 
@@ -105,10 +108,13 @@ export async function POST(request: Request) {
     const moduleId = Number.isInteger(body.moduleId) ? Number(body.moduleId) : 1;
     const score = Number.isInteger(body.score) ? Number(body.score) : 0;
     const total = Number.isInteger(body.total) ? Number(body.total) : 10;
-    const timeSeconds = Number.isInteger(body.timeSeconds) ? Math.max(1, Number(body.timeSeconds)) : 10;
-    const timeLabel = typeof body.timeLabel === "string" && body.timeLabel.trim()
-      ? body.timeLabel.trim()
-      : `${Math.floor(timeSeconds / 60)}:${String(timeSeconds % 60).padStart(2, "0")}`;
+    const timeSeconds = Number.isInteger(body.timeSeconds)
+      ? Math.max(1, Number(body.timeSeconds))
+      : 10;
+    const timeLabel =
+      typeof body.timeLabel === "string" && body.timeLabel.trim()
+        ? body.timeLabel.trim()
+        : `${Math.floor(timeSeconds / 60)}:${String(timeSeconds % 60).padStart(2, "0")}`;
 
     if (!gameId) {
       return json({ error: "Missing gameId" }, 400);
@@ -142,8 +148,7 @@ export async function POST(request: Request) {
       const prev = existingRes.rows[0];
       // Compare if new run is better: more score, or equal score in less time
       const isBetter =
-        score > prev.score ||
-        (score === prev.score && timeSeconds < prev.time_seconds);
+        score > prev.score || (score === prev.score && timeSeconds < prev.time_seconds);
 
       if (isBetter) {
         // Update user's personal best
@@ -225,6 +230,9 @@ export async function POST(request: Request) {
       top: topRes.rows,
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Error saving leaderboard entry" }, 500);
+    return json(
+      { error: error instanceof Error ? error.message : "Error saving leaderboard entry" },
+      500,
+    );
   }
 }

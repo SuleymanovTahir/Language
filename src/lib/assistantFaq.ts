@@ -4,7 +4,14 @@ export const preparedAnswers: PreparedAnswer[] = [
   {
     title: "Артикли der, die, das",
     prompt: "Как понять, когда использовать der, die и das?",
-    terms: ["der die das", "артикл", "род существительных", "мужской род", "женский род", "средний род"],
+    terms: [
+      "der die das",
+      "артикл",
+      "род существительных",
+      "мужской род",
+      "женский род",
+      "средний род",
+    ],
     answer:
       "В немецком у каждого существительного есть грамматический род: der — мужской, die — женский, das — средний. Его лучше учить сразу со словом: der Tisch, die Lampe, das Buch. Окончания помогают угадать род, но у них много исключений. Во множественном числе используется die: die Bücher.",
   },
@@ -81,7 +88,13 @@ export const preparedAnswers: PreparedAnswer[] = [
   {
     title: "haben или sein в Perfekt",
     prompt: "Как выбрать haben или sein в Perfekt?",
-    terms: ["haben oder sein", "haben или sein", "вспомогательный глагол", "perfekt sein", "perfekt haben"],
+    terms: [
+      "haben oder sein",
+      "haben или sein",
+      "вспомогательный глагол",
+      "perfekt sein",
+      "perfekt haben",
+    ],
     answer:
       "Haben используют большинство глаголов: Ich habe gegessen, gelernt, gesehen. Sein обычно употребляют с перемещением из одного места в другое и изменением состояния: Ich bin nach Berlin gefahren. Das Kind ist eingeschlafen. Также sein идут с sein, werden и bleiben: Sie ist zu Hause geblieben.",
   },
@@ -102,21 +115,42 @@ export const preparedAnswers: PreparedAnswer[] = [
   {
     title: "Dativ или Akkusativ после in/auf",
     prompt: "Когда после in нужен Dativ, а когда Akkusativ?",
-    terms: ["wechselpräposition", "двойное управление", "куда", "где", "wohin", "wo", "in der", "in die"],
+    terms: [
+      "wechselpräposition",
+      "двойное управление",
+      "куда",
+      "где",
+      "wohin",
+      "wo",
+      "in der",
+      "in die",
+    ],
     answer:
       "С предлогами места вроде in и auf задайте вопрос: Wo? — положение без смены места, значит Dativ: Das Buch liegt auf dem Tisch. Wohin? — движение к новому месту, значит Akkusativ: Ich lege das Buch auf den Tisch. Важно само направление, а не просто наличие глагола движения.",
   },
   {
     title: "Личные местоимения в падежах",
     prompt: "Как меняются личные местоимения в Akkusativ и Dativ?",
-    terms: ["личное местоимение", "mich mir", "dich dir", "ihn ihm", "akkusativ местоимения", "dativ местоимения"],
+    terms: [
+      "личное местоимение",
+      "mich mir",
+      "dich dir",
+      "ihn ihm",
+      "akkusativ местоимения",
+      "dativ местоимения",
+    ],
     answer:
       "В Akkusativ: ich → mich, du → dich, er → ihn, sie → sie, es → es, wir → uns, ihr → euch, sie/Sie → sie/Sie. В Dativ: ich → mir, du → dir, er → ihm, sie → ihr, es → ihm, wir → uns, ihr → euch, sie/Sie → ihnen/Ihnen. Пример: Er sieht mich. Er hilft mir.",
   },
   {
     title: "Прилагательные перед существительным",
     prompt: "Почему меняется окончание прилагательного?",
-    terms: ["окончание прилагательного", "склонение прилагательных", "adjektivdeklination", "деклинация"],
+    terms: [
+      "окончание прилагательного",
+      "склонение прилагательных",
+      "adjektivdeklination",
+      "деклинация",
+    ],
     answer:
       "Окончание прилагательного показывает род, падеж и число. Если перед ним есть der/die/das, артикль уже сообщает часть информации: der kleine Hund, mit dem kleinen Hund. После ein прилагательное иногда берёт на себя заметное окончание: ein kleiner Hund, eine kleine Katze, ein kleines Kind. Полезно учить готовые сочетания и таблицу по падежам.",
   },
@@ -169,7 +203,10 @@ export function findPreparedAnswer(question: string): PreparedAnswer | null {
   if (!normalized) return null;
   let best: { answer: PreparedAnswer; score: number } | null = null;
   for (const answer of preparedAnswers) {
-    const score = answer.terms.reduce((sum, term) => sum + (normalized.includes(term) ? Math.max(1, term.length / 8) : 0), 0);
+    const score = answer.terms.reduce(
+      (sum, term) => sum + (normalized.includes(term) ? Math.max(1, term.length / 8) : 0),
+      0,
+    );
     if (score > (best?.score ?? 0)) best = { answer, score };
   }
   return best && best.score >= 1.5 ? best.answer : null;

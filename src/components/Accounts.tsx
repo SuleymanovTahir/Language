@@ -532,12 +532,7 @@ export function AccountPanel({
         <button className="dialog-close" onClick={onClose} aria-label="Закрыть">
           <Icon name="close" />
         </button>
-        <img
-          className="account-profile-mascot"
-          src="/mascots/8.webp"
-          alt=""
-          aria-hidden="true"
-        />
+        <img className="account-profile-mascot" src="/mascots/8.webp" alt="" aria-hidden="true" />
         <p className="eyebrow">ЛИЧНЫЙ КАБИНЕТ</p>
         <div className="account-profile-heading">
           {user.image ? (
@@ -790,13 +785,19 @@ function BillingStatus() {
               <div className="billing-subscription-summary">
                 <strong>{data.currentSubscription.planName}</strong>
                 <span>
-                  {formatMinorCurrency(data.currentSubscription.amountMinor, data.currentSubscription.currency)}
+                  {formatMinorCurrency(
+                    data.currentSubscription.amountMinor,
+                    data.currentSubscription.currency,
+                  )}
                   {" · период "}
-                  {formatDate(data.currentSubscription.periodStart)} — {formatDate(data.currentSubscription.periodEnd)}
+                  {formatDate(data.currentSubscription.periodStart)} —{" "}
+                  {formatDate(data.currentSubscription.periodEnd)}
                 </span>
                 <small>
                   Статус: {paymentStatus(data.currentSubscription.status)}
-                  {data.currentSubscription.cancelAtPeriodEnd ? " · не продлевается" : " · продление включено"}
+                  {data.currentSubscription.cancelAtPeriodEnd
+                    ? " · не продлевается"
+                    : " · продление включено"}
                 </small>
               </div>
             )}
@@ -842,13 +843,17 @@ function BillingStatus() {
               {data.payments?.length ? (
                 data.payments.map((payment) => (
                   <div key={payment.id}>
-                    <span>{payment.planName || "ClickLing PRO"} · {formatDate(payment.createdAt)}</span>
+                    <span>
+                      {payment.planName || "ClickLing PRO"} · {formatDate(payment.createdAt)}
+                    </span>
                     <b>{formatMinorCurrency(payment.amountMinor, payment.currency)}</b>
                     <small>{paymentStatus(payment.status)}</small>
                   </div>
                 ))
               ) : (
-                <small>Платежей пока нет. Здесь появятся сумма, дата и статус после подключения оплаты.</small>
+                <small>
+                  Платежей пока нет. Здесь появятся сумма, дата и статус после подключения оплаты.
+                </small>
               )}
             </div>
           </>

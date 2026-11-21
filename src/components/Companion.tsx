@@ -92,7 +92,9 @@ export function CommunicationSettings({ admin = false }: { admin?: boolean }) {
               />
               <span>
                 <strong>AI-наставник включён</strong>
-                <small>Выключение сразу скроет помощника и остановит запросы для всех учеников.</small>
+                <small>
+                  Выключение сразу скроет помощника и остановит запросы для всех учеников.
+                </small>
               </span>
             </label>
           )}
@@ -126,9 +128,9 @@ export function Companion({
 }) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState(""),
-    [messages, setMessages] = useState<
-      { q: string; a: string; source: string; title?: string }[]
-    >([]),
+    [messages, setMessages] = useState<{ q: string; a: string; source: string; title?: string }[]>(
+      [],
+    ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [status, setStatus] = useState<AssistantQuota | null>(null),
@@ -168,8 +170,7 @@ export function Companion({
   }, []);
   useEffect(() => {
     if (!open) return;
-    loadStatus()
-      .catch((e) => setError(e.message));
+    loadStatus().catch((e) => setError(e.message));
   }, [open]);
   useEffect(() => {
     const changed = () => {
@@ -207,7 +208,10 @@ export function Companion({
         id: crypto.randomUUID(),
         payment,
       })) as { answer: string; source: string; title?: string; quota: AssistantQuota | null };
-      setMessages((m) => [...m, { q, a: result.answer, source: result.source, title: result.title }]);
+      setMessages((m) => [
+        ...m,
+        { q, a: result.answer, source: result.source, title: result.title },
+      ]);
       setQuestion("");
       if (result.quota) {
         setStatus(result.quota);
@@ -221,17 +225,19 @@ export function Companion({
   }
   return (
     <>
-      {enabled && <button
-        className="tutor-launch"
-        aria-label="Задать вопрос AI-наставнику"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen(!open);
-        }}
-      >
-        <Icon name={open ? "close" : "spark"} size={19} />
-        <span>AI-наставник</span>
-      </button>}
+      {enabled && (
+        <button
+          className="tutor-launch"
+          aria-label="Задать вопрос AI-наставнику"
+          aria-expanded={open}
+          onClick={() => {
+            setOpen(!open);
+          }}
+        >
+          <Icon name={open ? "close" : "spark"} size={19} />
+          <span>AI-наставник</span>
+        </button>
+      )}
       {enabled && open && (
         <section className="tutor-panel" role="dialog" aria-label="AI-наставник">
           <header>
@@ -245,14 +251,14 @@ export function Companion({
           </header>
           <div className="tutor-messages" aria-live="polite">
             {!messages.length && (
-                <p>Задайте вопрос по немецкому. Есть готовые объяснения основных правил.</p>
+              <p>Задайте вопрос по немецкому. Есть готовые объяснения основных правил.</p>
             )}
             {messages.map((m, i) => (
               <div key={i}>
                 <p className="tutor-question">{m.q}</p>
-                  {m.title && <small>{m.title}</small>}
+                {m.title && <small>{m.title}</small>}
                 <p>{m.a}</p>
-                  <small>{m.source === "prepared" ? "Готовое объяснение" : "Ответ AI"}</small>
+                <small>{m.source === "prepared" ? "Готовое объяснение" : "Ответ AI"}</small>
               </div>
             ))}
           </div>
@@ -269,7 +275,9 @@ export function Companion({
             </p>
           )}
           {status && status.isPro && status.remaining === 0 && (
-            <p className="tutor-limit">Лимит PRO на сегодня исчерпан. Можно продолжить за кристаллы.</p>
+            <p className="tutor-limit">
+              Лимит PRO на сегодня исчерпан. Можно продолжить за кристаллы.
+            </p>
           )}
           {status && (payment === "crystals" || !status.isPro || status.remaining === 0) && (
             <p className="tutor-limit">
@@ -289,12 +297,16 @@ export function Companion({
               </select>
             </label>
           )}
-          {status && status.crystals < status.crystalCost && (!status.isPro || status.remaining === 0) && (
-            <div className="tutor-limit">
-              <p>Чтобы спросить AI, подключите PRO или накопите кристаллы в упражнениях.</p>
-              <button className="secondary-button compact" onClick={onOpenAccount}>Тариф PRO</button>
-            </div>
-          )}
+          {status &&
+            status.crystals < status.crystalCost &&
+            (!status.isPro || status.remaining === 0) && (
+              <div className="tutor-limit">
+                <p>Чтобы спросить AI, подключите PRO или накопите кристаллы в упражнениях.</p>
+                <button className="secondary-button compact" onClick={onOpenAccount}>
+                  Тариф PRO
+                </button>
+              </div>
+            )}
           <details className="tutor-faq">
             <summary>Готовые объяснения по теории</summary>
             <div>

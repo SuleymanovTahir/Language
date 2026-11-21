@@ -34,7 +34,8 @@ export async function GET(request: Request) {
   permissions.manageContent = role === "owner" || role === "admin";
   permissions.manageUsers = role === "owner" || (role === "admin" && Boolean(rawPerms.manageUsers));
   permissions.manageSettings = role === "owner";
-  permissions.viewAnalytics = role === "owner" || (role === "admin" && Boolean(rawPerms.viewAnalytics));
+  permissions.viewAnalytics =
+    role === "owner" || (role === "admin" && Boolean(rawPerms.viewAnalytics));
   const entitlement = await pool.query(
     `SELECT status,starts_at,ends_at,source FROM (
     SELECT status,starts_at,ends_at,'manual_grant'::text AS source FROM linguaplay_user_entitlements WHERE user_id=$1

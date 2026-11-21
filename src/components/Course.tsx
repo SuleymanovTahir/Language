@@ -9,6 +9,7 @@ import { Icon } from "./Icon";
 import { speakText } from "./StudySession";
 import { HelpHint } from "./HelpHint";
 import { LearningTrail } from "./LearningTrail";
+import { COURSE_QUIZZES, type UnitQuizQuestion } from "../data/courseQuizzes";
 
 export type CourseSkills = {
   vocabulary: number;
@@ -84,7 +85,10 @@ export function CoursePath({
   const recommendedIds = new Set(goals.flatMap((goal) => goalRecommendations[goal] ?? []));
   const completed = units.filter((item) => progress[item.id]?.completedAt).length;
   const next = units.find((item) => !progress[item.id]?.completedAt) ?? units.at(-1);
-  const nextUnitIndex = Math.max(0, units.findIndex((item) => item.id === next?.id));
+  const nextUnitIndex = Math.max(
+    0,
+    units.findIndex((item) => item.id === next?.id),
+  );
   const reviewSuggestion = units
     .map((item) => {
       const saved = progress[item.id];
@@ -174,12 +178,7 @@ export function CoursePath({
         </div>
       )}
       <section className="course-overview-card">
-        <img
-          className="course-overview-mascot"
-          src="/mascots/4.webp"
-          alt=""
-          aria-hidden="true"
-        />
+        <img className="course-overview-mascot" src="/mascots/4.webp" alt="" aria-hidden="true" />
         <div>
           <span className="eyebrow">
             {completed === units.length ? "УРОВЕНЬ ПРОЙДЕН" : "СЛЕДУЮЩИЙ ШАГ"} · {selectedLevel}
@@ -207,7 +206,10 @@ export function CoursePath({
           </div>
         </div>
         {(previewOnly || next) && (
-          <button className="primary-button" onClick={() => onStart(previewOnly ? demoUnit : next!)}>
+          <button
+            className="primary-button"
+            onClick={() => onStart(previewOnly ? demoUnit : next!)}
+          >
             {previewOnly
               ? "Открыть демо-урок"
               : progress[next!.id]?.completedAt
@@ -244,30 +246,27 @@ export function CoursePath({
       <section className="course-units-section">
         <div className="section-title">
           <div>
-            <h2>Весь путь · A1–C1</h2>
+            <h2>Пошаговые юниты · Уровень {selectedLevel}</h2>
             <p>
-              {GERMAN_COURSE.length} юнитов · {GERMAN_COURSE.length * 6} практик навыков. Все уровни
-              на одном маршруте.
+              {units.length} последовательных юнитов · {completed} из {units.length} пройдено.
             </p>
           </div>
         </div>
         <LearningTrail className="course-unit-list">
-          {GERMAN_COURSE.map((item, index) => {
+          {units.map((item, index) => {
             const saved = progress[item.id];
-            const levelIndex = units.findIndex((unit) => unit.id === item.id);
             const unlocked = previewOnly
               ? item.id === demoUnit.id
-              : item.level === selectedLevel && levelIndex >= 0 &&
-                (Boolean(saved?.completedAt) || levelIndex <= nextUnitIndex);
+              : Boolean(saved?.completedAt) || index <= nextUnitIndex;
             const isNext = !saved?.completedAt && item.id === next?.id && unlocked;
             const hasSavedMission = Boolean(missions[item.id]);
             return (
               <div className="course-trail-stop" key={item.id}>
-                {(index === 0 || GERMAN_COURSE[index - 1].level !== item.level) && (
+                {index === 0 && (
                   <div className="trail-level-heading" id={`course-level-${item.level}`}>
                     <span>УРОВЕНЬ {item.level}</span>
                     <strong>{levelCopy[item.level]}</strong>
-                    <small>{courseUnitsForLevel(item.level).length} юнитов</small>
+                    <small>{units.length} юнитов</small>
                   </div>
                 )}
                 <article
@@ -295,12 +294,12 @@ export function CoursePath({
                           : previewOnly
                             ? "ПОЛНЫЙ ДОСТУП · АККАУНТ"
                             : saved?.completedAt
-                          ? "ПРОЙДЕНО"
-                          : isNext
-                            ? hasSavedMission
-                              ? "ПРОДОЛЖИТЬ"
-                              : "СТАРТ"
-                            : "ВПЕРЕДИ"}
+                              ? "ПРОЙДЕНО"
+                              : isNext
+                                ? hasSavedMission
+                                  ? "ПРОДОЛЖИТЬ"
+                                  : "ТЕКУЩИЙ ЮНИТ"
+                                : "ВПЕРЕДИ"}
                         {recommendedIds.has(item.id) ? " · ВАША ЦЕЛЬ" : ""}
                       </small>
                       <strong>{item.title}</strong>
@@ -313,7 +312,7 @@ export function CoursePath({
           })}
         </LearningTrail>
       </section>
-        {!previewOnly && <CourseSkillsSummary progress={progress} />}
+      {!previewOnly && <CourseSkillsSummary progress={progress} />}
     </div>
   );
 }
@@ -355,36 +354,34 @@ export function CourseSkillsSummary({ progress }: { progress: CourseProgress }) 
 
 const stepNames = [
   "Слова",
-  "Правило",
-  "Аудио",
-  "Чтение",
+  "Игра со словами",
+  "Спикинг слов",
+  "Грамматика",
   "Сборка фразы",
-  "Говорение",
-  "Письмо",
+  "Фразовый спикинг",
+  "Тест юнита",
   "Результат",
 ];
+
 type DoneSteps = {
   vocabulary: boolean;
+  wordGame: boolean;
+  wordSpeaking: boolean;
   grammar: boolean;
-  listening: boolean;
-  reading: boolean;
   sentence: boolean;
-  speaking: boolean;
-  writing: boolean;
-  listeningCorrect: boolean;
-  readingCorrect: boolean;
+  sentenceSpeaking: boolean;
+  quiz: boolean;
   sentenceCorrect: boolean;
 };
+
 const initialDone: DoneSteps = {
   vocabulary: false,
+  wordGame: false,
+  wordSpeaking: false,
   grammar: false,
-  listening: false,
-  reading: false,
   sentence: false,
-  speaking: false,
-  writing: false,
-  listeningCorrect: false,
-  readingCorrect: false,
+  sentenceSpeaking: false,
+  quiz: false,
   sentenceCorrect: false,
 };
 
@@ -405,23 +402,13 @@ export function CourseLesson({
   savedProgress?: CourseMissionState;
   onProgressChange?: (progress: CourseMissionState) => void;
 }) {
-  const [step, setStep] = useState(() => Math.max(0, Math.min(6, savedProgress?.step ?? 0)));
+  const [step, setStep] = useState(() => Math.max(0, Math.min(7, savedProgress?.step ?? 0)));
   const [done, setDone] = useState<DoneSteps>(() => ({
     ...initialDone,
-    ...(savedProgress?.done ?? {}),
+    ...((savedProgress?.done as unknown as Partial<DoneSteps>) ?? {}),
   }));
-  const [listeningChoice, setListeningChoice] = useState<number | null>(
-    () => savedProgress?.listeningChoice ?? null,
-  );
-  const [readingChoice, setReadingChoice] = useState<number | null>(
-    () => savedProgress?.readingChoice ?? null,
-  );
   const [sentenceSelection, setSentenceSelection] = useState<number[]>(
     () => savedProgress?.sentenceSelection ?? [],
-  );
-  const [writing, setWriting] = useState(() => savedProgress?.writing ?? "");
-  const [writingExampleVisible, setWritingExampleVisible] = useState(
-    () => savedProgress?.writingExampleVisible ?? false,
   );
   const [recording, setRecording] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState("");
@@ -431,6 +418,31 @@ export function CourseLesson({
     () => savedProgress?.matchedWords ?? [],
   );
   const [matchMessage, setMatchMessage] = useState("");
+
+  const unitQuiz: UnitQuizQuestion[] = useMemo(() => {
+    return (
+      COURSE_QUIZZES[unit.id] ?? [
+        {
+          question: unit.listeningQuestion,
+          options: unit.listeningOptions,
+          answer: unit.listeningAnswer,
+          explanation: `Правильный ответ: ${unit.listeningOptions[unit.listeningAnswer]}`,
+        },
+        {
+          question: unit.readingQuestion,
+          options: unit.readingOptions,
+          answer: unit.readingAnswer,
+          explanation: `Правильный ответ: ${unit.readingOptions[unit.readingAnswer]}`,
+        },
+      ]
+    );
+  }, [unit]);
+
+  const [quizQuestionIndex, setQuizQuestionIndex] = useState(0);
+  const [selectedQuizChoice, setSelectedQuizChoice] = useState<number | null>(null);
+  const [quizChoiceRevealed, setQuizChoiceRevealed] = useState(false);
+  const [quizScore, setQuizScore] = useState(0);
+
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -452,40 +464,33 @@ export function CourseLesson({
   const chosenWords = sentenceSelection.map((id) => sentenceWords[id]);
   const correctSentence =
     normalizeSentence(chosenWords.join(" ")) === normalizeSentence(targetSentence);
-  const stepDone = [
-    done.vocabulary,
-    done.grammar,
-    done.listening,
-    done.reading,
-    done.sentence,
-    done.speaking,
-    done.writing,
-    true,
-  ][step];
+
+  const stepDone =
+    [
+      true, // 0: Слова (просмотрены)
+      matchedWords.length === vocabularyPairs.length || done.wordGame, // 1: Игра слов
+      done.wordSpeaking, // 2: Спикинг слов
+      done.grammar, // 3: Грамматика
+      done.sentence, // 4: Сборка фразы
+      done.sentenceSpeaking, // 5: Фразовый спикинг
+      done.quiz, // 6: Тест юнита
+      true, // 7: Результат
+    ][step] ?? true;
+
   const progressPct = Math.round((step / (stepNames.length - 1)) * 100);
 
   useEffect(() => {
     onProgressChange?.({
       step,
-      done,
-      listeningChoice,
-      readingChoice,
+      done: done as unknown as CourseMissionState["done"],
+      listeningChoice: null,
+      readingChoice: null,
       sentenceSelection,
-      writing,
-      writingExampleVisible,
+      writing: "",
+      writingExampleVisible: false,
       matchedWords,
     });
-  }, [
-    step,
-    done,
-    listeningChoice,
-    readingChoice,
-    sentenceSelection,
-    writing,
-    writingExampleVisible,
-    matchedWords,
-    onProgressChange,
-  ]);
+  }, [step, done, sentenceSelection, matchedWords, onProgressChange]);
 
   useEffect(
     () => () => {
@@ -500,28 +505,17 @@ export function CourseLesson({
   function updateDone(key: keyof DoneSteps, value = true) {
     setDone((current) => ({ ...current, [key]: value }));
   }
+
   function nextStep() {
     if (stepDone && step < stepNames.length - 1) setStep((current) => current + 1);
   }
-  function checkListening() {
-    if (listeningChoice === null) return;
-    const correct = listeningChoice === unit.listeningAnswer;
-    updateDone("listening");
-    updateDone("listeningCorrect", correct);
-    onAnswer(correct);
-  }
-  function checkReading() {
-    if (readingChoice === null) return;
-    const correct = readingChoice === unit.readingAnswer;
-    updateDone("reading");
-    updateDone("readingCorrect", correct);
-    onAnswer(correct);
-  }
+
   function checkSentence() {
     onAnswer(correctSentence);
     updateDone("sentence");
     updateDone("sentenceCorrect", correctSentence);
   }
+
   async function startRecording() {
     setMediaError("");
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
@@ -553,17 +547,19 @@ export function CourseLesson({
       setMediaError("Не удалось получить доступ к микрофону. Можно ответить вслух без записи.");
     }
   }
+
   function stopRecording() {
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   }
+
   function finishUnit() {
     const skills: CourseSkills = {
-      vocabulary: done.vocabulary ? 1 : 0,
-      grammar: done.grammar && done.sentenceCorrect ? 1 : done.grammar ? 0.6 : 0,
-      listening: done.listeningCorrect ? 1 : done.listening ? 0.5 : 0,
-      reading: done.readingCorrect ? 1 : done.reading ? 0.5 : 0,
-      speaking: done.speaking ? 1 : 0,
-      writing: done.writing ? 1 : 0,
+      vocabulary: done.wordGame ? 1 : 0.85,
+      grammar: done.sentence ? 1 : 0.75,
+      listening: 1,
+      reading: 1,
+      speaking: done.wordSpeaking && done.sentenceSpeaking ? 1 : 0.8,
+      writing: 1,
     };
     onComplete(
       unit.id,
@@ -571,6 +567,8 @@ export function CourseLesson({
       Math.max(1, Math.round((Date.now() - startedAtRef.current) / 60_000)),
     );
   }
+
+  const currentQuizQ = unitQuiz[quizQuestionIndex];
 
   return (
     <main className="course-player">
@@ -592,14 +590,16 @@ export function CourseLesson({
       </header>
       {step < 7 && (
         <div className="course-step-label">
-          <span>ШАГ {step + 1}</span>
+          <span>
+            ШАГ {step + 1} ИЗ {stepNames.length}
+          </span>
           <strong>{stepNames[step]}</strong>
         </div>
       )}
       <section className="course-player-content">
         {step === 0 && (
           <>
-            <p className="eyebrow">СЛОВА · ПОСЛУШАЙТЕ И ЗАПОМНИТЕ</p>
+            <p className="eyebrow">СЛОВА ЮНИТА · ПОСЛУШАЙТЕ И ЗАПОМНИТЕ</p>
             <h1>{unit.title}</h1>
             <p className="course-outcome">{unit.outcome}</p>
             <div className="course-vocabulary-list">
@@ -636,71 +636,195 @@ export function CourseLesson({
                 </div>
               </section>
             )}
-            <section className="course-match-game">
-              <div>
-                <span className="eyebrow">МИНИ-ИГРА · СОЕДИНИТЕ ПАРЫ</span>
-                <small>
-                  {matchedWords.length} из {vocabularyPairs.length} совпадений
-                </small>
-              </div>
-              <div className="course-match-columns">
-                <div>
-                  {vocabularyPairs.map((item) => (
-                    <button
-                      key={`word-${item.id}`}
-                      className={`${selectedMatch === item.id ? "selected" : ""} ${matchedWords.includes(item.id) ? "matched" : ""}`}
-                      disabled={matchedWords.includes(item.id)}
-                      onClick={() => {
-                        setSelectedMatch(item.id);
-                        setMatchMessage("");
-                      }}
-                    >
-                      {item.word}
-                    </button>
-                  ))}
-                </div>
-                <div>
-                  {[...vocabularyPairs].reverse().map((item) => (
-                    <button
-                      key={`translation-${item.id}`}
-                      className={matchedWords.includes(item.id) ? "matched" : ""}
-                      disabled={matchedWords.includes(item.id)}
-                      onClick={() => {
-                        if (selectedMatch === null) {
-                          setMatchMessage("Сначала выберите немецкое слово.");
-                          return;
-                        }
-                        if (selectedMatch === item.id) {
-                          setMatchedWords((current) => [...current, item.id]);
-                          setMatchMessage("Верно, пара соединена.");
-                        } else setMatchMessage("Эта пара не подходит. Попробуйте ещё раз.");
-                        setSelectedMatch(null);
-                      }}
-                    >
-                      {item.translation}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <p className="course-match-feedback" role="status">
-                {matchedWords.length === vocabularyPairs.length
-                  ? "Все пары соединены. Отлично!"
-                  : matchMessage}
-              </p>
-            </section>
             <button
-              className={`primary-button ${done.vocabulary ? "completed-action" : ""}`}
-              disabled={matchedWords.length !== vocabularyPairs.length}
-              onClick={() => updateDone("vocabulary")}
+              className="primary-button"
+              onClick={() => {
+                updateDone("vocabulary");
+                nextStep();
+              }}
+              style={{ marginTop: "24px" }}
             >
-              {done.vocabulary ? "Слова просмотрены" : "Завершить задание со словами"}
-              <Icon name="check" />
+              Перейти к игре со словами <Icon name="arrow" />
             </button>
           </>
         )}
+
         {step === 1 && (
+          <section className="course-match-game">
+            <div>
+              <span className="eyebrow">МИНИ-ИГРА · СОЕДИНИТЕ ПАРЫ</span>
+              <h2>Закрепите новые слова</h2>
+              <p>Нажимайте немецкое слово, затем его верный перевод на русский.</p>
+              <small>
+                {matchedWords.length} из {vocabularyPairs.length} совпадений
+              </small>
+            </div>
+            <div className="course-match-columns">
+              <div>
+                {vocabularyPairs.map((item) => (
+                  <button
+                    key={`word-${item.id}`}
+                    className={`${selectedMatch === item.id ? "selected" : ""} ${matchedWords.includes(item.id) ? "matched" : ""}`}
+                    disabled={matchedWords.includes(item.id)}
+                    onClick={() => {
+                      setSelectedMatch(item.id);
+                      setMatchMessage("");
+                    }}
+                  >
+                    {item.word}
+                  </button>
+                ))}
+              </div>
+              <div>
+                {[...vocabularyPairs].reverse().map((item) => (
+                  <button
+                    key={`translation-${item.id}`}
+                    className={matchedWords.includes(item.id) ? "matched" : ""}
+                    disabled={matchedWords.includes(item.id)}
+                    onClick={() => {
+                      if (selectedMatch === null) {
+                        setMatchMessage("Сначала выберите немецкое слово слева.");
+                        return;
+                      }
+                      if (selectedMatch === item.id) {
+                        setMatchedWords((current) => [...current, item.id]);
+                        setMatchMessage("Верно, пара соединена!");
+                        if (matchedWords.length + 1 >= vocabularyPairs.length) {
+                          updateDone("wordGame", true);
+                        }
+                      } else {
+                        setMatchMessage("Эта пара не подходит. Попробуйте ещё раз.");
+                      }
+                      setSelectedMatch(null);
+                    }}
+                  >
+                    {item.translation}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="course-match-feedback" role="status">
+              {matchedWords.length === vocabularyPairs.length
+                ? "🎉 Все пары соединены. Отличный результат!"
+                : matchMessage}
+            </p>
+            <button
+              className="primary-button"
+              disabled={matchedWords.length !== vocabularyPairs.length && !done.wordGame}
+              onClick={() => {
+                updateDone("wordGame", true);
+                nextStep();
+              }}
+              style={{ marginTop: "16px" }}
+            >
+              Перейти к спикингу слов <Icon name="arrow" />
+            </button>
+          </section>
+        )}
+
+        {step === 2 && (
           <>
-            <p className="eyebrow">МИНИ-ТЕОРИЯ</p>
+            <p className="eyebrow">СПИКИНГ · ПРОИЗНОШЕНИЕ СЛОВ</p>
+            <h1>Потренируйте произношение вслух</h1>
+            <p className="course-outcome">
+              Послушайте каждое слово и повторите его четко вслух. Вы можете записать свой голос,
+              чтобы сравнить с диктором.
+            </p>
+            <div className="course-vocabulary-list">
+              {vocabularyPairs.map(({ id, word, translation }) => (
+                <article key={`speak-${id}-${word}`}>
+                  <button
+                    aria-label={`Прослушать ${word}`}
+                    onClick={() => speakText(word, "de-DE")}
+                  >
+                    <Icon name="volume" size={18} />
+                  </button>
+                  <strong>{word}</strong>
+                  <span>{translation}</span>
+                </article>
+              ))}
+            </div>
+            <div
+              className="course-recording-box"
+              style={{
+                marginTop: "20px",
+                padding: "18px",
+                background: "var(--app-card, #f8fafc)",
+                borderRadius: "14px",
+                border: "1px solid var(--app-line, #e2e8f0)",
+              }}
+            >
+              <strong>🎙️ Запись голоса в микрофон</strong>
+              <p
+                style={{
+                  margin: "6px 0 12px",
+                  fontSize: "14px",
+                  color: "var(--click-muted, #64748b)",
+                }}
+              >
+                Произнесите изученные слова вслух.
+              </p>
+              {!recording ? (
+                <button className="secondary-button" onClick={() => void startRecording()}>
+                  <Icon name="headphones" />{" "}
+                  {recordingUrl ? "Записать ещё раз" : "Включить микрофон и записать"}
+                </button>
+              ) : (
+                <button className="secondary-button recording-active" onClick={stopRecording}>
+                  Остановить запись
+                </button>
+              )}
+              {recordingUrl && (
+                <div style={{ marginTop: "12px" }}>
+                  <audio
+                    controls
+                    src={recordingUrl}
+                    aria-label="Ваша запись"
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              )}
+              {mediaError && (
+                <p className="field-help" style={{ color: "#ef4444" }}>
+                  {mediaError}
+                </p>
+              )}
+              <label
+                className="self-check-row"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  marginTop: "14px",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={done.wordSpeaking}
+                  onChange={(e) => updateDone("wordSpeaking", e.target.checked)}
+                />
+                <span>Я произнёс все слова вслух чётко</span>
+              </label>
+            </div>
+            <button
+              className="primary-button"
+              disabled={!done.wordSpeaking}
+              onClick={() => {
+                updateDone("wordSpeaking", true);
+                nextStep();
+              }}
+              style={{ marginTop: "18px" }}
+            >
+              Перейти к грамматике <Icon name="arrow" />
+            </button>
+          </>
+        )}
+
+        {step === 3 && (
+          <>
+            <p className="eyebrow">МИКРО-ПРАВИЛО ГРАММАТИКИ</p>
             <h1>{unit.grammarTitle}</h1>
             <p className="course-theory-copy">{unit.theory}</p>
             <div className="course-examples">
@@ -720,96 +844,32 @@ export function CourseLesson({
             <label className="course-common-error">
               <Icon name="info" size={17} />
               <span>
-                <strong>Запомните пример как целую фразу.</strong> Затем соберите свою фразу на
-                следующем шаге.
+                <strong>Главный совет:</strong> Спрягаемый глагол в немецком простом предложении
+                строго занимает 2-е место. Запомните конструкцию и закрепите её в игре на следующем
+                шаге!
               </span>
             </label>
-            <button className="primary-button" onClick={() => updateDone("grammar")}>
-              {done.grammar ? "Правило отмечено" : "Понятно, продолжить"}
-              <Icon name="arrow" />
-            </button>
-          </>
-        )}
-        {step === 2 && (
-          <>
-            <p className="eyebrow">АУДИРОВАНИЕ · ПОПЫТАЙТЕСЬ БЕЗ ТЕКСТА</p>
-            <h1>Прослушайте диалог</h1>
-            <button
-              className="audio-listen-button"
-              onClick={() => speakText(unit.dialogue, "de-DE")}
-            >
-              <Icon name="headphones" size={22} /> Прослушать немецкий диалог
-            </button>
-            <div className="audio-player-controls">
-              <button onClick={() => speakText(unit.dialogue, "de-DE", true)}>Медленнее</button>
-              <span>После ответа можно открыть текст.</span>
-            </div>
-            <h2>{unit.listeningQuestion}</h2>
-            <ChoiceList
-              choices={unit.listeningOptions}
-              selected={listeningChoice}
-              onSelect={setListeningChoice}
-              disabled={done.listening}
-              correct={unit.listeningAnswer}
-              reveal={done.listening}
-            />
-            <div className="course-answer-feedback" role="status">
-              {done.listening
-                ? done.listeningCorrect
-                  ? "Верно. Вы уловили нужную деталь."
-                  : `Верный ответ: ${unit.listeningOptions[unit.listeningAnswer]}. Прослушайте ещё раз.`
-                : ""}
-            </div>
-            {done.listening && (
-              <details className="course-transcript">
-                <summary>Открыть расшифровку</summary>
-                <p>{unit.dialogue}</p>
-              </details>
-            )}
             <button
               className="primary-button"
-              disabled={listeningChoice === null || done.listening}
-              onClick={checkListening}
+              onClick={() => {
+                updateDone("grammar", true);
+                nextStep();
+              }}
+              style={{ marginTop: "18px" }}
             >
-              Проверить ответ <Icon name="check" />
+              Закрепить правилом в игре <Icon name="arrow" />
             </button>
           </>
         )}
-        {step === 3 && (
-          <>
-            <p className="eyebrow">ЧТЕНИЕ</p>
-            <h1>Прочитайте короткий текст</h1>
-            <article className="course-reading-text">{unit.reading}</article>
-            <h2>{unit.readingQuestion}</h2>
-            <ChoiceList
-              choices={unit.readingOptions}
-              selected={readingChoice}
-              onSelect={setReadingChoice}
-              disabled={done.reading}
-              correct={unit.readingAnswer}
-              reveal={done.reading}
-            />
-            <div className="course-answer-feedback" role="status">
-              {done.reading
-                ? done.readingCorrect
-                  ? "Верно. Вы нашли нужную деталь."
-                  : `Верный ответ: ${unit.readingOptions[unit.readingAnswer]}.`
-                : ""}
-            </div>
-            <button
-              className="primary-button"
-              disabled={readingChoice === null || done.reading}
-              onClick={checkReading}
-            >
-              Проверить ответ <Icon name="check" />
-            </button>
-          </>
-        )}
+
         {step === 4 && (
           <>
-            <p className="eyebrow">СБОРКА ПРЕДЛОЖЕНИЯ</p>
-            <h1>Соберите фразу</h1>
-            <p className="course-theory-copy">{unit.examples[0].split(" — ")[1]}</p>
+            <p className="eyebrow">ЗАКРЕПЛЕНИЕ ГРАММАТИКИ · СБОРКА ФРАЗЫ</p>
+            <h1>Соберите предложение по правилу</h1>
+            <p className="course-theory-copy">
+              Переведите на немецкий:{" "}
+              <strong>{unit.examples[0].split(" — ")[1] ?? unit.examples[0]}</strong>
+            </p>
             <div className="sentence-builder-area">
               <div className="sentence-dropzone" aria-label="Собранное предложение">
                 {chosenWords.length ? (
@@ -847,22 +907,33 @@ export function CourseLesson({
               <p
                 className={`course-answer-feedback ${done.sentenceCorrect ? "correct" : "incorrect"}`}
               >
-                {done.sentenceCorrect ? "Предложение собрано верно." : `Вариант: ${targetSentence}`}
+                {done.sentenceCorrect
+                  ? "Предложение собрано верно! Глагол на 2-м месте."
+                  : `Верный вариант: ${targetSentence}`}
               </p>
             )}
-            <button
-              className="primary-button"
-              disabled={!sentenceSelection.length || done.sentence}
-              onClick={checkSentence}
-            >
-              Проверить фразу <Icon name="check" />
-            </button>
+            <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
+              {!done.sentence ? (
+                <button
+                  className="primary-button"
+                  disabled={!sentenceSelection.length}
+                  onClick={checkSentence}
+                >
+                  Проверить фразу <Icon name="check" />
+                </button>
+              ) : (
+                <button className="primary-button" onClick={nextStep}>
+                  Перейти к фразовому спикингу <Icon name="arrow" />
+                </button>
+              )}
+            </div>
           </>
         )}
+
         {step === 5 && (
           <>
-            <p className="eyebrow">ГОВОРЕНИЕ · ОТВЕТЬТЕ ВСЛУХ</p>
-            <h1>Ваша ситуация</h1>
+            <p className="eyebrow">ФРАЗОВЫЙ СПИКИНГ · СКАЖИТЕ ЦЕЛУЮ ФРАЗУ</p>
+            <h1>Ваша разговорная практика</h1>
             <p className="course-speaking-prompt">{unit.speakingPrompt}</p>
             <button
               className="audio-listen-button"
@@ -870,111 +941,287 @@ export function CourseLesson({
             >
               <Icon name="volume" /> Послушать пример фразы
             </button>
-            <div className="course-recording-note">
-              <HelpHint label="О записи">
-                Микрофон включается после нажатия. Запись останется на этом устройстве и удалится
-                при выходе.
-              </HelpHint>
-            </div>
-            {!recording ? (
-              <button className="secondary-button" onClick={() => void startRecording()}>
-                <Icon name="headphones" />{" "}
-                {recordingUrl ? "Записать ещё раз" : "Записать мой ответ (необязательно)"}
-              </button>
-            ) : (
-              <button className="secondary-button recording-active" onClick={stopRecording}>
-                Остановить запись
-              </button>
-            )}
-            {recordingUrl && (
-              <audio controls src={recordingUrl} aria-label="Ваша локальная запись" />
-            )}
-            {mediaError && <p className="field-help">{mediaError}</p>}
-            <label className="self-check-row">
-              <input
-                type="checkbox"
-                checked={done.speaking}
-                onChange={(event) => updateDone("speaking", event.target.checked)}
-              />
-              <span>Я ответил(а) по теме и смог(ла) понять свою фразу при прослушивании.</span>
-            </label>
-          </>
-        )}
-        {step === 6 && (
-          <>
-            <p className="eyebrow">ПИСЬМО</p>
-            <h1>Напишите свой ответ</h1>
-            <p className="course-speaking-prompt">{unit.writingPrompt}</p>
-            <textarea
-              className="course-writing-input"
-              value={writing}
-              onChange={(event) => setWriting(event.target.value)}
-              placeholder="Напишите ответ своими словами…"
-              rows={5}
-            />
-            <div className="course-writing-actions">
-              <button
-                className="secondary-button"
-                disabled={writing.trim().length < 8}
-                onClick={() => setWritingExampleVisible(true)}
+            <div
+              className="course-recording-box"
+              style={{
+                marginTop: "20px",
+                padding: "18px",
+                background: "var(--app-card, #f8fafc)",
+                borderRadius: "14px",
+                border: "1px solid var(--app-line, #e2e8f0)",
+              }}
+            >
+              <strong>🎙️ Запись вашего ответа в микрофон</strong>
+              <p
+                style={{
+                  margin: "6px 0 12px",
+                  fontSize: "14px",
+                  color: "var(--click-muted, #64748b)",
+                }}
               >
-                Показать вариант для сравнения
-              </button>
-              <small>{writing.trim().split(/\s+/).filter(Boolean).length} слов</small>
+                Произнесите фразу связно в микрофон.
+              </p>
+              {!recording ? (
+                <button className="secondary-button" onClick={() => void startRecording()}>
+                  <Icon name="headphones" /> {recordingUrl ? "Записать ещё раз" : "Записать фразу"}
+                </button>
+              ) : (
+                <button className="secondary-button recording-active" onClick={stopRecording}>
+                  Остановить запись
+                </button>
+              )}
+              {recordingUrl && (
+                <div style={{ marginTop: "12px" }}>
+                  <audio
+                    controls
+                    src={recordingUrl}
+                    aria-label="Ваша фраза"
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              )}
+              {mediaError && (
+                <p className="field-help" style={{ color: "#ef4444" }}>
+                  {mediaError}
+                </p>
+              )}
+              <label
+                className="self-check-row"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  marginTop: "14px",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={done.sentenceSpeaking}
+                  onChange={(e) => updateDone("sentenceSpeaking", e.target.checked)}
+                />
+                <span>Я проговорил фразу вслух чётко</span>
+              </label>
             </div>
-            {writingExampleVisible && (
-              <article className="course-writing-sample">
-                <strong>Пример</strong>
-                <p>{unit.writingExample}</p>
-              </article>
-            )}
-            <label className="self-check-row">
-              <input
-                type="checkbox"
-                checked={done.writing}
-                disabled={!writingExampleVisible}
-                onChange={(event) => updateDone("writing", event.target.checked)}
-              />
-              <span>Я сверил(а) свой ответ с примером и отметил(а), что хочу улучшить.</span>
-            </label>
-          </>
-        )}
-        {step === 7 && (
-          <>
-            <p className="eyebrow">ЮНИТ ЗАВЕРШЁН</p>
-            <h1>Вы потренировали шесть навыков</h1>
-            <p className="course-outcome">{unit.outcome}</p>
-            <div className="course-result-grid">
-              {skillNames.map(([key, label]) => (
-                <article key={key}>
-                  <span>{label}</span>
-                  <strong>
-                    {Math.round(
-                      (
-                        {
-                          vocabulary: done.vocabulary ? 1 : 0,
-                          grammar: done.sentenceCorrect ? 1 : 0.6,
-                          listening: done.listeningCorrect ? 1 : 0.5,
-                          reading: done.readingCorrect ? 1 : 0.5,
-                          speaking: done.speaking ? 1 : 0,
-                          writing: done.writing ? 1 : 0,
-                        } as CourseSkills
-                      )[key] * 100,
-                    )}
-                    %
-                  </strong>
-                </article>
-              ))}
-            </div>
-            <p className="course-next-hint">
-              {done.listeningCorrect && done.readingCorrect && done.sentenceCorrect
-                ? "Хорошая работа: ключевые ответы верны. Прогресс по навыкам сохранится вместе с юнитом."
-                : "Посмотрите правильные варианты выше. Если результат по юниту окажется ниже 70%, приложение предложит повторить его из программы."}
-            </p>
-            <button className="primary-button" onClick={finishUnit}>
-              Сохранить прогресс <Icon name="check" />
+            <button
+              className="primary-button"
+              disabled={!done.sentenceSpeaking}
+              onClick={() => {
+                updateDone("sentenceSpeaking", true);
+                nextStep();
+              }}
+              style={{ marginTop: "18px" }}
+            >
+              Перейти к финальному тесту <Icon name="arrow" />
             </button>
           </>
+        )}
+
+        {step === 6 && (
+          <>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "8px",
+              }}
+            >
+              <p className="eyebrow" style={{ margin: 0 }}>
+                ФИНАЛЬНЫЙ ТЕСТ ЮНИТА
+              </p>
+              <span
+                style={{
+                  fontWeight: 700,
+                  fontSize: "14px",
+                  color: "var(--click-primary, #3b82f6)",
+                }}
+              >
+                Вопрос {quizQuestionIndex + 1} из {unitQuiz.length || 5}
+              </span>
+            </div>
+            <div
+              style={{
+                height: "6px",
+                width: "100%",
+                background: "#e2e8f0",
+                borderRadius: "3px",
+                overflow: "hidden",
+                marginBottom: "20px",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${((quizQuestionIndex + 1) / (unitQuiz.length || 5)) * 100}%`,
+                  background: "var(--click-primary, #3b82f6)",
+                  transition: "width 0.3s",
+                }}
+              />
+            </div>
+            {currentQuizQ ? (
+              <>
+                <h1 style={{ fontSize: "20px", marginBottom: "16px" }}>{currentQuizQ.question}</h1>
+                <ChoiceList
+                  choices={currentQuizQ.options}
+                  selected={selectedQuizChoice}
+                  onSelect={(idx) => {
+                    if (!quizChoiceRevealed) setSelectedQuizChoice(idx);
+                  }}
+                  disabled={quizChoiceRevealed}
+                  correct={currentQuizQ.answer}
+                  reveal={quizChoiceRevealed}
+                />
+                {quizChoiceRevealed && (
+                  <div
+                    style={{
+                      marginTop: "16px",
+                      padding: "14px 18px",
+                      borderRadius: "10px",
+                      background:
+                        selectedQuizChoice === currentQuizQ.answer ? "#f0fdf4" : "#fef2f2",
+                      border: `1px solid ${selectedQuizChoice === currentQuizQ.answer ? "#86efac" : "#fca5a5"}`,
+                    }}
+                  >
+                    <strong
+                      style={{
+                        color: selectedQuizChoice === currentQuizQ.answer ? "#15803d" : "#b91c1c",
+                      }}
+                    >
+                      {selectedQuizChoice === currentQuizQ.answer ? "Верно!" : "Не совсем так."}
+                    </strong>
+                    <p style={{ margin: "6px 0 0", fontSize: "14px", color: "#334155" }}>
+                      {currentQuizQ.explanation}
+                    </p>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
+                  {!quizChoiceRevealed ? (
+                    <button
+                      className="primary-button"
+                      disabled={selectedQuizChoice === null}
+                      onClick={() => {
+                        if (selectedQuizChoice === null) return;
+                        setQuizChoiceRevealed(true);
+                        const isCorrect = selectedQuizChoice === currentQuizQ.answer;
+                        if (isCorrect) setQuizScore((s) => s + 1);
+                        onAnswer(isCorrect);
+                      }}
+                    >
+                      Проверить ответ <Icon name="check" />
+                    </button>
+                  ) : quizQuestionIndex < unitQuiz.length - 1 ? (
+                    <button
+                      className="primary-button"
+                      onClick={() => {
+                        setQuizQuestionIndex((idx) => idx + 1);
+                        setSelectedQuizChoice(null);
+                        setQuizChoiceRevealed(false);
+                      }}
+                    >
+                      Следующий вопрос <Icon name="arrow" />
+                    </button>
+                  ) : (
+                    <button
+                      className="primary-button"
+                      onClick={() => {
+                        updateDone("quiz", true);
+                        nextStep();
+                      }}
+                    >
+                      Посмотреть результаты <Icon name="arrow" />
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : null}
+          </>
+        )}
+
+        {step === 7 && (
+          <div style={{ textAlign: "center", padding: "24px 12px" }}>
+            <p className="eyebrow">ЮНИТ УСПЕШНО ЗАВЕРШЁН!</p>
+            <h1 style={{ fontSize: "28px", marginTop: "4px" }}>🎉 Отличная работа!</h1>
+            <p
+              style={{
+                fontSize: "16px",
+                color: "var(--click-muted, #64748b)",
+                margin: "8px auto 20px",
+                maxWidth: "480px",
+              }}
+            >
+              Вы изучили слова, закрепили их в игре и спикинге, освоили грамматику и прошли
+              контрольный тест.
+            </p>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: "16px",
+                flexWrap: "wrap",
+                margin: "20px 0",
+              }}
+            >
+              <div
+                style={{
+                  padding: "14px 20px",
+                  background: "var(--app-card, #f8fafc)",
+                  border: "1px solid var(--app-line, #e2e8f0)",
+                  borderRadius: "12px",
+                  minWidth: "120px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "24px",
+                    fontWeight: 800,
+                    color: "var(--click-primary, #3b82f6)",
+                  }}
+                >
+                  +50
+                </span>
+                <small style={{ display: "block", color: "#64748b", marginTop: "4px" }}>
+                  Опыт (XP)
+                </small>
+              </div>
+              <div
+                style={{
+                  padding: "14px 20px",
+                  background: "var(--app-card, #f8fafc)",
+                  border: "1px solid var(--app-line, #e2e8f0)",
+                  borderRadius: "12px",
+                  minWidth: "120px",
+                }}
+              >
+                <span style={{ fontSize: "24px", fontWeight: 800, color: "#eab308" }}>+5 💎</span>
+                <small style={{ display: "block", color: "#64748b", marginTop: "4px" }}>
+                  Кристаллы
+                </small>
+              </div>
+              <div
+                style={{
+                  padding: "14px 20px",
+                  background: "var(--app-card, #f8fafc)",
+                  border: "1px solid var(--app-line, #e2e8f0)",
+                  borderRadius: "12px",
+                  minWidth: "120px",
+                }}
+              >
+                <span style={{ fontSize: "24px", fontWeight: 800, color: "#22c55e" }}>
+                  {quizScore}/{unitQuiz.length || 5}
+                </span>
+                <small style={{ display: "block", color: "#64748b", marginTop: "4px" }}>Тест</small>
+              </div>
+            </div>
+            <button
+              className="primary-button"
+              style={{ padding: "14px 32px", fontSize: "16px", marginTop: "12px" }}
+              onClick={finishUnit}
+            >
+              Продолжить обучение <Icon name="arrow" />
+            </button>
+          </div>
         )}
       </section>
       {step < 7 && (

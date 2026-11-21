@@ -123,8 +123,7 @@ export async function POST(request: Request) {
       userEmail = session.user.email.toLowerCase();
     } else {
       // Use client IP or guest header for pseudo-identity
-      const clientIp =
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
+      const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
       userEmail = `guest_${clientIp.replace(/[^a-zA-Z0-9]/g, "_")}@clickling.local`;
     }
 
@@ -136,14 +135,7 @@ export async function POST(request: Request) {
       RETURNING *;
     `;
 
-    const result = await pool.query(query, [
-      userId,
-      userName,
-      userEmail,
-      gameId,
-      moduleId,
-      rating,
-    ]);
+    const result = await pool.query(query, [userId, userName, userEmail, gameId, moduleId, rating]);
 
     return json({
       success: true,

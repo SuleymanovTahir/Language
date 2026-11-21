@@ -594,7 +594,15 @@ type Props = {
   onNextGame?: () => void;
 };
 
-export function ScenarioGame({ gameId, module, onExit, onAnswer, onSkip, onComplete, onNextGame }: Props) {
+export function ScenarioGame({
+  gameId,
+  module,
+  onExit,
+  onAnswer,
+  onSkip,
+  onComplete,
+  onNextGame,
+}: Props) {
   const initial = useMemo(() => initialScenario(gameId, module), [gameId, module.id]);
   const initialTasks = useMemo(
     () =>
