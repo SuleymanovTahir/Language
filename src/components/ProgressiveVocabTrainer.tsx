@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Icon } from "./Icon";
 import { speakText } from "./StudySession";
 import { playFeedbackSound } from "../lib/feedbackSound";
+import { stopAllSpeech } from "../lib/speech";
 
 export type VocabWord = {
   id: number;
@@ -32,19 +33,20 @@ export function ProgressiveVocabTrainer({
   onComplete,
 }: Props) {
   // Split words into micro-batches of 2 words (last batch may have 3 if 5 words total)
+  const wordsLength = words.length;
   const batches: number[][] = useMemo(() => {
-    if (words.length <= 3) return [words.map((_, i) => i)];
+    if (wordsLength <= 3) return [Array.from({ length: wordsLength }, (_, i) => i)];
     const res: number[][] = [];
-    for (let i = 0; i < words.length; i += 2) {
-      if (i + 2 === words.length - 1) {
+    for (let i = 0; i < wordsLength; i += 2) {
+      if (i + 2 === wordsLength - 1) {
         // Leave 3 for last batch rather than single orphan
         res.push([i, i + 1, i + 2]);
         break;
       }
-      res.push([i, Math.min(i + 1, words.length - 1)]);
+      res.push([i, Math.min(i + 1, wordsLength - 1)]);
     }
     return res;
-  }, [words]);
+  }, [wordsLength]);
 
   const [batchIdx, setBatchIdx] = useState(0);
   const [stepInBatch, setStepInBatch] = useState(0);
@@ -56,6 +58,7 @@ export function ProgressiveVocabTrainer({
   const [selectedMatchLeft, setSelectedMatchLeft] = useState<number | null>(null);
   const [isFinished, setIsFinished] = useState(false);
   const [knownWords, setKnownWords] = useState<Set<number>>(new Set());
+  const lastSpokenKeyRef = useRef<string>("");
 
   const currentBatch = batches[batchIdx] ?? [];
   const prevBatchIndices = useMemo(() => {
@@ -91,15 +94,25 @@ export function ProgressiveVocabTrainer({
   }, [currentBatch, batchIdx, prevBatchIndices]);
 
   const currentStep = batchSteps[stepInBatch];
+  const introWordIndex = currentStep?.type === "intro" ? currentStep.wordIndex : null;
 
-  // Auto-speak word on intro card
+  // Auto-speak word on intro card EXACTLY ONCE per step (never loops)
   useEffect(() => {
-    if (!currentStep) return;
-    if (currentStep.type === "intro") {
-      const w = words[currentStep.wordIndex];
-      if (w) speakText(w.word, "de-DE");
-    }
-  }, [currentStep, words]);
+    if (!currentStep || currentStep.type !== "intro" || introWordIndex === null) return;
+    const w = words[introWordIndex];
+    if (!w) return;
+    const key = `${batchIdx}-${stepInBatch}-${w.word}`;
+    if (lastSpokenKeyRef.current === key) return;
+    lastSpokenKeyRef.current = key;
+    speakText(w.word, "de-DE");
+  }, [introWordIndex, batchIdx, stepInBatch, words]);
+
+  // Clean up any ongoing speech when unmounting
+  useEffect(() => {
+    return () => {
+      stopAllSpeech();
+    };
+  }, []);
 
   // Total overall progress calculation
   const totalSubSteps = useMemo(() => {

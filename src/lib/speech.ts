@@ -33,6 +33,7 @@ export function detectSpeechLanguage(text: string) {
 }
 
 export function speechLocaleForCode(code: string) {
+  if (code.includes("-")) return code;
   const locales: Record<string, string> = {
     de: "de-DE",
     en: "en-US",
@@ -42,7 +43,7 @@ export function speechLocaleForCode(code: string) {
     it: "it-IT",
     tr: "tr-TR",
   };
-  return locales[code] ?? `${code}-${code.toUpperCase()}`;
+  return locales[code.toLowerCase()] ?? `${code}-${code.toUpperCase()}`;
 }
 
 export function defaultVoiceFor(provider: SpeechProvider, languageCode: string) {
@@ -130,20 +131,29 @@ export function stopAllSpeech() {
 
 function speakOnDevice(text: string, lang: string, slow: boolean, settings: SpeechSettings) {
   if (!("speechSynthesis" in window)) return false;
+  const normalizedLocale = speechLocaleForCode(lang);
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = lang;
+  utterance.lang = normalizedLocale;
   utterance.rate = Math.max(0.55, Math.min(1.1, settings.rate * (slow ? 0.76 : 1)));
-  const language = lang.toLowerCase().split("-")[0];
+  const language = normalizedLocale.toLowerCase().split("-")[0];
   const voices = window.speechSynthesis.getVoices();
   const matchingVoices = voices.filter(
     (voice) =>
-      voice.lang.toLowerCase() === lang.toLowerCase() ||
-      voice.lang.toLowerCase().startsWith(`${language}-`),
+      voice.lang.toLowerCase() === normalizedLocale.toLowerCase() ||
+      voice.lang.toLowerCase().replace("_", "-").startsWith(`${language}-`),
   );
   const selected = matchingVoices.find((voice) => voice.voiceURI === settings.voice);
   utterance.voice = selected ?? matchingVoices[0] ?? null;
-  window.speechSynthesis.speak(utterance);
-  return true;
+  try {
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel();
+    }
+    window.speechSynthesis.resume?.();
+    window.speechSynthesis.speak(utterance);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function saveWav(samples: Float32Array, sampleRate: number) {
@@ -219,14 +229,23 @@ export function speakText(
 ) {
   if (typeof window === "undefined" || !text.trim()) return false;
   stopCurrentAudio();
-  window.speechSynthesis?.cancel();
   const settings = override ?? readSpeechSettings();
   if (settings.enabled === false || settings.provider === "none") return false;
   const rate = Math.max(0.55, Math.min(1.1, settings.rate * (slow ? 0.76 : 1)));
-  if (settings.provider === "device") return speakOnDevice(text, lang, slow, settings);
+
+  // Requirement: для русских слов используем бесплатный голос устройства
+  const isRussian =
+    lang.toLowerCase().startsWith("ru") || detectSpeechLanguage(text) === "ru-RU";
+  if (isRussian || settings.provider === "device") {
+    return speakOnDevice(text, isRussian ? "ru-RU" : lang, slow, {
+      ...settings,
+      provider: "device",
+    });
+  }
 
   const requestId = audioRequestId;
-  const language = lang.toLowerCase().split("-")[0];
+  const normalizedLocale = speechLocaleForCode(lang);
+  const language = normalizedLocale.toLowerCase().split("-")[0];
   if (settings.provider === "kokoro") {
     if (!defaultVoiceFor("kokoro", lang) && !settings.voice)
       return speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
@@ -238,8 +257,9 @@ export function speakText(
 
   const endpoint = "/api/tts";
   const voice = voiceFor(settings.provider, settings.voice || "", language);
-  if (settings.provider === "edge" && !voice)
+  if ((settings.provider === "edge" || settings.provider === "azure") && !voice)
     return speakOnDevice(text, lang, slow, { ...settings, provider: "device" });
+
   void fetch(endpoint, {
     method: "POST",
     credentials: "include",
@@ -248,6 +268,10 @@ export function speakText(
   })
     .then(async (response) => {
       if (!response.ok) throw new Error("Cloud speech is unavailable");
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("audio")) {
+        throw new Error("Non-audio response from TTS endpoint");
+      }
       playAudioBlob(await response.blob(), requestId);
     })
     .catch(() => {
@@ -269,7 +293,6 @@ export function speakTextAsync(
       return;
     }
     stopCurrentAudio();
-    window.speechSynthesis?.cancel();
     const settings = override ?? readSpeechSettings();
     if (settings.enabled === false || settings.provider === "none") {
       resolve();
@@ -288,12 +311,45 @@ export function speakTextAsync(
       resolve();
     };
 
-    const maxDurationMs = Math.max(2500, text.length * 200 + 1500);
+    const maxDurationMs = Math.max(3000, text.length * 250 + 2000);
     const fallbackTimer = window.setTimeout(finish, maxDurationMs);
 
     const done = () => {
       window.clearTimeout(fallbackTimer);
       finish();
+    };
+
+    const fallbackDevice = () => {
+      if (!("speechSynthesis" in window)) {
+        done();
+        return;
+      }
+      const normalizedLocale = speechLocaleForCode(lang);
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = normalizedLocale;
+      utterance.rate = rate;
+      const language = normalizedLocale.toLowerCase().split("-")[0];
+      const voices = window.speechSynthesis.getVoices();
+      const matchingVoices = voices.filter(
+        (voice) =>
+          voice.lang.toLowerCase() === normalizedLocale.toLowerCase() ||
+          voice.lang.toLowerCase().replace("_", "-").startsWith(`${language}-`),
+      );
+      const selected = matchingVoices.find((voice) => voice.voiceURI === settings.voice);
+      utterance.voice = selected ?? matchingVoices[0] ?? null;
+      utterance.onend = done;
+      utterance.onerror = () => {
+        done();
+      };
+      try {
+        if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+          window.speechSynthesis.cancel();
+        }
+        window.speechSynthesis.resume?.();
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        done();
+      }
     };
 
     const playWithAudioElement = (blob: Blob) => {
@@ -309,42 +365,32 @@ export function speakTextAsync(
       };
       activeAudio.onerror = () => {
         stopCurrentAudio();
-        done();
+        if (requestId === audioRequestId) {
+          fallbackDevice();
+        } else {
+          done();
+        }
       };
       activeAudio.play().catch(() => {
         stopCurrentAudio();
-        done();
+        if (requestId === audioRequestId) {
+          fallbackDevice();
+        } else {
+          done();
+        }
       });
     };
 
-    const fallbackDevice = () => {
-      if (!("speechSynthesis" in window)) {
-        done();
-        return;
-      }
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang;
-      utterance.rate = rate;
-      const language = lang.toLowerCase().split("-")[0];
-      const voices = window.speechSynthesis.getVoices();
-      const matchingVoices = voices.filter(
-        (voice) =>
-          voice.lang.toLowerCase() === lang.toLowerCase() ||
-          voice.lang.toLowerCase().startsWith(`${language}-`),
-      );
-      const selected = matchingVoices.find((voice) => voice.voiceURI === settings.voice);
-      utterance.voice = selected ?? matchingVoices[0] ?? null;
-      utterance.onend = done;
-      utterance.onerror = done;
-      window.speechSynthesis.speak(utterance);
-    };
-
-    if (settings.provider === "device") {
+    // User requirement: "для русских слов пусть использует бесплатный голос устройства"
+    const isRussian =
+      lang.toLowerCase().startsWith("ru") || detectSpeechLanguage(text) === "ru-RU";
+    if (isRussian || settings.provider === "device") {
       fallbackDevice();
       return;
     }
 
-    const language = lang.toLowerCase().split("-")[0];
+    const normalizedLocale = speechLocaleForCode(lang);
+    const language = normalizedLocale.toLowerCase().split("-")[0];
     if (settings.provider === "kokoro") {
       if (!defaultVoiceFor("kokoro", lang) && !settings.voice) {
         fallbackDevice();
@@ -358,7 +404,7 @@ export function speakTextAsync(
 
     const endpoint = "/api/tts";
     const voice = voiceFor(settings.provider, settings.voice || "", language);
-    if (settings.provider === "edge" && !voice) {
+    if (!voice) {
       fallbackDevice();
       return;
     }
@@ -370,6 +416,10 @@ export function speakTextAsync(
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("Cloud speech is unavailable");
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("audio")) {
+          throw new Error("Cloud speech returned non-audio response");
+        }
         playWithAudioElement(await response.blob());
       })
       .catch(() => {

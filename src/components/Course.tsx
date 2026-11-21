@@ -472,6 +472,18 @@ export function CourseLesson({
     });
   }, [moduleCards, unit]);
 
+  const trainerWords = useMemo(
+    () =>
+      vocabularyPairs.map((item) => ({
+        id: item.id,
+        word: item.word,
+        translation: item.translation,
+        phonetic: item.transcription,
+        exampleDe: item.exampleSentence,
+      })),
+    [vocabularyPairs],
+  );
+
   // Single-word display state for step 0 (progressive vocab)
   const [vocabWordIndex, setVocabWordIndex] = useState(0);
   const [vocabTrainerDone, setVocabTrainerDone] = useState(done.vocabulary);
@@ -620,13 +632,7 @@ export function CourseLesson({
           <ProgressiveVocabTrainer
             unitTitle={unit.title}
             outcome={unit.outcome}
-            words={vocabularyPairs.map((item) => ({
-              id: item.id,
-              word: item.word,
-              translation: item.translation,
-              phonetic: item.transcription,
-              exampleDe: item.exampleSentence,
-            }))}
+            words={trainerWords}
             onComplete={() => {
               updateDone("vocabulary", true);
               nextStep();
