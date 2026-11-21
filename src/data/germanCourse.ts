@@ -1,4 +1,4 @@
-export type CourseLevel = "A1" | "A2" | "B1" | "B2" | "C1";
+export type CourseLevel = "A0" | "A1" | "A2" | "B1" | "B2" | "C1";
 export type CourseUnit = {
   id: string;
   level: CourseLevel;
@@ -26,6 +26,100 @@ type Seed = Omit<CourseUnit, "id" | "level">;
 const unit = (id: string, level: CourseLevel, seed: Seed): CourseUnit => ({ id, level, ...seed });
 
 export const GERMAN_COURSE: CourseUnit[] = [
+  unit("a0-01", "A0", {
+    title: "Первые слова и вежливость",
+    outcome: "Произнести первые слова: привет, пока, спасибо, пожалуйста, да, нет.",
+    moduleIds: [90],
+    vocabulary: [
+      "Hallo — привет",
+      "Tschüss — пока",
+      "Danke — спасибо",
+      "Bitte — пожалуйста",
+      "Ja — да",
+      "Nein — нет",
+    ],
+    grammarTitle: "Первые фразы",
+    theory: "Эти слова понятны почти в любой ситуации. Hallo и Tschüss — самые частые приветствия. Danke и Bitte создают вежливость. Ja / Nein — основа любого диалога.",
+    examples: [
+      "Hallo! Wie geht's? — Привет! Как дела?",
+      "Danke schön! Bitte sehr! — Большое спасибо! Пожалуйста!",
+      "Ja, bitte. Nein, danke. — Да, пожалуйста. Нет, спасибо.",
+    ],
+    dialogue: "Hallo! — Hallo! Wie geht's? — Gut, danke! Und du? — Prima! Tschüss! — Tschüss!",
+    listeningQuestion: "Как ответил собеседник на «Wie geht's?»",
+    listeningOptions: ["Gut, danke", "Nein, danke", "Tschüss"],
+    listeningAnswer: 0,
+    reading: "Lena sagt: Hallo! Ich bin gut. Danke! Sie sagt auch: Tschüss!",
+    readingQuestion: "Что сказала Lena в конце?",
+    readingOptions: ["Tschüss", "Bitte", "Ja"],
+    readingAnswer: 0,
+    speakingPrompt: "Поздоровайтесь и попрощайтесь вслух. Скажите «Danke» и «Bitte» в контексте.",
+    writingPrompt: "Напишите два мини-диалога: приветствие и прощание.",
+    writingExample: "Hallo! — Hallo! Wie geht's? — Gut, danke! Tschüss! — Tschüss!",
+  }),
+  unit("a0-02", "A0", {
+    title: "Первые напитки",
+    outcome: "Назвать кофе, чай и воду, сделать первый вежливый заказ: «Kaffee und Tee, bitte.»",
+    moduleIds: [91],
+    vocabulary: [
+      "der Kaffee — кофе",
+      "der Tee — чай",
+      "das Wasser — вода",
+      "und — и",
+      "gut — хорошо",
+      "sehr — очень",
+    ],
+    grammarTitle: "Первый артикль: der / das",
+    theory: "В немецком у каждого существительного есть артикль: der (мужской) или das (средний). der Kaffee, der Tee — мужской род; das Wasser — средний. Запомните их сразу вместе со словом.",
+    examples: [
+      "Kaffee und Tee, bitte. — Кофе и чай, пожалуйста.",
+      "Ein Wasser, bitte. — Одну воду, пожалуйста.",
+      "Das ist sehr gut! — Это очень хорошо!",
+    ],
+    dialogue: "Was möchten Sie? — Einen Kaffee und ein Wasser, bitte. — Gern!",
+    listeningQuestion: "Что заказал гость?",
+    listeningOptions: ["Кофе и воду", "Чай и воду", "Только чай"],
+    listeningAnswer: 0,
+    reading: "Im Café: Kaffee 2 Euro. Tee 2 Euro. Wasser 1 Euro. Alles gut!",
+    readingQuestion: "Сколько стоит вода?",
+    readingOptions: ["1 Euro", "2 Euro", "3 Euro"],
+    readingAnswer: 0,
+    speakingPrompt: "Представьте, что вы в кафе. Закажите напиток. Используйте «bitte».",
+    writingPrompt: "Напишите заказ из двух напитков одной фразой.",
+    writingExample: "Einen Kaffee und ein Wasser, bitte.",
+  }),
+  unit("a0-03", "A0", {
+    title: "Я есть... Первые вопросы",
+    outcome: "Сказать «ich bin», спросить «Wie heißt du?» и ответить на «Wie geht's?».",
+    moduleIds: [92],
+    vocabulary: [
+      "ich — я",
+      "du — ты",
+      "wer — кто",
+      "wie — как",
+      "super — супер",
+      "prima — отлично",
+    ],
+    grammarTitle: "ich bin и простые вопросы",
+    theory: "Ich bin = «Я есть». В немецком глагол «sein» (быть) обязателен в предложении. Wie geht's? = «Как дела?» — самый частый разговорный вопрос.",
+    examples: [
+      "Ich bin Lena. — Я Лена.",
+      "Wie heißt du? — Как тебя зовут?",
+      "Mir geht's super! — У меня всё супер!",
+    ],
+    dialogue: "Hallo! Ich bin Tim. Wer bist du? — Ich bin Lena. Wie geht's? — Super, danke!",
+    listeningQuestion: "Как зовут второго человека в диалоге?",
+    listeningOptions: ["Lena", "Tim", "Anna"],
+    listeningAnswer: 0,
+    reading: "Tim ist gut. Er sagt: Ich bin super! Und du? — Prima!",
+    readingQuestion: "Как чувствует себя Tim?",
+    readingOptions: ["Супер", "Плохо", "Нормально"],
+    readingAnswer: 0,
+    speakingPrompt: "Представьтесь и спросите собеседника как дела. Ответьте на его вопрос.",
+    writingPrompt: "Напишите мини-диалог из 4 реплик: представление и вопрос о самочувствии.",
+    writingExample: "Hallo! Ich bin Alex. Wie heißt du? — Ich bin Mia. Wie geht's? — Super, danke!",
+  }),
+
   unit("a1-01", "A1", {
     title: "Первое знакомство",
     outcome: "Представиться, назвать страну и язык, понять такие же вопросы собеседника.",
@@ -1342,7 +1436,7 @@ export const GERMAN_COURSE: CourseUnit[] = [
 ];
 
 export const courseUnitsForLevel = (level: string) =>
-  GERMAN_COURSE.filter((item) => item.level === (level === "A1–A2" ? "A1" : level));
+  GERMAN_COURSE.filter((item) => item.level === (level === "A1–A2" ? "A1" : level === "A0" ? "A0" : level));
 export const getNextCourseUnit = (
   level: string,
   progress: Record<string, { completedAt?: string }>,

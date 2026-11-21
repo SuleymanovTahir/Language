@@ -120,8 +120,64 @@ export function parseVocabulary(
   return cards;
 }
 
+export function moduleLevelForId(id: number): string {
+  if (id === 90 || id === 91 || id === 92) return "A0";
+  if ([1, 2, 3, 5, 6, 9, 13, 14, 15].includes(id)) return "A1";
+  if ([7, 8, 10, 11, 12, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 32, 33, 34].includes(id)) return "A2";
+  if ([4, 23, 27, 28, 30, 31, 200, 201, 202, 203].includes(id)) return "B1";
+  if ([29, 35, 36, 37, 38, 39, 204, 205].includes(id)) return "B2";
+  if (id >= 206) return "C1";
+  return "A1";
+}
+
+export const a0Modules: VocabModule[] = [
+  scenarioModule(
+    90,
+    "Первые слова и вежливость",
+    [
+      ["Hallo", "привет", "___, wie geht's?", "Главное приветствие."],
+      ["Tschüss", "пока", "Auf Wiedersehen oder ___!", "Дружеское прощание."],
+      ["Danke", "спасибо", "___ schön für die Hilfe!", "Слово благодарности."],
+      ["Bitte", "пожалуйста", "Kaffee, ___!", "Вежливая просьба."],
+      ["Ja", "да", "___, bitte!", "Слово согласия."],
+      ["Nein", "нет", "___, danke!", "Слово отказа."],
+    ],
+    "A0",
+  ),
+  scenarioModule(
+    91,
+    "Первые напитки и связка «und»",
+    [
+      ["der Kaffee", "кофе", "Ich trinke gern ___ am Morgen.", "Бодрящий напиток."],
+      ["der Tee", "чай", "Eine Tasse ___, bitte.", "Горячий напиток из трав."],
+      ["das Wasser", "вода", "Ein Glas ___, bitte.", "Простая питьевая вода."],
+      ["und", "и", "Kaffee ___ Tee, bitte.", "Союз для соединения слов."],
+      ["gut", "хорошо", "Sehr ___, danke!", "Положительная оценка."],
+      ["sehr", "очень", "Das ist ___ gut.", "Усилитель признака."],
+    ],
+    "A0",
+  ),
+  scenarioModule(
+    92,
+    "«Я есть...» и первые вопросы",
+    [
+      ["ich", "я", "___ heiße Alex.", "Первое лицо единственного числа."],
+      ["du", "ты", "Wer bist ___?", "Второе лицо, собеседник на «ты»."],
+      ["wer", "кто", "___ ist das?", "Вопросительное слово о человеке."],
+      ["wie", "как", "___ geht's?", "Вопросительное слово об образе действия."],
+      ["super", "супер", "Mir geht es ___!", "Отличное настроение."],
+      ["prima", "отлично / здорово", "Das ist einfach ___!", "Замечательно."],
+    ],
+    "A0",
+  ),
+];
+
 export const modules: VocabModule[] = (() => {
   const grouped = new Map<number, VocabModule>();
+  a0Modules.forEach((m) => {
+    grouped.set(m.id, m);
+  });
+
   let current: VocabModule | null = null;
   let direction: "DE - RUS" | "RUS - DE" | null = null;
 
@@ -131,13 +187,14 @@ export const modules: VocabModule[] = (() => {
     if (header) {
       const id = Number(header[1]);
       const title = header[2].trim();
+      const level = moduleLevelForId(id);
       current = grouped.get(id) ?? {
         id,
         title,
         cards: [],
         languageCode: "de",
         languageName: "Немецкий",
-        level: "A1–A2",
+        level,
         nativeLanguageCode: "ru",
       };
       grouped.set(id, current);
@@ -161,6 +218,7 @@ function scenarioModule(
   id: number,
   title: string,
   entries: Array<[string, string, string, string]>,
+  level = "A1–A2",
 ): VocabModule {
   const cards = entries.map(([source, translation, exampleSentence, hint], index) => {
     const card = parseVocabulary(`${source} - ${translation}`, id, title)[0];
@@ -179,7 +237,7 @@ function scenarioModule(
     cards,
     languageCode: "de",
     languageName: "Немецкий",
-    level: "A1–A2",
+    level,
     nativeLanguageCode: "ru",
   };
 }

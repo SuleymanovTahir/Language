@@ -10,6 +10,7 @@ import { speakText } from "./StudySession";
 import { HelpHint } from "./HelpHint";
 import { LearningTrail } from "./LearningTrail";
 import { COURSE_QUIZZES, type UnitQuizQuestion } from "../data/courseQuizzes";
+import { ProgressiveVocabTrainer } from "./ProgressiveVocabTrainer";
 
 export type CourseSkills = {
   vocabulary: number;
@@ -43,7 +44,7 @@ const skillNames: Array<[keyof CourseSkills, string]> = [
   ["speaking", "Говорение"],
   ["writing", "Письмо"],
 ];
-const levels: CourseLevel[] = ["A1", "A2", "B1", "B2", "C1"];
+const levels: CourseLevel[] = ["A0", "A1", "A2", "B1", "B2", "C1"];
 
 export function CoursePath({
   level,
@@ -69,9 +70,9 @@ export function CoursePath({
   const normalizedLevel = level === "A1–A2" ? "A1" : level;
   const selectedLevel = levels.includes(normalizedLevel as CourseLevel)
     ? (normalizedLevel as CourseLevel)
-    : "C1";
+    : "A1";
   const units = courseUnitsForLevel(selectedLevel);
-  const demoUnit = GERMAN_COURSE.find((item) => item.id === "a1-01") ?? GERMAN_COURSE[0];
+  const demoUnit = GERMAN_COURSE.find((item) => item.id === "a0-01") ?? GERMAN_COURSE.find((item) => item.id === "a1-01") ?? GERMAN_COURSE[0];
   const goalRecommendations: Record<string, string[]> = {
     "Повседневная жизнь": ["a1-04", "a1-05", "a1-06", "a2-02", "a2-03", "a2-07"],
     Переезд: ["a1-02", "a1-06", "a1-07", "a2-02", "b1-03", "b1-07"],
@@ -102,6 +103,7 @@ export function CoursePath({
     .sort((left, right) => left.average - right.average)[0];
   const percent = units.length ? Math.round((completed / units.length) * 100) : 0;
   const levelCopy: Record<CourseLevel, string> = {
+    A0: "Абсолютный ноль → первые слова, приветствия и простые фразы.",
     A1: "Первые простые разговоры и бытовые ситуации.",
     A2: "Самостоятельность в знакомой повседневной жизни.",
     B1: "Связная речь, опыт и собственное мнение.",
@@ -388,6 +390,7 @@ const initialDone: DoneSteps = {
 export function CourseLesson({
   unit,
   libraryWords = [],
+  moduleCards = [],
   onClose,
   onComplete,
   onAnswer,
@@ -396,6 +399,7 @@ export function CourseLesson({
 }: {
   unit: CourseUnit;
   libraryWords?: Array<{ id: string; word: string; translation: string; article?: string | null }>;
+  moduleCards?: Array<{ id: string; word: string; translation: string; transcription?: string; article?: string | null; exampleSentence?: string }>;
   onClose: () => void;
   onComplete: (unitId: string, skills: CourseSkills, durationMinutes: number) => void;
   onAnswer: (correct: boolean) => void;
@@ -448,14 +452,29 @@ export function CourseLesson({
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(Date.now());
   const targetSentence = unit.examples[0].split(" — ")[0].replace(/[.!?]$/, "");
-  const vocabularyPairs = useMemo(
-    () =>
-      unit.vocabulary.map((item, id) => {
-        const [word, translation] = item.split(" — ");
-        return { id, word, translation };
-      }),
-    [unit],
-  );
+
+  // Prefer real module cards over static vocabulary strings — this is what connects
+  // Словарь (Library) ↔ Обучение (Course) ↔ Игры (Games): they all share the same words.
+  const vocabularyPairs = useMemo(() => {
+    if (moduleCards.length > 0) {
+      return moduleCards.map((card, id) => ({
+        id,
+        word: card.article ? `${card.article} ${card.word}` : card.word,
+        translation: card.translation,
+        transcription: card.transcription ?? "",
+        exampleSentence: card.exampleSentence,
+      }));
+    }
+    // fallback: parse from static unit.vocabulary strings
+    return unit.vocabulary.map((item, id) => {
+      const [word, translation] = item.split(" — ");
+      return { id, word: word ?? item, translation: translation ?? "", transcription: "", exampleSentence: undefined };
+    });
+  }, [moduleCards, unit]);
+
+  // Single-word display state for step 0 (progressive vocab)
+  const [vocabWordIndex, setVocabWordIndex] = useState(0);
+  const [vocabTrainerDone, setVocabTrainerDone] = useState(done.vocabulary);
   const sentenceWords = useMemo(() => targetSentence.split(/\s+/), [targetSentence]);
   const sentencePool = useMemo(
     () => sentenceWords.map((word, id) => ({ word, id })).reverse(),
@@ -598,55 +617,21 @@ export function CourseLesson({
       )}
       <section className="course-player-content">
         {step === 0 && (
-          <>
-            <p className="eyebrow">СЛОВА ЮНИТА · ПОСЛУШАЙТЕ И ЗАПОМНИТЕ</p>
-            <h1>{unit.title}</h1>
-            <p className="course-outcome">{unit.outcome}</p>
-            <div className="course-vocabulary-list">
-              {vocabularyPairs.map(({ id, word, translation }) => (
-                <article key={`${id}-${word}`}>
-                  <button
-                    aria-label={`Прослушать ${word}`}
-                    onClick={() => speakText(word, "de-DE")}
-                  >
-                    <Icon name="volume" size={18} />
-                  </button>
-                  <strong>{word}</strong>
-                  <span>{translation}</span>
-                </article>
-              ))}
-            </div>
-            {libraryWords.length > 0 && (
-              <section className="course-library-vocab">
-                <strong>Из вашей библиотеки</strong>
-                <p>Подборка слов по теме юнита из уже загруженного словаря.</p>
-                <div>
-                  {libraryWords.map((item) => {
-                    const word = `${item.article ? `${item.article} ` : ""}${item.word}`;
-                    return (
-                      <button key={item.id} onClick={() => speakText(word, "de-DE")}>
-                        <Icon name="volume" size={15} />
-                        <span>
-                          <b>{word}</b>
-                          <small>{item.translation}</small>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-            <button
-              className="primary-button"
-              onClick={() => {
-                updateDone("vocabulary");
-                nextStep();
-              }}
-              style={{ marginTop: "24px" }}
-            >
-              Перейти к игре со словами <Icon name="arrow" />
-            </button>
-          </>
+          <ProgressiveVocabTrainer
+            unitTitle={unit.title}
+            outcome={unit.outcome}
+            words={vocabularyPairs.map((item) => ({
+              id: item.id,
+              word: item.word,
+              translation: item.translation,
+              phonetic: item.transcription,
+              exampleDe: item.exampleSentence,
+            }))}
+            onComplete={() => {
+              updateDone("vocabulary", true);
+              nextStep();
+            }}
+          />
         )}
 
         {step === 1 && (

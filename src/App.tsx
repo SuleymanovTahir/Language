@@ -821,16 +821,28 @@ function WorkspaceApp({
       }),
     [everyModule, moduleOrder],
   );
-  const visibleModules = orderedModules.filter(
-    (module) =>
-      module.languageCode === activeSpace.languageCode &&
-      (module.level === activeSpace.level ||
-        (activeSpace.languageCode === "de" &&
-          (activeSpace.level === "A1" ||
-            activeSpace.level === "A2" ||
-            activeSpace.level === "A1–A2") &&
-          module.level === "A1–A2")),
-  );
+  const visibleModules = orderedModules.filter((module) => {
+    if (module.languageCode !== activeSpace.languageCode) return false;
+    const lvl = activeSpace.level;
+    if (module.level === lvl) return true;
+    if (activeSpace.languageCode === "de") {
+      if (lvl === "A0") return module.level === "A0" || module.id === 1 || module.id === 3;
+      if (lvl === "A1") return module.level === "A1" || module.level === "A0";
+      if (lvl === "A2") return module.level === "A2" || module.level === "A1";
+      if (lvl === "B1") return module.level === "B1";
+      if (lvl === "B2") return module.level === "B2";
+      if (lvl === "C1" || lvl === "C2") return module.level === "C1" || module.level === "B2";
+      if (lvl === "A1–A2") {
+        return (
+          module.level === "A0" ||
+          module.level === "A1" ||
+          module.level === "A2" ||
+          module.level === "A1–A2"
+        );
+      }
+    }
+    return module.level === lvl;
+  });
   const visibleCards = useMemo(
     () => visibleModules.flatMap((module) => module.cards),
     [visibleModules],
@@ -864,6 +876,21 @@ function WorkspaceApp({
           )
           .slice(0, 5)
       : [];
+  const courseModuleCards = useMemo(() => {
+    if (!activeCourseUnit) return [];
+    const matchedModules = orderedModules.filter(
+      (module) =>
+        module.languageCode === "de" && activeCourseUnit.moduleIds.includes(module.id),
+    );
+    const allCardsInModules = matchedModules.flatMap((m) => m.cards);
+    if (!allCardsInModules.length) return [];
+    const priorityCards = allCardsInModules.filter((card) =>
+      activeCourseUnit.vocabulary.some(
+        (item) => item.split(" — ")[0].trim().toLowerCase() === card.word.toLowerCase(),
+      ),
+    );
+    return priorityCards.length >= 3 ? priorityCards.slice(0, 8) : allCardsInModules.slice(0, 8);
+  }, [activeCourseUnit, orderedModules]);
   const canManageContent = user ? Boolean(user.permissions?.manageContent) : !guestMode;
   const canManageSpeechProviders = import.meta.env.DEV || user?.role === "owner";
   const canManageUsers =
@@ -1140,7 +1167,7 @@ function WorkspaceApp({
 
   const startCourseUnit = async (unit: CourseUnit) => {
     if (guestMode) {
-      if (unit.id !== "a1-01") {
+      if (unit.id !== "a1-01" && unit.id !== "a0-01") {
         onGuestGate?.();
         return;
       }
@@ -1709,6 +1736,7 @@ function WorkspaceApp({
         <CourseLesson
           unit={activeCourseUnit}
           libraryWords={courseLibraryWords}
+          moduleCards={courseModuleCards}
           savedProgress={courseMissions[activeCourseUnit.id]}
           onProgressChange={updateActiveCourseMission}
           onClose={() => setActiveCourseUnit(null)}

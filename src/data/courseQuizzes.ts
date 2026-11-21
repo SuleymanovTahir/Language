@@ -7,6 +7,107 @@ export type UnitQuizQuestion = {
 };
 
 export const COURSE_QUIZZES: Record<string, UnitQuizQuestion[]> = {
+  "a0-01": [
+    {
+      question: "Как по-немецки сказать «привет»?",
+      options: ["Hallo", "Tschüss", "Danke", "Bitte"],
+      answer: 0,
+      explanation: "*Hallo* — самое популярное и универсальное немецкое приветствие.",
+    },
+    {
+      question: "Что означает слово «Danke»?",
+      options: ["Спасибо", "Пожалуйста", "Привет", "До свидания"],
+      answer: 0,
+      explanation: "*Danke* переводится как «спасибо». *Danke schön* — «большое спасибо».",
+    },
+    {
+      question: "Какое слово используют при дружеском прощании («пока»)?",
+      options: ["Tschüss", "Hallo", "Ja", "Bitte"],
+      answer: 0,
+      explanation: "*Tschüss* — разговорное «пока / счастливо».",
+    },
+    {
+      question: "Как сказать по-немецки «да, пожалуйста»?",
+      options: ["Ja, bitte", "Nein, danke", "Hallo, bitte", "Tschüss, danke"],
+      answer: 0,
+      explanation: "*Ja* — «да», *bitte* — «пожалуйста». Вместе: «Ja, bitte».",
+    },
+    {
+      question: "Как вежливо отказаться («нет, спасибо»)?",
+      options: ["Nein, danke", "Ja, bitte", "Sehr gut", "Tschüss"],
+      answer: 0,
+      explanation: "*Nein* — «нет», *danke* — «спасибо».",
+    },
+  ],
+  "a0-02": [
+    {
+      question: "Какой артикль имеет существительное «Kaffee»?",
+      options: ["der (der Kaffee)", "die (die Kaffee)", "das (das Kaffee)", "kein"],
+      answer: 0,
+      explanation: "Слово *Kaffee* в немецком мужского рода: *der Kaffee*.",
+    },
+    {
+      question: "Как переводится немецкое слово «das Wasser»?",
+      options: ["вода", "чай", "кофе", "сок"],
+      answer: 0,
+      explanation: "*das Wasser* — вода (средний род).",
+    },
+    {
+      question: "Какое слово в немецком языке означает соединительный союз «и»?",
+      options: ["und", "oder", "aber", "nicht"],
+      answer: 0,
+      explanation: "Союз *und* переводится как «и» (*Kaffee und Tee*).",
+    },
+    {
+      question: "Переведите фразу заказа: «Kaffee und Tee, bitte.»",
+      options: [
+        "Кофе и чай, пожалуйста.",
+        "Чай и вода, пожалуйста.",
+        "Кофе без молока.",
+        "Только кофе, спасибо.",
+      ],
+      answer: 0,
+      explanation: "*Kaffee* (кофе) *und* (и) *Tee* (чай), *bitte* (пожалуйста).",
+    },
+    {
+      question: "Что означает фраза «sehr gut»?",
+      options: ["очень хорошо", "не очень", "плохо", "пока"],
+      answer: 0,
+      explanation: "*sehr* — «очень», *gut* — «хорошо».",
+    },
+  ],
+  "a0-03": [
+    {
+      question: "Как правильно сказать «Я — Анна» с глаголом sein?",
+      options: ["Ich bin Anna.", "Ich Anna.", "Du bist Anna.", "Er ist Anna."],
+      answer: 0,
+      explanation: "С местоимением *ich* (я) форма глагола sein — *bin* (*Ich bin...*).",
+    },
+    {
+      question: "Какое вопросительное слово означает «кто»?",
+      options: ["wer", "wo", "was", "wie"],
+      answer: 0,
+      explanation: "*wer* переводится как «кто» (*Wer bist du?* — «Кто ты?»).",
+    },
+    {
+      question: "Как спросить собеседника «Как дела?»?",
+      options: ["Wie geht's?", "Wer bist du?", "Woher kommst du?", "Was ist das?"],
+      answer: 0,
+      explanation: "*Wie geht's?* — универсальное «Как дела? / Как поживаешь?».",
+    },
+    {
+      question: "Как переводится бодрый ответ: «Super, danke!»?",
+      options: ["Супер, спасибо!", "Не знаю, спасибо.", "До встречи!", "Пожалуйста."],
+      answer: 0,
+      explanation: "*super* — «супер / отлично», *danke* — «спасибо».",
+    },
+    {
+      question: "Какая форма глагола sein сочетается с местоимением «du» (ты)?",
+      options: ["bist (du bist)", "bin (ich bin)", "ist (er ist)", "sind (wir sind)"],
+      answer: 0,
+      explanation: "С местоимением *du* глагол sein принимает форму *bist* (*du bist*).",
+    },
+  ],
   "a1-01": [
     {
       question: "Как переводится глагол «говорить» на немецкий язык?",

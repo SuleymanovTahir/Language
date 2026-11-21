@@ -84,7 +84,7 @@ export function CourseOnboarding({
   const [avoidMicrophone, setAvoidMicrophone] = useState(false);
   const suggestedLevel: CourseLevel =
     placementReport?.level ??
-    (selfLevel === "zero" || selfLevel === "unsure" ? "A1" : (selfLevel ?? "A1"));
+    (selfLevel === "zero" || selfLevel === "unsure" ? "A0" : (selfLevel ?? "A1"));
   const toggle = (value: string, list: string[], setter: (next: string[]) => void) =>
     setter(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
   const finish = () =>
